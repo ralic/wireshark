@@ -28,7 +28,7 @@
 
 #include "epan/conversation_table.h"
 
-#include "ui/follow.h"
+#include "epan/follow.h"
 
 #include "capture_file.h"
 #include "filter_action.h"
@@ -85,9 +85,11 @@ protected:
     void contextMenuEvent(QContextMenuEvent *event);
 
 private:
+    virtual void updateItems(bool) {}
 
 private slots:
-    virtual void updateItems() {}
+    // Updates all items
+    void updateItemsForSettingChange();
 
 signals:
     void titleChanged(QWidget *tree, const QString &text);
@@ -152,6 +154,8 @@ private slots:
     void on_displayFilterCheckBox_toggled(bool checked);
     void setTabText(QWidget *tree, const QString &text);
     void toggleTable();
+    void retapStarted();
+    void retapFinished();
 
     void copyAsCsv();
     void copyAsYaml();

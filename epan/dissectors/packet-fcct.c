@@ -90,7 +90,6 @@ const value_string fc_ct_gsserver_vals[] = {
 };
 
 static dissector_table_t fcct_gserver_table;
-static dissector_handle_t data_handle;
 
 guint8
 get_gs_server (guint8 gstype, guint8 gssubtype)
@@ -189,7 +188,7 @@ dissect_fcct (tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data)
 
         proto_tree_add_item (fcct_tree, hf_fcct_revision, tvb, offset++,
                              sizeof (guint8), ENC_BIG_ENDIAN);
-        SET_ADDRESS(&addr, AT_FC, 3, &in_id);
+        set_address(&addr, AT_FC, 3, &in_id);
         proto_tree_add_string (fcct_tree, hf_fcct_inid, tvb, offset, 3,
                                address_to_str(wmem_packet_scope(), &addr));
         offset += 3; /* sizeof FC address */
@@ -211,7 +210,7 @@ dissect_fcct (tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data)
     next_tvb = tvb_new_subset_remaining (tvb, 0);
     if (!dissector_try_uint_new(fcct_gserver_table, server, next_tvb, pinfo,
                              tree, TRUE, data)) {
-        call_dissector (data_handle, next_tvb, pinfo, tree);
+        call_data_dissector(next_tvb, pinfo, tree);
     }
 
     return tvb_captured_length(tvb);
@@ -276,7 +275,7 @@ proto_register_fcct(void)
 
     fcct_gserver_table = register_dissector_table ("fcct.server",
                                                    "FCCT Server",
-                                                   FT_UINT8, BASE_HEX);
+                                                   proto_fcct, FT_UINT8, BASE_HEX, DISSECTOR_TABLE_NOT_ALLOW_DUPLICATE);
 }
 
 void
@@ -284,10 +283,8 @@ proto_reg_handoff_fcct (void)
 {
     dissector_handle_t fcct_handle;
 
-    fcct_handle = new_create_dissector_handle (dissect_fcct, proto_fcct);
+    fcct_handle = create_dissector_handle (dissect_fcct, proto_fcct);
     dissector_add_uint("fc.ftype", FC_FTYPE_FCCT, fcct_handle);
-
-    data_handle = find_dissector ("data");
 }
 
 /*

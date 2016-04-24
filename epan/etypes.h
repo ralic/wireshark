@@ -269,7 +269,7 @@ extern "C" {
 #endif
 
 #ifndef ETHERTYPE_MINT
-#define ETHERTYPE_MINT			0x8783	/* Motorola Media Indepentent Network Transport */
+#define ETHERTYPE_MINT			0x8783	/* Motorola Media Independent Network Transport */
 #endif
 
 #ifndef ETHERTYPE_MAC_CONTROL
@@ -538,6 +538,14 @@ extern "C" {
 #define ETHERTYPE_HSR			0x892F  /* High-availability Seamless Redundancy (IEC62439 Part 3) */
 #endif
 
+#ifndef ETHERTYPE_ECP
+#define ETHERTYPE_ECP			0x8940  /* Edge Control Protocol */
+#endif
+
+#ifndef ETHERTYPE_NSH
+#define ETHERTYPE_NSH			0x894F  /* Network Service Header (draft-ietf-sfc-nsh-01.txt) */
+#endif
+
 #ifndef ETHERTYPE_LOOP
 #define ETHERTYPE_LOOP			0x9000	/* used for layer 2 testing (do i see my own frames on the wire) */
 #endif
@@ -556,6 +564,10 @@ extern "C" {
 
 #ifndef ETHERTYPE_XIP
 #define ETHERTYPE_XIP			0xC0DE	/* eXpressive Internet Protocol (not officially registered) */
+#endif
+
+#ifndef ETHERTYPE_NWP
+#define ETHERTYPE_NWP			0xC0DF	/* Neighborhood Watch Protocol (not officially registered) */
 #endif
 
 #ifndef ETHERTYPE_TDMOE

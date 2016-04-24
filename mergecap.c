@@ -30,20 +30,13 @@
 #include <errno.h>
 #include <glib.h>
 
-#ifdef HAVE_UNISTD_H
-#include <unistd.h>
-#endif
-
 #ifdef HAVE_GETOPT_H
 #include <getopt.h>
 #endif
 
-#ifdef HAVE_LIBZ
-#include <zlib.h>      /* to get the libz version number */
-#endif
-
 #include <string.h>
-#include "wtap.h"
+
+#include <wiretap/wtap.h>
 
 #ifndef HAVE_GETOPT_LONG
 #include <wsutil/wsgetopt.h>
@@ -52,17 +45,20 @@
 #include <wsutil/clopts_common.h>
 #include <wsutil/cmdarg_err.h>
 #include <wsutil/crash_info.h>
+#include <wsutil/filesystem.h>
 #include <wsutil/file_util.h>
+#include <wsutil/privileges.h>
 #include <wsutil/strnatcmp.h>
-#include <wsutil/ws_diag_control.h>
-#include <wsutil/ws_version_info.h>
+#include <ws_version_info.h>
+
+#ifdef HAVE_PLUGINS
+#include <wsutil/plugins.h>
+#endif
+
+#include <wsutil/report_err.h>
 
 #include <wiretap/merge.h>
 #include <wiretap/pcap-encap.h>
-
-#ifdef HAVE_FCNTL_H
-#include <fcntl.h>
-#endif
 
 #ifdef _WIN32
 #include <wsutil/unicode-utils.h>
@@ -132,6 +128,19 @@ string_elem_print(gpointer data, gpointer not_used _U_)
           ((struct string_elem *)data)->lstr);
 }
 
+#ifdef HAVE_PLUGINS
+/*
+ *  Don't report failures to load plugins because most (non-wiretap) plugins
+ *  *should* fail to load (because we're not linked against libwireshark and
+ *  dissector plugins need libwireshark).
+ */
+static void
+failure_message(const char *msg_format _U_, va_list ap _U_)
+{
+  return;
+}
+#endif
+
 static void
 list_capture_types(void) {
   int i;
@@ -162,33 +171,6 @@ list_idb_merge_modes(void) {
     fprintf(stderr, "    %s\n", merge_idb_merge_mode_to_string(i));
   }
 }
-
-static void
-get_mergecap_compiled_info(GString *str)
-{
-  /* LIBZ */
-  g_string_append(str, ", ");
-#ifdef HAVE_LIBZ
-  g_string_append(str, "with libz ");
-#ifdef ZLIB_VERSION
-  g_string_append(str, ZLIB_VERSION);
-#else /* ZLIB_VERSION */
-  g_string_append(str, "(version unknown)");
-#endif /* ZLIB_VERSION */
-#else /* HAVE_LIBZ */
-  g_string_append(str, "without libz");
-#endif /* HAVE_LIBZ */
-}
-
-static void
-get_mergecap_runtime_info(GString *str)
-{
-  /* zlib */
-#if defined(HAVE_LIBZ) && !defined(_WIN32)
-  g_string_append_printf(str, ", with libz %s", zlibVersion());
-#endif
-}
-
 
 static gboolean
 merge_callback(merge_event event, int num,
@@ -262,13 +244,11 @@ main(int argc, char *argv[])
   GString            *comp_info_str;
   GString            *runtime_info_str;
   int                 opt;
-DIAG_OFF(cast-qual)
   static const struct option long_options[] = {
-      {(char *)"help", no_argument, NULL, 'h'},
-      {(char *)"version", no_argument, NULL, 'V'},
+      {"help", no_argument, NULL, 'h'},
+      {"version", no_argument, NULL, 'V'},
       {0, 0, 0, 0 }
   };
-DIAG_ON(cast-qual)
   gboolean            do_append          = FALSE;
   gboolean            verbose            = FALSE;
   int                 in_file_count      = 0;
@@ -288,6 +268,10 @@ DIAG_ON(cast-qual)
   gboolean            use_stdout         = FALSE;
   merge_progress_callback_t cb;
 
+#ifdef HAVE_PLUGINS
+  char  *init_progfile_dir_error;
+#endif
+
   cmdarg_err_init(mergecap_cmdarg_err, mergecap_cmdarg_err_cont);
 
 #ifdef _WIN32
@@ -296,10 +280,10 @@ DIAG_ON(cast-qual)
 #endif /* _WIN32 */
 
   /* Get the compile-time version information string */
-  comp_info_str = get_compiled_version_info(NULL, get_mergecap_compiled_info);
+  comp_info_str = get_compiled_version_info(NULL, NULL);
 
   /* Get the run-time version information string */
-  runtime_info_str = get_runtime_version_info(get_mergecap_runtime_info);
+  runtime_info_str = get_runtime_version_info(NULL);
 
   /* Add it to the information to be reported on a crash. */
   ws_add_crash_info("Mergecap (Wireshark) %s\n"
@@ -308,6 +292,32 @@ DIAG_ON(cast-qual)
        "\n"
        "%s",
     get_ws_vcs_version_info(), comp_info_str->str, runtime_info_str->str);
+
+  /*
+   * Get credential information for later use.
+   */
+  init_process_policies();
+  init_open_routines();
+
+#ifdef HAVE_PLUGINS
+  /* Register wiretap plugins */
+  if ((init_progfile_dir_error = init_progfile_dir(argv[0], main))) {
+    g_warning("mergecap: init_progfile_dir(): %s", init_progfile_dir_error);
+    g_free(init_progfile_dir_error);
+  } else {
+    /* Register all the plugin types we have. */
+    wtap_register_plugin_types(); /* Types known to libwiretap */
+
+    init_report_err(failure_message,NULL,NULL,NULL);
+
+    /* Scan for plugins.  This does *not* call their registration routines;
+       that's done later. */
+    scan_plugins();
+
+    /* Register all libwiretap plugin modules. */
+    register_all_wiretap_modules();
+  }
+#endif
 
   /* Process the options first */
   while ((opt = getopt_long(argc, argv, "aF:hI:s:vVw:", long_options, NULL)) != -1) {
@@ -330,7 +340,7 @@ DIAG_ON(cast-qual)
     case 'h':
       printf("Mergecap (Wireshark) %s\n"
              "Merge two or more capture files into one.\n"
-             "See http://www.wireshark.org for more information.\n",
+             "See https://www.wireshark.org for more information.\n",
              get_ws_vcs_version_info());
       print_usage(stdout);
       exit(0);
@@ -410,7 +420,7 @@ DIAG_ON(cast-qual)
   }
 
   /* open the outfile */
-  if (strncmp(out_filename, "-", 2) == 0) {
+  if (strcmp(out_filename, "-") == 0) {
     /* use stdout as the outfile */
     use_stdout = TRUE;
     out_fd = 1 /*stdout*/;

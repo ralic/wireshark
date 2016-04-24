@@ -11,7 +11,7 @@
    </rect>
   </property>
   <property name="windowTitle">
-   <string>Dialog</string>
+   <string>VoIP Calls</string>
   </property>
   <layout class="QVBoxLayout" name="verticalLayout">
    <item>
@@ -101,7 +101,7 @@
     <string>Select all calls</string>
    </property>
    <property name="shortcut">
-    <string>Ctrl+A</string>
+    <string notr="true">Ctrl+A</string>
    </property>
   </action>
  </widget>

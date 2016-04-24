@@ -1,13 +1,15 @@
 ;
 ; uninstall.nsi
 ;
-; $Id$
 
 ; Create an installer that only writes an uninstaller.
 ; http://nsis.sourceforge.net/Signing_an_Uninstaller
 
 !include "common.nsh"
 !include 'LogicLib.nsh'
+!include x64.nsh
+!include "StrFunc.nsh"
+${UnStrRep}
 
 SetCompress off
 OutFile "${STAGING_DIR}\uninstall_installer.exe"
@@ -86,6 +88,32 @@ SectionEnd
 !define EXECUTABLE_MARKER "EXECUTABLE_MARKER"
 Var EXECUTABLE
 
+Section /o "Un.USBPcap" un.SecUSBPcap
+;-------------------------------------------
+SectionIn 2
+${If} ${RunningX64}
+    ${DisableX64FSRedirection}
+    SetRegView 64
+${EndIf}
+ReadRegStr $1 HKEY_LOCAL_MACHINE "Software\Microsoft\Windows\CurrentVersion\Uninstall\USBPcap" "UninstallString"
+${If} ${RunningX64}
+    ${EnableX64FSRedirection}
+    SetRegView 32
+${EndIf}
+${If} $1 != ""
+    ${UnStrRep} $2 '$1' '\Uninstall.exe' ''
+    ${UnStrRep} $3 '$2' '"' ''
+    ExecWait '$1 _?=$3' $0
+    DetailPrint "USBPcap uninstaller returned $0"
+    ${If} $0 == "0"
+        Delete "$3\Uninstall.exe"
+        Delete "$INSTDIR\extcap\USBPcapCMD.exe"
+    ${EndIf}
+${EndIf}
+ClearErrors
+SectionEnd
+
+
 Section "Uninstall" un.SecUinstall
 ;-------------------------------------------
 ;
@@ -98,6 +126,8 @@ SetShellVarContext all
 
 Push "${EXECUTABLE_MARKER}"
 Push "androiddump"
+;WIP: uncomment when sshdump on windows will be ready to go
+;Push "sshdump"
 Push "dumpcap"
 Push "${PROGRAM_NAME}"
 Push "tshark"
@@ -105,6 +135,7 @@ Push "qtshark"
 Push "editcap"
 Push "text2pcap"
 Push "mergecap"
+Push "randpktdump"
 Push "reordercap"
 Push "capinfos"
 Push "rawshark"
@@ -142,11 +173,16 @@ Delete "$INSTDIR\*.qm"
 Delete "$INSTDIR\accessible\*.*"
 Delete "$INSTDIR\AUTHORS-SHORT"
 Delete "$INSTDIR\COPYING*"
+Delete "$INSTDIR\audio\*.*"
+Delete "$INSTDIR\bearer\*.*"
 Delete "$INSTDIR\diameter\*.*"
 Delete "$INSTDIR\etc\gtk-2.0\*.*"
 Delete "$INSTDIR\etc\gtk-3.0\*.*"
 Delete "$INSTDIR\etc\pango\*.*"
 Delete "$INSTDIR\extcap\androiddump.*"
+;WIP: uncomment when sshdump on windows will be ready to go
+;Delete "$INSTDIR\extcap\sshdump.*"
+Delete "$INSTDIR\extcap\randpktdump.*"
 Delete "$INSTDIR\help\*.*"
 Delete "$INSTDIR\iconengines\*.*"
 Delete "$INSTDIR\imageformats\*.*"
@@ -163,7 +199,9 @@ Delete "$INSTDIR\lib\gtk-2.0\modules\*.*"
 Delete "$INSTDIR\lib\pango\1.2.0\modules\*.*"
 Delete "$INSTDIR\lib\pango\1.4.0\modules\*.*"
 Delete "$INSTDIR\lib\pango\1.5.0\modules\*.*"
+Delete "$INSTDIR\mediaservice\*.*"
 Delete "$INSTDIR\platforms\*.*"
+Delete "$INSTDIR\playlistformats\*.*"
 Delete "$INSTDIR\printsupport\*.*"
 Delete "$INSTDIR\share\glib-2.0\schemas\*.*"
 Delete "$INSTDIR\share\themes\Default\gtk-2.0\*.*"
@@ -202,6 +240,8 @@ Delete "$QUICKLAUNCH\${PROGRAM_NAME_GTK}.lnk"
 Delete "$QUICKLAUNCH\${PROGRAM_NAME_QT}.lnk"
 
 RMDir "$INSTDIR\accessible"
+RMDir "$INSTDIR\audio"
+RMDir "$INSTDIR\bearer"
 RMDir "$INSTDIR\etc\gtk-2.0"
 RMDir "$INSTDIR\etc\pango"
 RMDir "$INSTDIR\etc"
@@ -230,7 +270,9 @@ RMDir "$INSTDIR\lib\pango\1.5.0\modules"
 RMDir "$INSTDIR\lib\pango\1.5.0"
 RMDir "$INSTDIR\lib\pango"
 RMDir "$INSTDIR\lib"
+RMDir "$INSTDIR\mediaservice"
 RMDir "$INSTDIR\platforms"
+RMDir "$INSTDIR\playlistformats"
 RMDir "$INSTDIR\printsupport"
 RMDir "$INSTDIR\share\themes\Default\gtk-2.0"
 RMDir "$INSTDIR\share\themes\Default"
@@ -324,6 +366,7 @@ SectionEnd
     !insertmacro MUI_DESCRIPTION_TEXT ${un.SecGlobalSettings} "Uninstall global settings like: $INSTDIR\cfilters"
     !insertmacro MUI_DESCRIPTION_TEXT ${un.SecPersonalSettings} "Uninstall personal settings like your preferences file from your profile: $PROFILE."
     !insertmacro MUI_DESCRIPTION_TEXT ${un.SecWinPcap} "Call WinPcap's uninstall program."
+    !insertmacro MUI_DESCRIPTION_TEXT ${un.SecUSBPcap} "Call USBPcap's uninstall program."
 !insertmacro MUI_UNFUNCTION_DESCRIPTION_END
 
 ;

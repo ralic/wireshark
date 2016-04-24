@@ -63,6 +63,11 @@ typedef struct _col_width_data {
 #define COLUMN_XALIGN_CENTER  'C'
 #define COLUMN_XALIGN_RIGHT   'R'
 
+typedef enum {
+  BYTES_HEX,
+  BYTES_BITS
+} bytes_view_type;
+
 /** Recent settings. */
 typedef struct recent_settings_tag {
     gboolean    main_toolbar_show;
@@ -78,7 +83,7 @@ typedef struct recent_settings_tag {
     gint        gui_time_precision;
     ts_seconds_type gui_seconds_format;
     gint        gui_zoom_level;
-    gint        gui_bytes_view;
+    bytes_view_type gui_bytes_view;
 
     gint        gui_geometry_main_x;
     gint        gui_geometry_main_y;
@@ -101,6 +106,8 @@ typedef struct recent_settings_tag {
     GList      *conversation_tabs;                  /* enabled conversation dialog tabs */
     GList      *endpoint_tabs;                      /* enabled endpoint dialog tabs */
     gchar      *gui_fileopen_remembered_dir;        /* folder of last capture loaded in File Open dialog */
+    gboolean    gui_rlc_use_pdus_from_mac;
+    GList      *custom_colors;
 } recent_settings_t;
 
 /** Global recent settings. */
@@ -122,22 +129,25 @@ extern gboolean write_profile_recent(void);
  *
  * @param rf_path_return path to recent file if function failed
  * @param rf_errno_return if failed
+ * @return TRUE if succeeded, FALSE if failed (check parameters for reason).
  */
-extern void recent_read_static(char **rf_path_return, int *rf_errno_return);
+extern gboolean recent_read_static(char **rf_path_return, int *rf_errno_return);
 
 /** Read profile recent settings file (static part).
  *
  * @param rf_path_return path to recent file if function failed
  * @param rf_errno_return if failed
+ * @return TRUE if succeeded, FALSE if failed (check parameters for reason).
  */
-extern void recent_read_profile_static(char **rf_path_return, int *rf_errno_return);
+extern gboolean recent_read_profile_static(char **rf_path_return, int *rf_errno_return);
 
 /** Read recent settings file (dynamic part).
  *
  * @param rf_path_return path to recent file if function failed
  * @param rf_errno_return if failed
+ * @return TRUE if succeeded, FALSE if failed (check parameters for reason).
  */
-extern void recent_read_dynamic(char **rf_path_return, int *rf_errno_return);
+extern gboolean recent_read_dynamic(char **rf_path_return, int *rf_errno_return);
 
 /**
  * Given a -o command line string, parse it and set the recent value in

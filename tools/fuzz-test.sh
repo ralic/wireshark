@@ -128,6 +128,13 @@ if [ $MIN_PLUGINS -gt 0 -a $PLUGIN_COUNT -lt $MIN_PLUGINS ] ; then
     exit 1
 fi
 
+if [ $ASAN -ne 0 ]; then
+    echo -n "ASan enabled. Virtual memory limit is "
+    ulimit -v
+else
+    echo "ASan disabled. Virtual memory limit is $MAX_VMEM"
+fi
+
 HOWMANY="forever"
 if [ $MAX_PASSES -gt 0 ]; then
     HOWMANY="$MAX_PASSES passes"
@@ -190,6 +197,8 @@ while [ \( $PASS -lt $MAX_PASSES -o $MAX_PASSES -lt 1 \) -a $DONE -ne 1 ] ; do
             fi
         fi
 
+        RUNNER_PIDS=
+        RUNNER_ERR_FILES=
         for ARGS in "${RUNNER_ARGS[@]}" ; do
             if [ $DONE -eq 1 ]; then
                 break # We caught a signal
@@ -203,17 +212,26 @@ while [ \( $PASS -lt $MAX_PASSES -o $MAX_PASSES -lt 1 \) -a $DONE -ne 1 ] ; do
             (
                 ulimit -S -t $MAX_CPU_TIME -s $MAX_STACK
                 ulimit -c unlimited
+                SUBSHELL_PID=$($SHELL -c 'echo $PPID')
 
-                # Don't enable ulimit -v when use ASAN see
-                # https://code.google.com/p/address-sanitizer/wiki/AddressSanitizer#ulimit_-v
+                # Don't enable ulimit -v when using ASAN. See
+                # https://github.com/google/sanitizers/wiki/AddressSanitizer#ulimit--v
                 if [ $ASAN -eq 0 ]; then
                     ulimit -v $MAX_VMEM
                 fi
 
                 "$RUNNER" $COMMON_ARGS $ARGS $TMP_DIR/$TMP_FILE \
-                    > /dev/null 2>> $TMP_DIR/$ERR_FILE
-            )
+                    > /dev/null 2>> $TMP_DIR/$ERR_FILE.$SUBSHELL_PID
+            ) &
+            RUNNER_PID=$!
+            RUNNER_PIDS="$RUNNER_PIDS $RUNNER_PID"
+            RUNNER_ERR_FILES="$RUNNER_ERR_FILES $TMP_DIR/$ERR_FILE.$RUNNER_PID"
+        done
+
+        for RUNNER_PID in $RUNNER_PIDS ; do
+            wait $RUNNER_PID
             RETVAL=$?
+            mv $TMP_DIR/$ERR_FILE.$RUNNER_PID $TMP_DIR/$ERR_FILE
 
             # Uncomment the next two lines to enable dissector bug
             # checking.
@@ -236,6 +254,7 @@ while [ \( $PASS -lt $MAX_PASSES -o $MAX_PASSES -lt 1 \) -a $DONE -ne 1 ] ; do
             fi
 
             if [ $DONE -ne 1 -a \( $RETVAL -ne 0 -o $DISSECTOR_BUG -ne 0 -o $VG_ERR_CNT -ne 0 \) ] ; then
+                rm -f $RUNNER_ERR_FILES
                 ws_exit_error
             fi
         done

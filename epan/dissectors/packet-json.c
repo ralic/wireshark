@@ -40,6 +40,7 @@
 
 void proto_register_json(void);
 void proto_reg_handoff_json(void);
+static char *json_string_unescape(tvbparse_elem_t *tok);
 
 static dissector_handle_t json_handle;
 
@@ -63,11 +64,8 @@ static header_field_info hfi_json_object JSON_HFI_INIT =
 static header_field_info hfi_json_member JSON_HFI_INIT =
 	{ "Member", "json.member", FT_NONE, BASE_NONE, NULL, 0x00, "JSON object member", HFILL };
 
-#if 0
-/* XXX */
-static header_field_info hfi_json_member_key JSON_HFI_INIT =
-	{ "Key", "json.member.key", FT_NONE, BASE_NONE, NULL, 0x00, NULL, HFILL };
-#endif
+static header_field_info hfi_json_key JSON_HFI_INIT =
+	{ "Key", "json.key", FT_STRING, STR_UNICODE, NULL, 0x00, NULL, HFILL };
 
 static header_field_info hfi_json_value_string JSON_HFI_INIT = /* FT_STRINGZ? */
 	{ "String value", "json.value.string", FT_STRING, STR_UNICODE, NULL, 0x00, "JSON string value", HFILL };
@@ -236,11 +234,11 @@ static void after_member(void *tvbparse_data, const void *wanted_data _U_, tvbpa
 		tvbparse_elem_t *key_tok = tok->sub;
 
 		if (key_tok && key_tok->id == JSON_TOKEN_STRING) {
-			char *key = tvb_get_string_enc(wmem_packet_scope(), key_tok->tvb, key_tok->offset, key_tok->len, ENC_ASCII);
+			char *key = json_string_unescape(key_tok);
 
+			proto_tree_add_string(tree, &hfi_json_key, key_tok->tvb, key_tok->offset, key_tok->len, key);
 			proto_item_append_text(tree, " Key: %s", key);
 		}
-		/* XXX, &hfi_json_member_key */
 	}
 }
 
@@ -621,7 +619,7 @@ proto_register_json(void)
 		&hfi_json_array,
 		&hfi_json_object,
 		&hfi_json_member,
-		/* &hfi_json_member_key, */
+		&hfi_json_key,
 		&hfi_json_value_string,
 		&hfi_json_value_number,
 		&hfi_json_value_false,
@@ -636,7 +634,7 @@ proto_register_json(void)
 	proto_register_fields(proto_json, hfi, array_length(hfi));
 	proto_register_subtree_array(ett, array_length(ett));
 
-	json_handle = new_register_dissector("json", dissect_json, proto_json);
+	json_handle = register_dissector("json", dissect_json, proto_json);
 
 	init_json_parser();
 }
@@ -644,7 +642,7 @@ proto_register_json(void)
 void
 proto_reg_handoff_json(void)
 {
-	dissector_handle_t json_file_handle = new_create_dissector_handle(dissect_json_file, proto_json);
+	dissector_handle_t json_file_handle = create_dissector_handle(dissect_json_file, proto_json);
 
 	heur_dissector_add("hpfeeds", dissect_json_heur, "JSON over HPFEEDS", "json_hpfeeds", proto_json, HEURISTIC_ENABLE);
 	heur_dissector_add("db-lsp", dissect_json_heur, "JSON over DB-LSP", "json_db_lsp", proto_json, HEURISTIC_ENABLE);
@@ -653,8 +651,9 @@ proto_reg_handoff_json(void)
 	dissector_add_string("media_type", "application/json", json_handle); /* RFC 4627 */
 	dissector_add_string("media_type", "application/json-rpc", json_handle); /* JSON-RPC over HTTP */
 	dissector_add_string("media_type", "application/jsonrequest", json_handle); /* JSON-RPC over HTTP */
+	dissector_add_string("media_type", "application/dds-web+json", json_handle); /* DDS Web Integration Service over HTTP */
 
-	text_lines_handle = find_dissector("data-text-lines");
+	text_lines_handle = find_dissector_add_dependency("data-text-lines", proto_json);
 }
 
 /*

@@ -86,17 +86,14 @@ static gint ett_isl_dst = -1;
 
 static dissector_handle_t eth_withfcs_handle;
 static dissector_handle_t tr_handle;
-static dissector_handle_t data_handle;
 
-void
-capture_isl(const guchar *pd, int offset, int len, packet_counts *ld)
+gboolean
+capture_isl(const guchar *pd, int offset, int len, capture_packet_info_t *cpinfo, const union wtap_pseudo_header *pseudo_header _U_)
 {
   guint8 type;
 
-  if (!BYTES_ARE_IN_FRAME(offset, len, ISL_HEADER_SIZE)) {
-    ld->other++;
-    return;
-  }
+  if (!BYTES_ARE_IN_FRAME(offset, len, ISL_HEADER_SIZE))
+    return FALSE;
 
   type = (pd[offset+5] >> 4)&0x0F;
 
@@ -104,18 +101,15 @@ capture_isl(const guchar *pd, int offset, int len, packet_counts *ld)
 
   case TYPE_ETHER:
     offset += 14+12;    /* skip the header */
-    capture_eth(pd, offset, len, ld);
-    break;
+    return capture_eth(pd, offset, len, cpinfo, pseudo_header);
 
   case TYPE_TR:
     offset += 14+17;    /* skip the header */
-    capture_tr(pd, offset, len, ld);
-    break;
-
-  default:
-    ld->other++;
+    return capture_tr(pd, offset, len, cpinfo, pseudo_header);
     break;
   }
+
+  return FALSE;
 }
 
 static const value_string type_vals[] = {
@@ -267,7 +261,7 @@ dissect_isl(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, int fcs_len)
 
       next_tvb = tvb_new_subset(payload_tvb, 12, captured_length, length);
 
-      /* Dissect the payload as an Etherner frame.
+      /* Dissect the payload as an Ethernet frame.
 
         Catch BoundsError and ReportedBoundsError, so that if the
         reported length of "next_tvb" was reduced by some dissector
@@ -315,7 +309,7 @@ dissect_isl(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, int fcs_len)
 
   default:
     next_tvb = tvb_new_subset_remaining(payload_tvb, 12);
-    call_dissector(data_handle, next_tvb, pinfo, tree);
+    call_data_dissector(next_tvb, pinfo, tree);
     break;
   }
 }
@@ -414,9 +408,8 @@ proto_reg_handoff_isl(void)
   /*
    * Get handles for the Ethernet and Token Ring dissectors.
    */
-  eth_withfcs_handle = find_dissector("eth_withfcs");
-  tr_handle = find_dissector("tr");
-  data_handle = find_dissector("data");
+  eth_withfcs_handle = find_dissector_add_dependency("eth_withfcs", proto_isl);
+  tr_handle = find_dissector_add_dependency("tr", proto_isl);
 }
 
 /*

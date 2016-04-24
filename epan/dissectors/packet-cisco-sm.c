@@ -261,11 +261,10 @@ static gint ett_sm = -1;
 static dissector_handle_t sdp_handle;
 static dissector_handle_t mtp3_handle;
 static dissector_handle_t q931_handle;
-static dissector_handle_t data_handle;
 
 /* Code to actually dissect the packets */
-static void
-dissect_sm(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
+static int
+dissect_sm(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data _U_)
 {
     proto_item *ti;
     proto_tree *sm_tree;
@@ -299,9 +298,6 @@ dissect_sm(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
         switch(protocol){
         /* start case RUDP BSM v.1  ---------------------------------------------------------- */
         case SM_PROTOCOL_X004:
-            if (!tree)
-                return;
-
             proto_tree_add_item(sm_tree, hf_sm_msg_id, tvb, offset, 2, ENC_BIG_ENDIAN);
             offset = offset +2;
             msg_type = tvb_get_ntohs(tvb,offset);
@@ -325,7 +321,7 @@ dissect_sm(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
                 if ((msg_type == PDU_MTP3_TO_SLT || msg_type == PDU_MTP3_FROM_SLT)) {
                     call_dissector(q931_handle, next_tvb, pinfo, tree);
                 } else {
-                    call_dissector(data_handle, next_tvb, pinfo, tree);
+                    call_data_dissector(next_tvb, pinfo, tree);
                 }
             }
 
@@ -334,8 +330,6 @@ dissect_sm(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
 
         case SM_PROTOCOL_X100:
         case SM_PROTOCOL_X122:
-            if (!tree)
-                return;
             /* Protocol 0x100/0x122 only contains a length and then an EISUP packet */
             proto_tree_add_item(sm_tree, hf_sm_len, tvb, offset, 2, ENC_BIG_ENDIAN);
             length = tvb_get_ntohs(tvb,offset);
@@ -345,12 +339,10 @@ dissect_sm(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
             /* This should be the EISUP dissector but we haven't got one
              * right now - so decode it as data for now ... */
             next_tvb = tvb_new_subset_length(tvb, offset, length);
-            call_dissector(data_handle, next_tvb, pinfo, sm_tree);
+            call_data_dissector(next_tvb, pinfo, sm_tree);
 
             break;
         case SM_PROTOCOL_X101:
-            if (!tree)
-                return;
             /* XXX Reverse enginered so this may not be correct!!!
              * EISUP - used between Cisco HSI and Cisco PGW devices,
              * uses RUDP with default port number 8003.
@@ -387,8 +379,6 @@ dissect_sm(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
             /*return;*/
             break;
         case SM_PROTOCOL_X114:
-            if (!tree)
-                return;
             /* XXX Reverse enginered so this may not be correct!!! */
             proto_tree_add_item(sm_tree, hf_sm_len, tvb, offset, 2, ENC_BIG_ENDIAN);
             length = tvb_get_ntohs(tvb,offset);
@@ -478,11 +468,13 @@ dissect_sm(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
                     proto_tree_add_item(sm_tree, hf_sm_stat_request_type, tvb, offset, 4, ENC_BIG_ENDIAN);
                     break;
                 default:
-                    call_dissector(data_handle, next_tvb, pinfo, tree);
+                    call_data_dissector(next_tvb, pinfo, tree);
                 }
             }
         }
     }
+
+    return tvb_captured_length(tvb);
 }
 
 void
@@ -612,10 +604,9 @@ proto_register_sm(void)
 void
 proto_reg_handoff_sm(void)
 {
-    sdp_handle  = find_dissector("sdp");
-    mtp3_handle = find_dissector("mtp3");
-    q931_handle = find_dissector("q931");
-    data_handle = find_dissector("data");
+    sdp_handle  = find_dissector_add_dependency("sdp", proto_sm);
+    mtp3_handle = find_dissector_add_dependency("mtp3", proto_sm);
+    q931_handle = find_dissector_add_dependency("q931", proto_sm);
 }
 
 /*

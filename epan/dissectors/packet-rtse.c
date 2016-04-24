@@ -1,11 +1,11 @@
 /* Do not modify this file. Changes will be overwritten.                      */
 /* Generated automatically by the ASN.1 to Wireshark dissector compiler       */
 /* packet-rtse.c                                                              */
-/* ../../tools/asn2wrs.py -b -p rtse -c ./rtse.cnf -s ./packet-rtse-template -D . -O ../../epan/dissectors rtse.asn */
+/* asn2wrs.py -b -p rtse -c ./rtse.cnf -s ./packet-rtse-template -D . -O ../.. rtse.asn */
 
 /* Input file: packet-rtse-template.c */
 
-#line 1 "../../asn1/rtse/packet-rtse-template.c"
+#line 1 "./asn1/rtse/packet-rtse-template.c"
 /* packet-rtse-template.c
  * Routines for RTSE packet dissection
  * Graeme Lunt 2005
@@ -38,6 +38,8 @@
 #include <epan/asn1.h>
 #include <epan/expert.h>
 
+#include <wsutil/str_util.h>
+
 #include "packet-ber.h"
 #include "packet-pres.h"
 #include "packet-acse.h"
@@ -64,7 +66,7 @@ static gboolean rtse_reassemble = TRUE;
 
 
 /*--- Included file: packet-rtse-hf.c ---*/
-#line 1 "../../asn1/rtse/packet-rtse-hf.c"
+#line 1 "./asn1/rtse/packet-rtse-hf.c"
 static int hf_rtse_rtorq_apdu = -1;               /* RTORQapdu */
 static int hf_rtse_rtoac_apdu = -1;               /* RTOACapdu */
 static int hf_rtse_rtorj_apdu = -1;               /* RTORJapdu */
@@ -91,13 +93,13 @@ static int hf_rtse_t61String = -1;                /* T_t61String */
 static int hf_rtse_octetString = -1;              /* T_octetString */
 
 /*--- End of included file: packet-rtse-hf.c ---*/
-#line 58 "../../asn1/rtse/packet-rtse-template.c"
+#line 60 "./asn1/rtse/packet-rtse-template.c"
 
 /* Initialize the subtree pointers */
 static gint ett_rtse = -1;
 
 /*--- Included file: packet-rtse-ett.c ---*/
-#line 1 "../../asn1/rtse/packet-rtse-ett.c"
+#line 1 "./asn1/rtse/packet-rtse-ett.c"
 static gint ett_rtse_RTSE_apdus = -1;
 static gint ett_rtse_RTORQapdu = -1;
 static gint ett_rtse_RTOACapdu = -1;
@@ -108,7 +110,7 @@ static gint ett_rtse_SessionConnectionIdentifier = -1;
 static gint ett_rtse_CallingSSuserReference = -1;
 
 /*--- End of included file: packet-rtse-ett.c ---*/
-#line 62 "../../asn1/rtse/packet-rtse-template.c"
+#line 64 "./asn1/rtse/packet-rtse-template.c"
 
 static expert_field ei_rtse_dissector_oid_not_implemented = EI_INIT;
 static expert_field ei_rtse_unknown_rtse_pdu = EI_INIT;
@@ -177,12 +179,12 @@ register_rtse_oid_dissector_handle(const char *oid, dissector_handle_t dissector
   /* register RTSE with the BER (ACSE) */
   register_ber_oid_dissector_handle(oid, rtse_handle, proto, name);
 
-  if(uses_ros) {
+  if (uses_ros) {
     /* make sure we call ROS ... */
     dissector_add_string("rtse.oid", oid, ros_handle);
 
     /* and then tell ROS how to dissect the AS*/
-    if(dissector != NULL)
+    if (dissector != NULL)
       register_ros_oid_dissector_handle(oid, dissector, proto, name, TRUE);
 
   } else {
@@ -199,7 +201,7 @@ call_rtse_oid_callback(const char *oid, tvbuff_t *tvb, int offset, packet_info *
 
     next_tvb = tvb_new_subset_remaining(tvb, offset);
 
-    if((len = dissector_try_string(rtse_oid_dissector_table, oid, next_tvb, pinfo, tree, data)) == 0) {
+    if ((len = dissector_try_string(rtse_oid_dissector_table, oid, next_tvb, pinfo, tree, data)) == 0) {
         proto_item *item;
         proto_tree *next_tree;
 
@@ -225,7 +227,7 @@ call_rtse_external_type_callback(gboolean implicit_tag _U_, tvbuff_t *tvb, int o
 
         oid = (const char *)find_oid_by_pres_ctx_id(actx->pinfo, actx->external.indirect_reference);
 
-        if(!oid)
+        if (!oid)
             proto_tree_add_expert_format(tree, actx->pinfo, &ei_rtse_abstract_syntax, tvb, offset, tvb_captured_length_remaining(tvb, offset),
                     "Unable to determine abstract syntax for indirect reference: %d.", actx->external.indirect_reference);
     } else if (actx->external.direct_ref_present) {
@@ -240,7 +242,7 @@ call_rtse_external_type_callback(gboolean implicit_tag _U_, tvbuff_t *tvb, int o
 
 
 /*--- Included file: packet-rtse-fn.c ---*/
-#line 1 "../../asn1/rtse/packet-rtse-fn.c"
+#line 1 "./asn1/rtse/packet-rtse-fn.c"
 
 
 static int
@@ -271,7 +273,7 @@ dissect_rtse_T_dialogueMode(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int of
 
 static int
 dissect_rtse_T_open(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 58 "../../asn1/rtse/rtse.cnf"
+#line 58 "./asn1/rtse/rtse.cnf"
 
         struct SESSION_DATA_STRUCTURE* session = (struct SESSION_DATA_STRUCTURE*)actx->private_data;
         const char *oid = NULL;
@@ -308,7 +310,7 @@ dissect_rtse_T_open(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_
 
 static int
 dissect_rtse_T_t61String(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 116 "../../asn1/rtse/rtse.cnf"
+#line 116 "./asn1/rtse/rtse.cnf"
   tvbuff_t *string = NULL;
     offset = dissect_ber_restricted_string(implicit_tag, BER_UNI_TAG_TeletexString,
                                             actx, tree, tvb, offset, hf_index,
@@ -326,7 +328,7 @@ dissect_rtse_T_t61String(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offse
 
 static int
 dissect_rtse_T_octetString(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 132 "../../asn1/rtse/rtse.cnf"
+#line 132 "./asn1/rtse/rtse.cnf"
   tvbuff_t *string = NULL;
     offset = dissect_ber_octet_string(implicit_tag, actx, tree, tvb, offset, hf_index,
                                        &string);
@@ -365,7 +367,7 @@ dissect_rtse_CallingSSuserReference(gboolean implicit_tag _U_, tvbuff_t *tvb _U_
 
 static int
 dissect_rtse_CommonReference(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 124 "../../asn1/rtse/rtse.cnf"
+#line 124 "./asn1/rtse/rtse.cnf"
   tvbuff_t *string = NULL;
     offset = dissect_ber_UTCTime(implicit_tag, actx, tree, tvb, offset, hf_index);
 
@@ -398,7 +400,7 @@ static const ber_sequence_t SessionConnectionIdentifier_sequence[] = {
 
 static int
 dissect_rtse_SessionConnectionIdentifier(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 108 "../../asn1/rtse/rtse.cnf"
+#line 108 "./asn1/rtse/rtse.cnf"
   if(open_request){
     col_append_str(actx->pinfo->cinfo, COL_INFO, "Recover");
   }
@@ -443,7 +445,7 @@ static const value_string rtse_T_applicationProtocol_vals[] = {
 
 static int
 dissect_rtse_T_applicationProtocol(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 104 "../../asn1/rtse/rtse.cnf"
+#line 104 "./asn1/rtse/rtse.cnf"
 
   offset = dissect_ber_integer(TRUE, actx, tree, tvb, offset, hf_index, &app_proto);
 
@@ -464,7 +466,7 @@ static const ber_sequence_t RTORQapdu_set[] = {
 
 int
 dissect_rtse_RTORQapdu(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 41 "../../asn1/rtse/rtse.cnf"
+#line 41 "./asn1/rtse/rtse.cnf"
   struct SESSION_DATA_STRUCTURE* session = (struct SESSION_DATA_STRUCTURE*)actx->private_data;
 
   if(session != NULL)
@@ -490,7 +492,7 @@ static const ber_sequence_t RTOACapdu_set[] = {
 
 int
 dissect_rtse_RTOACapdu(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 50 "../../asn1/rtse/rtse.cnf"
+#line 50 "./asn1/rtse/rtse.cnf"
   struct SESSION_DATA_STRUCTURE* session = (struct SESSION_DATA_STRUCTURE*)actx->private_data;
 
   if(session != NULL)
@@ -517,7 +519,7 @@ static const value_string rtse_RefuseReason_vals[] = {
 
 static int
 dissect_rtse_RefuseReason(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 156 "../../asn1/rtse/rtse.cnf"
+#line 156 "./asn1/rtse/rtse.cnf"
   int reason = -1;
 
     offset = dissect_ber_integer(implicit_tag, actx, tree, tvb, offset, hf_index,
@@ -536,7 +538,7 @@ dissect_rtse_RefuseReason(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offs
 
 static int
 dissect_rtse_T_userDataRJ(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 11 "../../asn1/rtse/rtse.cnf"
+#line 11 "./asn1/rtse/rtse.cnf"
     struct SESSION_DATA_STRUCTURE* session = (struct SESSION_DATA_STRUCTURE*)actx->private_data;
         const char *oid = NULL;
 
@@ -577,7 +579,7 @@ static const ber_sequence_t RTORJapdu_set[] = {
 
 int
 dissect_rtse_RTORJapdu(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 148 "../../asn1/rtse/rtse.cnf"
+#line 148 "./asn1/rtse/rtse.cnf"
   col_append_str(actx->pinfo->cinfo, COL_INFO, "Refuse");
 
     offset = dissect_ber_set(implicit_tag, actx, tree, tvb, offset,
@@ -593,7 +595,7 @@ dissect_rtse_RTORJapdu(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset 
 
 static int
 dissect_rtse_RTTPapdu(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 138 "../../asn1/rtse/rtse.cnf"
+#line 138 "./asn1/rtse/rtse.cnf"
   int priority = -1;
 
   col_append_str(actx->pinfo->cinfo, COL_INFO, "Turn-Please");
@@ -614,7 +616,7 @@ dissect_rtse_RTTPapdu(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _
 
 static int
 dissect_rtse_RTTRapdu(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 86 "../../asn1/rtse/rtse.cnf"
+#line 86 "./asn1/rtse/rtse.cnf"
         tvbuff_t *next_tvb = NULL;
     struct SESSION_DATA_STRUCTURE* session = (struct SESSION_DATA_STRUCTURE*)actx->private_data;
 
@@ -653,7 +655,7 @@ static const value_string rtse_AbortReason_vals[] = {
 
 static int
 dissect_rtse_AbortReason(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 172 "../../asn1/rtse/rtse.cnf"
+#line 172 "./asn1/rtse/rtse.cnf"
   int reason = -1;
 
     offset = dissect_ber_integer(implicit_tag, actx, tree, tvb, offset, hf_index,
@@ -683,7 +685,7 @@ dissect_rtse_BIT_STRING(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset
 
 static int
 dissect_rtse_T_userdataAB(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 38 "../../asn1/rtse/rtse.cnf"
+#line 38 "./asn1/rtse/rtse.cnf"
 /*XXX not implemented yet */
 
 
@@ -701,7 +703,7 @@ static const ber_sequence_t RTABapdu_set[] = {
 
 int
 dissect_rtse_RTABapdu(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 164 "../../asn1/rtse/rtse.cnf"
+#line 164 "./asn1/rtse/rtse.cnf"
   col_append_str(actx->pinfo->cinfo, COL_INFO, "Abort");
 
     offset = dissect_ber_set(implicit_tag, actx, tree, tvb, offset,
@@ -735,7 +737,7 @@ dissect_rtse_RTSE_apdus(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset
 
 
 /*--- End of included file: packet-rtse-fn.c ---*/
-#line 192 "../../asn1/rtse/packet-rtse-template.c"
+#line 194 "./asn1/rtse/packet-rtse-template.c"
 
 /*
 * Dissect RTSE PDUs inside a PPDU.
@@ -762,7 +764,7 @@ dissect_rtse(tvbuff_t *tvb, packet_info *pinfo, proto_tree *parent_tree, void* d
     /* do we have application context from the acse dissector? */
     if (data == NULL)
         return 0;
-    session  = (struct SESSION_DATA_STRUCTURE*)data;
+    session = (struct SESSION_DATA_STRUCTURE*)data;
 
     /* save parent_tree so subdissectors can create new top nodes */
     top_tree=parent_tree;
@@ -774,9 +776,10 @@ dissect_rtse(tvbuff_t *tvb, packet_info *pinfo, proto_tree *parent_tree, void* d
 
     if (rtse_reassemble &&
         ((session->spdu_type == SES_DATA_TRANSFER) ||
-         (session->spdu_type == SES_MAJOR_SYNC_POINT))) {
+         (session->spdu_type == SES_MAJOR_SYNC_POINT)))
+    {
         /* Use conversation index as fragment id */
-        conversation  = find_conversation (pinfo->fd->num,
+        conversation  = find_conversation (pinfo->num,
                            &pinfo->src, &pinfo->dst, pinfo->ptype,
                            pinfo->srcport, pinfo->destport, 0);
         if (conversation != NULL) {
@@ -806,7 +809,7 @@ dissect_rtse(tvbuff_t *tvb, packet_info *pinfo, proto_tree *parent_tree, void* d
                               data_tvb, 0, pinfo,
                               rtse_id, NULL,
                               fragment_length, TRUE);
-            if (frag_msg && pinfo->fd->num != frag_msg->reassembled_in) {
+            if (frag_msg && pinfo->num != frag_msg->reassembled_in) {
                 /* Add a "Reassembled in" link if not reassembled in this frame */
                 proto_tree_add_uint (tree, *(rtse_frag_items.hf_reassembled_in),
                              data_tvb, 0, 0, frag_msg->reassembled_in);
@@ -835,10 +838,10 @@ dissect_rtse(tvbuff_t *tvb, packet_info *pinfo, proto_tree *parent_tree, void* d
     }
 
     if (!data_handled) {
-        while (tvb_reported_length_remaining(tvb, offset) > 0){
+        while (tvb_reported_length_remaining(tvb, offset) > 0) {
             old_offset=offset;
             offset=dissect_rtse_RTSE_apdus(TRUE, tvb, offset, &asn1_ctx, tree, -1);
-            if(offset == old_offset){
+            if (offset == old_offset) {
                 next_tree = proto_tree_add_subtree(tree, tvb, offset, -1,
                                 ett_rtse_unknown, &item, "Unknown RTSE PDU");
                 expert_add_info (pinfo, item, &ei_rtse_unknown_rtse_pdu);
@@ -908,7 +911,7 @@ void proto_register_rtse(void) {
 
 
 /*--- Included file: packet-rtse-hfarr.c ---*/
-#line 1 "../../asn1/rtse/packet-rtse-hfarr.c"
+#line 1 "./asn1/rtse/packet-rtse-hfarr.c"
     { &hf_rtse_rtorq_apdu,
       { "rtorq-apdu", "rtse.rtorq_apdu_element",
         FT_NONE, BASE_NONE, NULL, 0,
@@ -1007,7 +1010,7 @@ void proto_register_rtse(void) {
         NULL, HFILL }},
 
 /*--- End of included file: packet-rtse-hfarr.c ---*/
-#line 363 "../../asn1/rtse/packet-rtse-template.c"
+#line 366 "./asn1/rtse/packet-rtse-template.c"
   };
 
   /* List of subtrees */
@@ -1018,7 +1021,7 @@ void proto_register_rtse(void) {
     &ett_rtse_fragments,
 
 /*--- Included file: packet-rtse-ettarr.c ---*/
-#line 1 "../../asn1/rtse/packet-rtse-ettarr.c"
+#line 1 "./asn1/rtse/packet-rtse-ettarr.c"
     &ett_rtse_RTSE_apdus,
     &ett_rtse_RTORQapdu,
     &ett_rtse_RTOACapdu,
@@ -1029,7 +1032,7 @@ void proto_register_rtse(void) {
     &ett_rtse_CallingSSuserReference,
 
 /*--- End of included file: packet-rtse-ettarr.c ---*/
-#line 372 "../../asn1/rtse/packet-rtse-template.c"
+#line 375 "./asn1/rtse/packet-rtse-template.c"
   };
 
   static ei_register_info ei[] = {
@@ -1043,7 +1046,7 @@ void proto_register_rtse(void) {
 
   /* Register protocol */
   proto_rtse = proto_register_protocol(PNAME, PSNAME, PFNAME);
-  new_register_dissector("rtse", dissect_rtse, proto_rtse);
+  register_dissector("rtse", dissect_rtse, proto_rtse);
   /* Register fields and subtrees */
   proto_register_field_array(proto_rtse, hf, array_length(hf));
   proto_register_subtree_array(ett, array_length(ett));
@@ -1060,7 +1063,7 @@ void proto_register_rtse(void) {
                  " \"Allow subdissectors to reassemble TCP streams\""
                  " in the TCP protocol settings.", &rtse_reassemble);
 
-  rtse_oid_dissector_table = register_dissector_table("rtse.oid", "RTSE OID Dissectors", FT_STRING, BASE_NONE);
+  rtse_oid_dissector_table = register_dissector_table("rtse.oid", "RTSE OID Dissectors", proto_rtse, FT_STRING, BASE_NONE, DISSECTOR_TABLE_NOT_ALLOW_DUPLICATE);
   oid_table=g_hash_table_new(g_str_hash, g_str_equal);
 
 

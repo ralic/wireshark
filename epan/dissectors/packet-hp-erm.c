@@ -85,8 +85,8 @@ static const value_string hp_erm_cfi_vals[] = {
 
 static dissector_handle_t eth_withoutfcs_handle;
 
-static void
-dissect_hp_erm(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
+static int
+dissect_hp_erm(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data _U_)
 {
     proto_item *ti;
     proto_tree *hp_erm_tree;
@@ -112,6 +112,7 @@ dissect_hp_erm(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
 
     eth_tvb = tvb_new_subset_remaining(tvb, offset);
     call_dissector(eth_withoutfcs_handle, eth_tvb, pinfo, tree);
+    return tvb_captured_length(tvb);
 }
 
 void
@@ -171,7 +172,7 @@ proto_reg_handoff_hp_erm(void)
     static gboolean initialized = FALSE;
 
     if (!initialized) {
-        eth_withoutfcs_handle = find_dissector("eth_withoutfcs");
+        eth_withoutfcs_handle = find_dissector_add_dependency("eth_withoutfcs", proto_hp_erm);
         hp_erm_handle = create_dissector_handle(dissect_hp_erm, proto_hp_erm);
         initialized = TRUE;
     } else {

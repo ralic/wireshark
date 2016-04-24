@@ -121,7 +121,7 @@ export MallocCheckHeapAbort=1
 export MallocBadFreeAbort=1
 
 # Address Sanitizer options
-export ASAN_OPTIONS=detect_leaks=0:detect_odr_violation=0
+export ASAN_OPTIONS=detect_leaks=0
 
 # Create an error report
 function ws_exit_error() {
@@ -129,6 +129,7 @@ function ws_exit_error() {
     echo -e "Processing failed. Capture info follows:\n"
     echo "  Input file: $CF"
     echo "  Output file: $TMP_DIR/$TMP_FILE"
+    echo "  Pass: $PASS"
     echo
 
     # Fill in build information

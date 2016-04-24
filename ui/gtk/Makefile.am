@@ -20,13 +20,25 @@
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 
 include Makefile.common
-include ../../Makefile.am.inc
+include $(top_srcdir)/Makefile.am.inc
 
-if HAVE_WARNINGS_AS_ERRORS
-AM_CLEAN_CFLAGS = -Werror -Wno-error=deprecated-declarations
+if HAVE_GRESOURCE_PIXBUF
+NODIST_GENERATED_FILES += \
+	wireshark-gresources.h	\
+	wireshark-gresources.c
+else
+BUILD_PIXBUF_CSOURCE = \
+	pixbuf-csource.h	\
+	pixbuf-csource.c
 endif
 
-noinst_LIBRARIES = libgtkui.a
+if HAVE_EXTCAP
+WIRESHARK_COMMON_GTK_SRC += extcap_gtk.c
+WIRESHARK_COMMON_GTK_HDRS += extcap_gtk.h
+endif
+
+AM_CPPFLAGS = $(INCLUDEDIRS) $(WS_CPPFLAGS) $(GTK_CFLAGS) \
+	$(PORTAUDIO_INCLUDES)
 
 CLEANFILES = \
 	libgtkui.a				\
@@ -34,9 +46,49 @@ CLEANFILES = \
 	wireshark-tap-register-cache.pkl	\
 	*~
 
+DISTCLEANFILES = \
+	$(NODIST_GENERATED_FILES)
+
 MAINTAINERCLEANFILES = \
 	$(GENERATED_FILES)	\
 	Makefile.in
+
+EXTRA_DIST = \
+	.editorconfig			\
+	$(GENERATOR_FILES)		\
+	airpcap_dlg.c			\
+	airpcap_dlg.h			\
+	airpcap_gui_utils.c		\
+	airpcap_gui_utils.h		\
+	capture_if_details_dlg_win32.c	\
+	capture_if_details_dlg_win32.h	\
+	CMakeLists.txt			\
+	doxygen.cfg.in			\
+	main_airpcap_toolbar.c		\
+	main_airpcap_toolbar.h		\
+	Makefile.common			\
+	Makefile.nmake			\
+	Makefile_custom.common		\
+	pixbuf-csource.c		\
+	pixbuf-csource.h
+
+BUILT_SOURCES = \
+	$(GENERATED_FILES)	\
+	$(NODIST_GENERATED_FILES)
+
+noinst_LIBRARIES = libgtkui.a
+
+libgtkui_a_SOURCES = \
+	$(WIRESHARK_COMMON_GTK_SRC)	\
+	$(WIRESHARK_COMMON_GTK_HDRS)	\
+	$(WIRESHARK_TAP_SRC)		\
+	$(GENERATED_FILES)
+
+nodist_libgtkui_a_SOURCES = \
+	$(NODIST_GENERATED_FILES)	\
+	$(BUILD_PIXBUF_CSOURCE)
+
+libgtkui_a_DEPENDENCIES =
 
 #
 # Build "wireshark-tap-register.c", which contains a function
@@ -56,137 +108,30 @@ wireshark-tap-register.c:  $(WIRESHARK_TAP_SRC) Makefile.common Makefile_custom.
 	@echo Making wireshark-tap-register.c
 	@$(PYTHON) $(top_srcdir)/tools/make-tap-reg.py $(srcdir) taps $(WIRESHARK_TAP_SRC)
 
-WIRESHARK_CLEAN_LIBGTKUI_SRC = \
-	$(WIRESHARK_GTK_SRC) \
-	$(WIRESHARK_TAP_SRC) \
-	$(GENERATED_C_FILES)
+wireshark-gresources.c: main.gresources.xml $(shell glib-compile-resources --sourcedir=$(top_srcdir) --generate-dependencies $(srcdir)/main.gresources.xml)
+	@echo Making $@
+	@glib-compile-resources --sourcedir=$(top_srcdir) --target=$@ --generate --manual-register $<
 
-libgtkui_a_SOURCES = \
-	$(WIRESHARK_CLEAN_LIBGTKUI_SRC) \
-	$(noinst_HEADERS) \
-	$(GENERATED_HEADER_FILES)
-
-libgtkui_a_CFLAGS = $(AM_CLEAN_CFLAGS)
-
-libgtkui_a_DEPENDENCIES =
-
-# Common headers
-AM_CPPFLAGS = -I$(top_srcdir) -I$(top_srcdir)/wiretap $(PORTAUDIO_INCLUDES)
-
+wireshark-gresources.h: main.gresources.xml
+	@echo Making $@
+	@glib-compile-resources --sourcedir=$(top_srcdir) --target=$@ --generate --manual-register $<
 
 doxygen:
 if HAVE_DOXYGEN
 	$(DOXYGEN) doxygen.cfg
-endif		# HAVE_DOXYGEN
+endif
 
 checkapi: checkapi-base checkapi-todo
 
 checkapi-base:
 	$(PERL) $(top_srcdir)/tools/checkAPIs.pl -g deprecated-gtk -build \
-	-sourcedir=$(srcdir) \
-	$(WIRESHARK_CLEAN_LIBGTKUI_SRC) \
+	-sourcedir=$(srcdir)		\
+	$(WIRESHARK_CLEAN_LIBGTKUI_SRC)	\
 	capture_if_details_dlg_win32.c
 
 checkapi-todo:
 	$(PERL) $(top_srcdir)/tools/checkAPIs.pl -M -g deprecated-gtk-todo -build \
-	-sourcedir=$(srcdir) \
-	$(WIRESHARK_GTK_SRC) \
-	$(WIRESHARK_TAP_SRC) \
+	-sourcedir=$(srcdir)	\
+	$(WIRESHARK_GTK_SRC)	\
+	$(WIRESHARK_TAP_SRC)	\
 	capture_if_details_dlg_win32.c
-
-expert_indicators.h:
-	echo "/* This file was automatically generated. DO NOT EDIT. */" > $@
-	echo >> $@
-	for elevel in chat error none note warn ok ; do \
-		gdk-pixbuf-csource --raw --name=expert_$${elevel}_pb_data $(top_srcdir)/image/expert_$${elevel}.png >> $@ ;\
-	done
-
-capture_comment_icons.h:
-	echo "/* This file was automatically generated. DO NOT EDIT. */" > $@
-	echo >> $@
-	for caction in add update disabled ; do \
-		gdk-pixbuf-csource --raw --name=capture_comment_$${caction}_pb_data $(top_srcdir)/image/capture_comment_$${caction}.png >> $@ ;\
-	done
-
-network_icons.h:
-	echo "/* This file was automatically generated. DO NOT EDIT. */" > $@
-	echo >> $@
-	for icon in bluetooth usb wired wireless ; do \
-		gdk-pixbuf-csource --raw --name=network_$${icon}_pb_data $(top_srcdir)/image/toolbar/network_$${icon}_16.png >> $@ ;\
-	done
-
-remote_icons.h:
-	echo "/* This file was automatically generated. DO NOT EDIT. */" > $@
-	echo >> $@
-	for icon in arrow globe sat ; do \
-		gdk-pixbuf-csource --raw --name=remote_$${icon}_pb_data $(top_srcdir)/image/toolbar/remote_$${icon}_16.png >> $@ ;\
-	done
-
-pipe_icon.h:
-	echo "/* This file was automatically generated. DO NOT EDIT. */" > $@
-	echo >> $@
-	gdk-pixbuf-csource --raw --name=pipe_pb_data $(top_srcdir)/image/toolbar/pipe_16.png >> $@
-
-TOOLBAR_COMMON_ICONS = \
-	capture_interfaces \
-	gnome_emblem_web
-
-toolbar_icons.h:
-	echo "/* This file was automatically generated. DO NOT EDIT. */" > $@
-	echo >> $@
-	for icon16 in $(TOOLBAR_COMMON_ICONS) ; do \
-		gdk-pixbuf-csource --raw --name=$${icon16}_16_pb_data $(top_srcdir)/image/toolbar/$${icon16}_16.png >> $@ ;\
-	done
-	for icon24 in $(TOOLBAR_COMMON_ICONS) ; do \
-		gdk-pixbuf-csource --raw --name=$${icon24}_24_pb_data $(top_srcdir)/image/toolbar/$${icon24}_24.png >> $@ ;\
-	done
-	for icon_size in 16 24 ; do \
-		gdk-pixbuf-csource --raw --name=toolbar_wireshark_file_$${icon_size}_pb_data $(top_srcdir)/image/toolbar/$${icon_size}x$${icon_size}/x-capture-file-save.png >> $@ ;\
-		gdk-pixbuf-csource --raw --name=capture_options_alt1_$${icon_size}_pb_data $(top_srcdir)/image/toolbar/$${icon_size}x$${icon_size}/x-capture-options.png >> $@ ;\
-		gdk-pixbuf-csource --raw --name=capture_restart_$${icon_size}_pb_data $(top_srcdir)/image/toolbar/$${icon_size}x$${icon_size}/x-capture-restart.png >> $@ ;\
-		gdk-pixbuf-csource --raw --name=capture_start_$${icon_size}_pb_data $(top_srcdir)/image/toolbar/$${icon_size}x$${icon_size}/x-capture-start.png >> $@ ;\
-		gdk-pixbuf-csource --raw --name=capture_stop_$${icon_size}_pb_data $(top_srcdir)/image/toolbar/$${icon_size}x$${icon_size}/x-capture-stop.png >> $@ ;\
-	done
-
-layouts.h:
-	echo "/* This file was automatically generated. DO NOT EDIT. */" > $@
-	echo >> $@
-	for layout_num in 1 2 3 4 5 6 ; do \
-		gdk-pixbuf-csource --raw --name=layout_$${layout_num}_pb_data $(top_srcdir)/image/layout_$${layout_num}.png >> $@ ;\
-	done
-
-wsicon.h:
-	echo "/* This file was automatically generated. DO NOT EDIT. */" > $@
-	echo >> $@
-	for layout_num in 16 24 32 48 64 ; do \
-		gdk-pixbuf-csource --raw --name=wsicon_$${layout_num}_pb_data $(top_srcdir)/image/wsicon$${layout_num}.png >> $@ ;\
-	done
-
-wsiconcap.h:
-	echo "/* This file was automatically generated. DO NOT EDIT. */" > $@
-	echo >> $@
-	for layout_num in 16 24 32 48 64 ; do \
-		gdk-pixbuf-csource --raw --name=wsiconcap_$${layout_num}_pb_data $(top_srcdir)/image/wsiconcap$${layout_num}.png >> $@ ;\
-	done
-
-wssplash.h:
-	echo "/* This file was automatically generated. DO NOT EDIT. */" > $@
-	echo >> $@
-	gdk-pixbuf-csource --raw --name=wssplash_pb_data $(top_srcdir)/image/wssplash_dev.png >> $@
-
-clean-pixbufs:
-	rm expert_indicators.h capture_comment_icons.h network_icons.h remote_icons.h pipe_icon.h \
-		toolbar_icons.h layouts.h wsicon.h wsiconcap.h wssplash.h
-
-EXTRA_DIST = \
-	$(GENERATOR_FILES)		\
-	airpcap_dlg.c			\
-	airpcap_gui_utils.c		\
-	capture_if_details_dlg_win32.c	\
-	capture_if_details_dlg_win32.h	\
-	CMakeLists.txt			\
-	doxygen.cfg.in			\
-	main_airpcap_toolbar.c		\
-	Makefile.common			\
-	Makefile.nmake			\
-	Makefile_custom.common

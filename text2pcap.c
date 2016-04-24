@@ -112,15 +112,11 @@
 #include <string.h>
 #include <wsutil/file_util.h>
 #include <wsutil/crash_info.h>
-#include <wsutil/ws_diag_control.h>
-#include <wsutil/ws_version_info.h>
+#include <ws_version_info.h>
+#include <wsutil/inet_addr.h>
 
 #include <time.h>
 #include <glib.h>
-
-#ifdef HAVE_UNISTD_H
-# include <unistd.h>
-#endif
 
 #ifdef HAVE_GETOPT_H
 #include <getopt.h>
@@ -128,10 +124,6 @@
 
 #include <errno.h>
 #include <assert.h>
-
-#ifdef HAVE_LIBZ
-#include <zlib.h>      /* to get the libz version number */
-#endif
 
 #ifndef HAVE_GETOPT_LONG
 #include "wsutil/wsgetopt.h"
@@ -141,32 +133,12 @@
 # include "wsutil/strptime.h"
 #endif
 
-#include "pcapio.h"
+#include "writecap/pcapio.h"
 #include "text2pcap.h"
 
 #ifdef _WIN32
 #include <wsutil/unicode-utils.h>
 #endif /* _WIN32 */
-
-#ifdef HAVE_ARPA_INET_H
-#include <arpa/inet.h>
-#endif
-
-#ifdef HAVE_WINSOCK2_H
-#include <winsock2.h>       /* needed to define AF_ values on Windows */
-#endif
-
-#ifndef HAVE_INET_ATON
-# include "wsutil/inet_aton.h"
-#endif
-
-#ifdef HAVE_SYS_SOCKET_H
-#include <sys/socket.h>
-#endif
-
-#ifdef NEED_INET_V6DEFS_H
-# include "wsutil/inet_v6defs.h"
-#endif
 
 /*--- Options --------------------------------------------------------------------*/
 
@@ -190,9 +162,9 @@ static long hdr_ip_proto = 0;
 /* Destination and source addresses for IP header */
 static guint32 hdr_ip_dest_addr = 0;
 static guint32 hdr_ip_src_addr = 0;
-static guint8 hdr_ipv6_dest_addr[16] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
-static guint8 hdr_ipv6_src_addr[16]  = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
-static guint8 NO_IPv6_ADDRESS[16]    = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+static struct e_in6_addr hdr_ipv6_dest_addr = {{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}};
+static struct e_in6_addr hdr_ipv6_src_addr  = {{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}};
+static struct e_in6_addr NO_IPv6_ADDRESS    = {{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}};
 
 /* Dummy UDP header */
 static int     hdr_udp       = FALSE;
@@ -352,17 +324,6 @@ static struct {         /* pseudo header for checksum calculation */
 
 /* headers taken from glibc */
 
-/* IPv6 address */
-struct hdr_in6_addr
-{
-    union
-    {
-       guint8  __u6_addr8[16];
-       guint16 __u6_addr16[8];
-       guint32 __u6_addr32[4];
-    } __in6_u;
-};
-
 typedef struct {
     union  {
         struct ip6_hdrctl {
@@ -373,15 +334,15 @@ typedef struct {
         } ip6_un1;
         guint8 ip6_un2_vfc;       /* 4 bits version, 4 bits priority */
     } ip6_ctlun;
-    struct hdr_in6_addr ip6_src;      /* source address */
-    struct hdr_in6_addr ip6_dst;      /* destination address */
+    struct e_in6_addr ip6_src;      /* source address */
+    struct e_in6_addr ip6_dst;      /* destination address */
 } hdr_ipv6_t;
 
 static hdr_ipv6_t HDR_IPv6;
 
 static struct {                 /* pseudo header ipv6 for checksum calculation */
-    struct  hdr_in6_addr src_addr6;
-    struct  hdr_in6_addr dst_addr6;
+    struct  e_in6_addr src_addr6;
+    struct  e_in6_addr dst_addr6;
     guint32 protocol;
     guint32 zero;
 } pseudoh6;
@@ -705,10 +666,10 @@ write_current_packet (gboolean cont)
             HDR_IP.hdr_checksum = in_checksum(&HDR_IP, sizeof(HDR_IP));
             write_bytes((const char *)&HDR_IP, sizeof(HDR_IP));
         } else if (hdr_ipv6) {
-            if (memcmp(isInbound ? hdr_ipv6_dest_addr : hdr_ipv6_src_addr, NO_IPv6_ADDRESS, sizeof(struct hdr_in6_addr)))
-                memcpy(&HDR_IPv6.ip6_src, isInbound ? &hdr_ipv6_dest_addr : &hdr_ipv6_src_addr, sizeof(struct hdr_in6_addr));
-            if (memcmp(isInbound ? hdr_ipv6_src_addr : hdr_ipv6_dest_addr, NO_IPv6_ADDRESS, sizeof(struct hdr_in6_addr)))
-                memcpy(&HDR_IPv6.ip6_dst, isInbound ? &hdr_ipv6_src_addr : &hdr_ipv6_dest_addr, sizeof(struct hdr_in6_addr));
+            if (memcmp(isInbound ? &hdr_ipv6_dest_addr : &hdr_ipv6_src_addr, &NO_IPv6_ADDRESS, sizeof(struct e_in6_addr)))
+                memcpy(&HDR_IPv6.ip6_src, isInbound ? &hdr_ipv6_dest_addr : &hdr_ipv6_src_addr, sizeof(struct e_in6_addr));
+            if (memcmp(isInbound ? &hdr_ipv6_src_addr : &hdr_ipv6_dest_addr, &NO_IPv6_ADDRESS, sizeof(struct e_in6_addr)))
+                memcpy(&HDR_IPv6.ip6_dst, isInbound ? &hdr_ipv6_src_addr : &hdr_ipv6_dest_addr, sizeof(struct e_in6_addr));
 
             HDR_IPv6.ip6_ctlun.ip6_un2_vfc &= 0x0F;
             HDR_IPv6.ip6_ctlun.ip6_un2_vfc |= (6<< 4);
@@ -960,34 +921,6 @@ write_file_header (void)
                 output_filename, g_strerror(err));
         exit(1);
     }
-}
-
-static void
-write_file_trailer (void)
-{
-    int      err;
-    gboolean success;
-
-    if (use_pcapng) {
-        success = pcapng_write_interface_statistics_block(output_file,
-                                                          0,
-                                                          &bytes_written,
-                                                          "Counters provided by text2pcap",
-                                                          0,
-                                                          0,
-                                                          num_packets_written,
-                                                          num_packets_written - num_packets_written,
-                                                          &err);
-
-    } else {
-        success = TRUE;
-    }
-    if (!success) {
-        fprintf(stderr, "File write error [%s] : %s\n",
-                output_filename, g_strerror(err));
-        exit(1);
-    }
-   return;
 }
 
 /*----------------------------------------------------------------------
@@ -1281,9 +1214,10 @@ parse_token (token_t token, char *str)
                     write_current_packet(FALSE);
                     state = INIT;
                 }
-            } else
+            } else {
                 state = READ_OFFSET;
-                pkt_lnstart = packet_buf + num;
+            }
+            pkt_lnstart = packet_buf + num;
             break;
         case T_EOL:
             state = START_OF_LINE;
@@ -1499,32 +1433,6 @@ print_usage (FILE *output)
             MAX_PACKET);
 }
 
-static void
-get_text2pcap_compiled_info(GString *str)
-{
-    /* LIBZ */
-    g_string_append(str, ", ");
-#ifdef HAVE_LIBZ
-    g_string_append(str, "with libz ");
-#ifdef ZLIB_VERSION
-    g_string_append(str, ZLIB_VERSION);
-#else /* ZLIB_VERSION */
-    g_string_append(str, "(version unknown)");
-#endif /* ZLIB_VERSION */
-#else /* HAVE_LIBZ */
-    g_string_append(str, "without libz");
-#endif /* HAVE_LIBZ */
-}
-
-static void
-get_text2pcap_runtime_info(GString *str)
-{
-    /* zlib */
-#if defined(HAVE_LIBZ) && !defined(_WIN32)
-    g_string_append_printf(str, ", with libz %s", zlibVersion());
-#endif
-}
-
 /*----------------------------------------------------------------------
  * Parse CLI options
  */
@@ -1535,13 +1443,11 @@ parse_options (int argc, char *argv[])
     GString *runtime_info_str;
     int   c;
     char *p;
-DIAG_OFF(cast-qual)
     static const struct option long_options[] = {
-        {(char *)"help", no_argument, NULL, 'h'},
-        {(char *)"version", no_argument, NULL, 'v'},
+        {"help", no_argument, NULL, 'h'},
+        {"version", no_argument, NULL, 'v'},
         {0, 0, 0, 0 }
     };
-DIAG_ON(cast-qual)
 
 #ifdef _WIN32
     arg_list_utf_16to8(argc, argv);
@@ -1549,10 +1455,10 @@ DIAG_ON(cast-qual)
 #endif /* _WIN32 */
 
     /* Get the compile-time version information string */
-    comp_info_str = get_compiled_version_info(NULL, get_text2pcap_compiled_info);
+    comp_info_str = get_compiled_version_info(NULL, NULL);
 
     /* get the run-time version information string */
-    runtime_info_str = get_runtime_version_info(get_text2pcap_runtime_info);
+    runtime_info_str = get_runtime_version_info(NULL);
 
     /* Add it to the information to be reported on a crash. */
     ws_add_crash_info("Text2pcap (Wireshark) %s\n"
@@ -1568,7 +1474,7 @@ DIAG_ON(cast-qual)
         case 'h':
             printf("Text2pcap (Wireshark) %s\n"
                    "Generate a capture file from an ASCII hexdump of packets.\n"
-                   "See http://www.wireshark.org for more information.\n",
+                   "See https://www.wireshark.org for more information.\n",
                    get_ws_vcs_version_info());
             print_usage(stdout);
             exit(0);
@@ -1799,13 +1705,13 @@ DIAG_ON(cast-qual)
             hdr_ethernet = TRUE;
 
             if (hdr_ipv6 == TRUE) {
-                if (inet_pton( AF_INET6, optarg, hdr_ipv6_src_addr) <= 0) {
+                if (!ws_inet_pton6(optarg, &hdr_ipv6_src_addr)) {
                         fprintf(stderr, "Bad src addr -%c '%s'\n", c, p);
                         print_usage(stderr);
                         exit(1);
                 }
             } else {
-                if (inet_pton( AF_INET, optarg, &hdr_ip_src_addr) <= 0) {
+                if (!ws_inet_pton4(optarg, &hdr_ip_src_addr)) {
                         fprintf(stderr, "Bad src addr -%c '%s'\n", c, p);
                         print_usage(stderr);
                         exit(1);
@@ -1820,13 +1726,13 @@ DIAG_ON(cast-qual)
             }
 
             if (hdr_ipv6 == TRUE) {
-                if (inet_pton( AF_INET6, p, hdr_ipv6_dest_addr) <= 0) {
+                if (!ws_inet_pton6(p, &hdr_ipv6_dest_addr)) {
                         fprintf(stderr, "Bad dest addr for -%c '%s'\n", c, p);
                         print_usage(stderr);
                         exit(1);
                 }
             } else {
-                if (inet_pton( AF_INET, p, &hdr_ip_dest_addr) <= 0) {
+                if (!ws_inet_pton4(p, &hdr_ip_dest_addr)) {
                         fprintf(stderr, "Bad dest addr for -%c '%s'\n", c, p);
                         print_usage(stderr);
                         exit(1);
@@ -1954,7 +1860,6 @@ main(int argc, char *argv[])
     yylex();
 
     write_current_packet(FALSE);
-    write_file_trailer();
     fclose(input_file);
     fclose(output_file);
     if (debug)

@@ -201,7 +201,8 @@ WSLUA_CONSTRUCTOR DissectorTable_new (lua_State *L) {
             name = g_strdup(name);
             ui_name = g_strdup(ui_name);
 
-            dt->table = register_dissector_table(name, ui_name, type, base);
+            /* XXX - can't determine dependencies of Lua protocols if they don't provide protocol name */
+            dt->table = register_dissector_table(name, ui_name, -1, type, base, DISSECTOR_TABLE_ALLOW_DUPLICATE);
             dt->name = name;
             dt->ui_name = ui_name;
             dt->created = TRUE;
@@ -259,7 +260,7 @@ WSLUA_CONSTRUCTOR DissectorTable_list (lua_State *L) {
 /* this is the DATFunc_heur_table function used for dissector_all_heur_tables_foreach_table()
    so we can get all heuristic dissector list names. This pushes the name into a table at stack index 1 */
 static void
-heur_dissector_tables_list_func(const gchar *table_name, heur_dissector_list_t *table _U_, gpointer user_data) {
+heur_dissector_tables_list_func(const gchar *table_name, struct heur_dissector_list *table _U_, gpointer user_data) {
     dissector_tables_foreach_table_info_t *data = (dissector_tables_foreach_table_info_t*) user_data;
     lua_pushstring(data->L, table_name);
     lua_rawseti(data->L, 1, data->num);
@@ -614,7 +615,7 @@ WSLUA_METHOD DissectorTable_add_for_decode_as (lua_State *L) {
     dissector_handle_t handle = NULL;
 
     if (! proto->handle) {
-        proto->handle = new_register_dissector(proto->loname, dissect_lua, proto->hfid);
+        proto->handle = register_dissector(proto->loname, dissect_lua, proto->hfid);
     }
 
     handle = proto->handle;
@@ -661,7 +662,7 @@ WSLUA_METAMETHOD DissectorTable__tostring(lua_State* L) {
 }
 
 /* Gets registered as metamethod automatically by WSLUA_REGISTER_CLASS/META */
-static int DissectorTable__gc(lua_State* L _U_) {
+static int DissectorTable__gc(lua_State* L) {
     DissectorTable dt = toDissectorTable(L,1);
 
     if (dt->created && !dt->expired) {

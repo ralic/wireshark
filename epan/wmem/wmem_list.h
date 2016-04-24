@@ -80,6 +80,13 @@ WS_DLL_PUBLIC
 void
 wmem_list_remove_frame(wmem_list_t *list, wmem_list_frame_t *frame);
 
+/*
+ * Linear search, search is O(n)
+ */
+WS_DLL_PUBLIC
+wmem_list_frame_t *
+wmem_list_find(wmem_list_t *list, const void *data);
+
 WS_DLL_PUBLIC
 void
 wmem_list_prepend(wmem_list_t *list, void *data);
@@ -92,6 +99,10 @@ WS_DLL_PUBLIC
 wmem_list_t *
 wmem_list_new(wmem_allocator_t *allocator)
 G_GNUC_MALLOC;
+
+WS_DLL_PUBLIC
+void
+wmem_list_foreach(wmem_list_t *list, GFunc foreach_func, gpointer user_data);
 
 WS_DLL_PUBLIC
 void

@@ -96,7 +96,6 @@ static const fragment_items npdu_frag_items = {
 
 /* dissectors for the data portion of this protocol
  */
-static dissector_handle_t data_handle;
 static dissector_handle_t ip_handle;
 
 /* reassembly of N-PDU
@@ -196,8 +195,8 @@ static const true_false_string m_bit = {
 
 /* Code to actually dissect the packets
 */
-static void
-dissect_sndcp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
+static int
+dissect_sndcp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data _U_)
 {
   guint8         addr_field, comp_field, npdu_field1, dcomp=0, pcomp=0;
   guint16        offset=0, npdu=0, segment=0, npdu_field2;
@@ -310,7 +309,7 @@ dissect_sndcp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
       call_dissector(ip_handle, next_tvb, pinfo, tree);
     }
     else {
-      call_dissector(data_handle, next_tvb, pinfo, tree);
+      call_data_dissector(next_tvb, pinfo, tree);
     }
   }
   else {
@@ -322,7 +321,7 @@ dissect_sndcp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
 
     len = tvb_captured_length_remaining(tvb, offset);
     if(len<=0){
-        return;
+        return offset;
     }
 
     pinfo->fragmented = TRUE;
@@ -341,7 +340,7 @@ dissect_sndcp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
       /* Reassembled
        */
       reassembled_in = fd_npdu->reassembled_in;
-      if (pinfo->fd->num == reassembled_in) {
+      if (pinfo->num == reassembled_in) {
         /* Reassembled in this very packet:
          * We can safely hand the tvb to the IP dissector
          */
@@ -369,6 +368,7 @@ dissect_sndcp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
      */
     pinfo->fragmented = save_fragmented;
   }
+  return tvb_captured_length(tvb);
 }
 
 
@@ -584,8 +584,7 @@ proto_reg_handoff_sndcp(void)
 
   /* Find IP and data handle for upper layer dissectors
    */
-  ip_handle   = find_dissector("ip");
-  data_handle = find_dissector("data");
+  ip_handle   = find_dissector_add_dependency("ip", proto_sndcp);
 }
 
 /*

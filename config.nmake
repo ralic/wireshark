@@ -1,6 +1,19 @@
 # Some more information about the settings in this file can be found in
 # the file README.windows and the Developer's Guide (available online).
 
+##### Deprecation #####
+# Support for NMake and QMake will be removed in June 2016.
+# Uncomment the following line or pass YES_I_KNOW_ABOUT_THE_DEPRECATION=1
+# on the command line to override.
+
+#YES_I_KNOW_ABOUT_THE_DEPRECATION=1
+!IFNDEF YES_I_KNOW_ABOUT_THE_DEPRECATION
+!MESSAGE Nmake is being deprecated. Please consider using CMake instead.
+!MESSAGE See https://www.wireshark.org/docs/wsdg_html_chunked/ChSetupWin32.html
+!MESSAGE for details.
+!ERROR Set YES_I_KNOW_ABOUT_THE_DEPRECATION to disable this message.
+!ENDIF
+
 ##### Program name #####
 # Changing the name is experimental and may break the installer/uninstaller and possibly other stuff.
 # Application data will still be under the same dir as Wireshark so preference files, profiles, and etc
@@ -33,9 +46,9 @@ VCS_REVISION=0
 
 # The current Wireshark version. Recommended: Leave unchanged.
 # Updated by make-version.pl
-VERSION_MAJOR=1
-VERSION_MINOR=99
-VERSION_MICRO=10
+VERSION_MAJOR=2
+VERSION_MINOR=1
+VERSION_MICRO=0
 VERSION_BUILD=$(VCS_REVISION)
 
 # Local build information. Recommended: Unique string for your
@@ -253,7 +266,7 @@ PCAP_NG_DEFAULT=^#define PCAP_NG_DEFAULT 1
 WANT_PACKET_EDITOR=^#define WANT_PACKET_EDITOR 1
 
 !if "$(WIRESHARK_TARGET_PLATFORM)" == "win32"
-DOWNLOAD_TAG=2015-08-31
+DOWNLOAD_TAG=2016-04-07
 ##### Win32 Libraries #####
 #
 # Mandatory: GLib settings
@@ -389,26 +402,11 @@ PCAP_REMOTE=1
 ZLIB_DIR=$(WIRESHARK_LIB_DIR)\zlib-1.2.8-ws
 
 #
-# Optional: the ADNS library enables asynchronous (nonblocking) DNS
-# name resolvings.
-#
-# If you have GNU ADNS, set this to the directory in which the GNU ADNS
-# .lib file is stored.
-#
-# If you don't have GNU ADNS, comment this line out, so that ADNS_DIR
-# isn't defined.
-#
-# If C_ARES_DIR is defined below, it will override this setting.
-#
-#ADNS_DIR=$(WIRESHARK_LIB_DIR)\adns-1.0-win32-05ws
-
-#
 # Optional: the c-ares library enables asynchronous (nonblocking) DNS
 # name resolvings.
 #
 # If you have c-ares, set this to the directory in which the c-ares
-# .lib file is stored. Setting this will override ADNS_DIR above. You
-# can't have both.
+# .lib file is stored.
 #
 # If you're using Visual C++ 6.0, you'll have to use a platform SDK that
 # defines socklen_t, such as Windows Server 2003 PSDK.
@@ -430,6 +428,13 @@ C_ARES_PKG=1.9.1-1
 GNUTLS_PKG=3.2.15-2.7
 GPGERROR_DLL=libgpg-error-0.dll
 GCC_DLL=libgcc_s_sjlj-1.dll
+
+# Optional: libssh library is required for sshdump and ciscodump support
+#
+# If you don't have libssh, comment this line out so that LIBSSH_DIR
+# isn't defined.
+#
+#LIBSSH_DIR=$(WIRESHARK_LIB_DIR)\libssh-0.7.2
 
 #
 # Optional: the KFW library enables kerberos/sasl/dcerpc decryption.
@@ -515,7 +520,7 @@ GEOIP_PKG=1.6.6
 WINSPARKLE_PKG=0.3-44-g2c8d9d3-win32ws
 
 !else
-DOWNLOAD_TAG=2015-08-31
+DOWNLOAD_TAG=2016-04-07
 ##### Win64 Libraries #####
 #
 # Mandatory: GLib settings
@@ -642,26 +647,11 @@ PCAP_REMOTE=1
 ZLIB_DIR=$(WIRESHARK_LIB_DIR)\zlib-1.2.8-ws
 
 #
-# Optional: the ADNS library enables asynchronous (nonblocking) DNS
-# name resolvings.
-#
-# If you have GNU ADNS, set this to the directory in which the GNU ADNS
-# .lib file is stored.
-#
-# If you don't have GNU ADNS, comment this line out, so that ADNS_DIR
-# isn't defined.
-#
-# If C_ARES_DIR is defined below, it will override this setting.
-#
-#ADNS_DIR=$(WIRESHARK_LIB_DIR)\adns-1.0-win32-05ws
-
-#
 # Optional: the c-ares library enables asynchronous (nonblocking) DNS
 # name resolvings.
 #
 # If you have c-ares, set this to the directory in which the c-ares
-# .lib file is stored. Setting this will override ADNS_DIR above. You
-# can't have both.
+# .lib file is stored.
 #
 # If you're using Visual C++ 6.0, you'll have to use a platform SDK that
 # defines socklen_t, such as Windows Server 2003 PSDK.
@@ -1025,6 +1015,12 @@ APPVER=5.02
 #                                   See http://msdn.microsoft.com/en-us/library/dn785163.aspx
 #                                   VS2015: On by default when /Zi or /Z7 used.
 
+!IF DEFINED(DEBUG)
+DEBUG_CFLAGS=/Od
+!ELSE
+DEBUG_CFLAGS=/O2
+!ENDIF
+
 ##Note: LOCAL_CFLAGS are flags used for *all* compilations
 ##      STANDARD_CFLAGS (see below) are flags used just for *Wireshark* compilations
 !IF "$(MSVC_VARIANT)" == "MSVC2005"   || \
@@ -1040,8 +1036,8 @@ APPVER=5.02
         "$(MSVC_VARIANT)" == "MSVC2013EE" || \
         "$(MSVC_VARIANT)" == "MSVC2015"   || \
         "$(MSVC_VARIANT)" == "MSVC2015CE"
-LOCAL_CFLAGS=/Zi /W3 /MD /O2 /DWIN32_LEAN_AND_MEAN /DMSC_VER_REQUIRED=$(MSC_VER_REQUIRED) \
-	     /D_CRT_SECURE_NO_DEPRECATE /D_CRT_NONSTDC_NO_DEPRECATE -DPSAPI_VERSION=1
+LOCAL_CFLAGS=/Zi /W3 /MD $(DEBUG_CFLAGS) /DWIN32_LEAN_AND_MEAN /DMSC_VER_REQUIRED=$(MSC_VER_REQUIRED) \
+	     /D_CRT_SECURE_NO_DEPRECATE -DPSAPI_VERSION=1
 
 !IF "$(MSVC_VARIANT)" == "MSVC2012"   || \
         "$(MSVC_VARIANT)" == "MSVC2012EE" || \
@@ -1353,9 +1349,6 @@ FOP_OPTS=-Xmx256m
 # the XSL processor (part of cygwin's libxslt package)
 XSLTPROC="xsltproc"
 
-# the XML validator (part of cygwin's libxml2 package)
-XMLLINT="xmllint"
-
 # Asciidoc converter (part of cygwin's asciidoc package). In order to build
 # the release notes you must have the Cygwin asciidoc and lynx packages
 # installed.
@@ -1572,6 +1565,7 @@ PCAP_FREE_DATALINKS_CONFIG=^#define HAVE_PCAP_FREE_DATALINKS 1
 PCAP_SET_DATALINK_CONFIG=^#define HAVE_PCAP_SET_DATALINK 1
 PCAP_OPEN_DEAD_CONFIG=^#define HAVE_PCAP_OPEN_DEAD 1
 BPF_IMAGE_CONFIG=^#define HAVE_BPF_IMAGE 1
+PCAP_CREATE_CONFIG=^#define HAVE_PCAP_CREATE 1
 !ELSE
 # no WpdPack installed
 WINPCAP_CONFIG=
@@ -1605,7 +1599,7 @@ ZLIB_CFLAGS=/I$(ZLIB_DIR)
 ZLIB_LIBS=$(ZLIB_DIR)\lib\zdll.lib
 ZLIB_DLL=$(ZLIB_DIR)\zlib1.dll
 # Nmake uses carets to escape special characters
-ZLIB_CONFIG=^#define HAVE_LIBZ 1
+ZLIB_CONFIG=^#define HAVE_ZLIB 1
 !else
 ZLIB_CFLAGS=
 ZLIB_LIBS=
@@ -1614,7 +1608,6 @@ ZLIB_CONFIG=
 !ENDIF
 
 !IFDEF C_ARES_PKG
-!UNDEF ADNS_DIR
 C_ARES_DIR=$(WIRESHARK_LIB_DIR)\c-ares-$(C_ARES_PKG)-$(WIRESHARK_TARGET_PLATFORM)ws
 C_ARES_CFLAGS=/I$(C_ARES_DIR)/include
 C_ARES_LIBS=$(C_ARES_DIR)\lib\libcares-2.lib
@@ -1625,18 +1618,6 @@ C_ARES_CONFIG=^#define HAVE_C_ARES 1
 C_ARES_CFLAGS=
 C_ARES_LIBS=
 C_ARES_CONFIG=
-!IFDEF ADNS_DIR
-ADNS_PATH=$(ADNS_DIR)\adns_win32\lib
-ADNS_CFLAGS=/I$(ADNS_DIR)\src /I$(ADNS_DIR)\adns_win32
-ADNS_LIBS=$(WIRESHARK_LIB_DIR)\$(MSVC_VARIANT)\adns\adns_dll.lib
-ADNS_DLL=$(WIRESHARK_LIB_DIR)\$(MSVC_VARIANT)\adns\adns_dll.dll
-# Nmake uses carets to escape special characters
-ADNS_CONFIG=^#define HAVE_GNU_ADNS 1
-!else
-ADNS_CFLAGS=
-ADNS_LIBS=
-ADNS_CONFIG=
-!ENDIF # ADNS
 !ENDIF # C_ARES
 
 !IFDEF KFW_DIR
@@ -1678,6 +1659,18 @@ GNUTLS_CFLAGS=
 GNUTLS_LIBS=
 GNUTLS_CONFIG=
 LIBGCRYPT_CONFIG=
+!ENDIF
+
+!IFDEF LIBSSH_DIR
+LIBSSH_CFLAGS=/I$(LIBSSH_DIR)\include
+LIBSSH_LIBS=$(LIBSSH_DIR)\lib\ssh.lib
+# Nmake uses carets to escape special characters
+LIBSSH_CONFIG=^#define HAVE_LIBSSH 1
+LIBSSH_VERSION=^#define HAVE_LIBSSH 1
+!else
+LIBSSH_CFLAGS=
+LIBSSH_LIBS=
+LIBSSH_CONFIG=
 !ENDIF
 
 !IFDEF LUA_DIR
@@ -1747,8 +1740,6 @@ LIBWIRESHARK_CONFIG=
 !ENDIF
 
 # Construct the path
-PATH=$(PATH);$(CYGWIN_PATH);$(GTK_DIR)\bin;$(GETTEXT_DIR)\bin;$(ZLIB_PATH);$(ADNS_PATH)
-
-INET6_CONFIG=^#define INET6 1
+PATH=$(PATH);$(CYGWIN_PATH);$(GTK_DIR)\bin;$(GETTEXT_DIR)\bin;$(ZLIB_PATH)
 
 NTDDNDIS_CONFIG=^#define HAVE_NTDDNDIS_H 1

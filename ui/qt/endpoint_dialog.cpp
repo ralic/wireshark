@@ -27,6 +27,8 @@
 #include <wsutil/pint.h>
 #endif
 
+#include <epan/prefs.h>
+
 #include "ui/recent.h"
 #include "ui/traffic_table_ui.h"
 
@@ -81,6 +83,7 @@ EndpointDialog::EndpointDialog(QWidget &parent, CaptureFile &cf, int cli_proto_i
 
     fillTypeMenu(endp_protos);
 
+    updateWidgets();
 #ifdef HAVE_GEOIP
     tabChanged();
 #endif
@@ -220,10 +223,8 @@ public:
                    : TrafficTableTreeWidgetItem (parent, strings)  {}
 
     // Set column text to its cooked representation.
-    void update(gboolean resolve_names) {
+    void update(gboolean resolve_names, bool force) {
         hostlist_talker_t *endp_item = data(ei_col_, Qt::UserRole).value<hostlist_talker_t *>();
-        bool ok;
-        quint64 cur_packets = data(pkts_col_, Qt::UserRole).toULongLong(&ok);
         char *addr_str, *port_str;
 
         if (!endp_item) {
@@ -231,12 +232,17 @@ public:
         }
 
         quint64 packets = endp_item->tx_frames + endp_item->rx_frames;
-        if (ok && cur_packets == packets) {
-            return;
+        if (!force) {
+            bool ok;
+            quint64 cur_packets = data(pkts_col_, Qt::UserRole).toULongLong(&ok);
+
+            if (ok && cur_packets == packets) {
+                return;
+            }
         }
 
-        addr_str = (char*)get_conversation_address(NULL, &endp_item->myaddress, resolve_names);
-        port_str = (char*)get_conversation_port(NULL, endp_item->port, endp_item->ptype, resolve_names);
+        addr_str = get_conversation_address(NULL, &endp_item->myaddress, resolve_names);
+        port_str = get_conversation_port(NULL, endp_item->port, endp_item->ptype, resolve_names);
         setText(ENDP_COLUMN_ADDR, addr_str);
         setText(ENDP_COLUMN_PORT, port_str);
         wmem_free(NULL, addr_str);
@@ -293,14 +299,14 @@ public:
         switch (col) {
         case ENDP_COLUMN_ADDR:
             {
-            char* addr_str = (char*)get_conversation_address(NULL, &endp_item->myaddress, resolve_names);
+            char* addr_str = get_conversation_address(NULL, &endp_item->myaddress, resolve_names);
             QString q_addr_str(addr_str);
             wmem_free(NULL, addr_str);
             return q_addr_str;
             }
         case ENDP_COLUMN_PORT:
             if (resolve_names) {
-                char* port_str = (char*)get_conversation_port(NULL, endp_item->port, endp_item->ptype, resolve_names);
+                char* port_str = get_conversation_port(NULL, endp_item->port, endp_item->ptype, resolve_names);
                 QString q_port_str(port_str);
                 wmem_free(NULL, port_str);
                 return q_port_str;
@@ -501,7 +507,7 @@ EndpointTreeWidget::EndpointTreeWidget(QWidget *parent, register_ct_t *table) :
         connect(fa, SIGNAL(triggered()), this, SLOT(filterActionTriggered()));
     }
 
-    updateItems();
+    updateItems(false);
 
 }
 
@@ -526,10 +532,10 @@ void EndpointTreeWidget::tapDraw(void *conv_hash_ptr)
     EndpointTreeWidget *endp_tree = static_cast<EndpointTreeWidget *>(hash->user_data);
     if (!endp_tree) return;
 
-    endp_tree->updateItems();
+    endp_tree->updateItems(false);
 }
 
-void EndpointTreeWidget::updateItems()
+void EndpointTreeWidget::updateItems(bool force)
 {
     title_ = proto_get_protocol_short_name(find_protocol_by_id(get_conversation_proto_id(table_)));
 
@@ -571,7 +577,7 @@ void EndpointTreeWidget::updateItems()
     QTreeWidgetItemIterator iter(this);
     while (*iter) {
         EndpointTreeWidgetItem *ei = static_cast<EndpointTreeWidgetItem *>(*iter);
-        ei->update(resolve_names_);
+        ei->update(resolve_names_, force);
         ++iter;
     }
     setSortingEnabled(true);

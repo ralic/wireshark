@@ -37,7 +37,6 @@
  */
 
 #include "config.h"
-#include <stdio.h>
 
 #include <epan/packet.h>
 #include <epan/prefs.h>
@@ -269,6 +268,8 @@ static gboolean global_classify_transport      = TRUE;
 static gboolean global_enable_udp    = TRUE;
 static gboolean global_enable_mbtcp  = TRUE;
 
+static gboolean global_opensafety_debug_verbose = FALSE;
+
 static gboolean heuristic_siii_dissection_enabled = TRUE;
 
 static heur_dissector_list_t heur_opensafety_spdo_subdissector_list;
@@ -285,7 +286,6 @@ static void
 reset_dissector(void)
 {
     bDissector_Called_Once_Before = FALSE;
-
 }
 
 static void
@@ -386,9 +386,21 @@ static proto_item *
 opensafety_packet_response(tvbuff_t *message_tvb, proto_tree *sub_tree, opensafety_packet_info *packet, gboolean isResponse)
 {
     proto_item *item = NULL;
+    guint8 b_id = 0;
 
-    proto_tree_add_item(sub_tree, hf_oss_msg, message_tvb,
+    if ( packet->msg_type != OPENSAFETY_SPDO_MESSAGE_TYPE )
+    {
+        proto_tree_add_item(sub_tree, hf_oss_msg, message_tvb,
             OSS_FRAME_POS_ID + packet->frame.subframe1, 1, ENC_NA );
+    }
+    else
+    {
+        /* SPDOs code the connection valid bit on offset 0x04. SSDO and SNMT frames use this
+         * bit for messages. Therefore setting a bitmask on the hf-field would not work. */
+        b_id = OSS_FRAME_ID_T(message_tvb, packet->frame.subframe1) & 0xF8;
+        proto_tree_add_uint(sub_tree, hf_oss_msg, message_tvb, OSS_FRAME_POS_ID + packet->frame.subframe1, 1, b_id);
+    }
+
     item = proto_tree_add_item(sub_tree, packet->msg_type != OPENSAFETY_SPDO_MESSAGE_TYPE ? hf_oss_msg_direction : hf_oss_spdo_direction,
             message_tvb, OSS_FRAME_POS_ID + packet->frame.subframe1, 1, ENC_NA);
     if ( ! isResponse )
@@ -767,7 +779,10 @@ dissect_opensafety_spdo_message(tvbuff_t *message_tvb, packet_info *pinfo, proto
     if ( (OPENSAFETY_SPDO_FEAT_40BIT_USED & spdoFlags ) == OPENSAFETY_SPDO_FEAT_40BIT_USED )
         sdn = OPENSAFETY_DEFAULT_DOMAIN;
 
+    /* Determine the producer and set it, as opensafety_packet_node does not */
     addr = OSS_FRAME_ADDR_T(message_tvb, packet->frame.subframe1);
+    packet->sender = addr;
+
     opensafety_packet_node ( message_tvb, pinfo, opensafety_tree, hf_oss_msg_sender,
             addr, OSS_FRAME_POS_ADDR + packet->frame.subframe1, packet->frame.subframe2, sdn );
     proto_item_append_text(opensafety_item, "; Producer: 0x%03X (%d)", addr, addr);
@@ -843,7 +858,8 @@ dissect_opensafety_spdo_message(tvbuff_t *message_tvb, packet_info *pinfo, proto
             PROTO_ITEM_SET_GENERATED(item);
 
             packet->payload.spdo->counter.b40 = ct40bit;
-            expert_add_info ( pinfo, item, &ei_40bit_default_domain );
+            if ( global_opensafety_debug_verbose )
+                expert_add_info ( pinfo, item, &ei_40bit_default_domain );
         }
         PROTO_ITEM_SET_GENERATED(item);
 
@@ -1268,8 +1284,9 @@ dissect_opensafety_ssdo_message(tvbuff_t *message_tvb, packet_info *pinfo, proto
                 {
                     proto_tree_add_item(ssdo_tree, hf_oss_ssdo_payload, message_tvb, payloadOffset, calcDataLength, ENC_NA );
                 } else {
-                    expert_add_info_format(pinfo, item, &ei_payload_length_not_positive,
-                                                "Calculation for payload length yielded non-positive result [%d]", (guint) calcDataLength );
+                    if ( global_opensafety_debug_verbose )
+                        expert_add_info_format(pinfo, item, &ei_payload_length_not_positive,
+                                                    "Calculation for payload length yielded non-positive result [%d]", (guint) calcDataLength );
                 }
             }
             else
@@ -1357,8 +1374,9 @@ opensafety_parse_scm_udid ( tvbuff_t* tvb, packet_info *pinfo, proto_tree *tree,
                 if ( local_scm_udid == NULL || memcmp ( local_scm_udid, scm_udid_test, 17 ) != 0 )
                 {
                     local_scm_udid = wmem_strdup(wmem_file_scope(), scm_udid_test );
-                    expert_add_info_format(pinfo, item, &ei_scmudid_autodetected,
-                            "Auto detected payload as SCM UDID [%s].", local_scm_udid);
+                    if ( global_opensafety_debug_verbose )
+                        expert_add_info_format(pinfo, item, &ei_scmudid_autodetected,
+                                "Auto detected payload as SCM UDID [%s].", local_scm_udid);
                 }
             }
         }
@@ -1723,7 +1741,7 @@ dissect_opensafety_checksum(tvbuff_t *message_tvb, packet_info *pinfo, proto_tre
             }
             else
             {
-                if ( isSlim || ( !isSNMT && packet->frame.length == 11 ) )
+                if ( global_opensafety_debug_verbose && ( isSlim || ( !isSNMT && packet->frame.length == 11 ) ) )
                     expert_add_info(pinfo, item, &ei_crc_frame_2_scm_udid_encoded );
 
                 packet->crc.valid2 = TRUE;
@@ -1746,7 +1764,7 @@ static gboolean
 dissect_opensafety_message(opensafety_packet_info *packet,
                            tvbuff_t *message_tvb, packet_info *pinfo,
                            proto_item *opensafety_item, proto_tree *opensafety_tree,
-                           guint8 u_nrInPackage)
+                           guint8 u_nrInPackage, guint8 previous_msg_id)
 {
     guint8      b_ID, ctr, spdoFlags;
     GByteArray *scmUDID = NULL;
@@ -1758,17 +1776,17 @@ dissect_opensafety_message(opensafety_packet_info *packet,
     for ( ctr = 0; ctr < 6; ctr++ )
         packet->scm_udid[ctr] = 0;
 
-    /* Clearing connection valid bit */
-    if ( packet->msg_type == OPENSAFETY_SPDO_MESSAGE_TYPE )
-        packet->msg_id = packet->msg_id & 0xF8;
-
     packet->saddr = OSS_FRAME_ADDR_T(message_tvb, packet->frame.subframe1);
     /* Sender / Receiver is determined by message type */
     packet->sender = 0;
     packet->receiver = 0;
 
-    col_append_fstr(pinfo->cinfo, COL_INFO, (u_nrInPackage > 1 ? " | %s" : "%s" ),
+    /* SPDO is handled below */
+    if ( packet->msg_type != OPENSAFETY_SPDO_MESSAGE_TYPE )
+    {
+        col_append_fstr(pinfo->cinfo, COL_INFO, (u_nrInPackage > 1 ? " | %s" : "%s" ),
             val_to_str(packet->msg_id, opensafety_message_type_values, "Unknown Message (0x%02X) "));
+    }
 
     if ( packet->msg_type == OPENSAFETY_SNMT_MESSAGE_TYPE )
     {
@@ -1785,8 +1803,7 @@ dissect_opensafety_message(opensafety_packet_info *packet,
             packet->scm_udid_valid = TRUE;
 
             /* Now confirm, that the xor operation was successful. The ID fields of both frames have to be the same */
-            b_ID = OSS_FRAME_ID_T(message_tvb, packet->frame.subframe2) ^ (guint8)(scmUDID->data[OSS_FRAME_POS_ID]);
-
+            b_ID = tvb_get_guint8(message_tvb, packet->frame.subframe2 + 1) ^ (guint8)(scmUDID->data[OSS_FRAME_POS_ID]);;
             if ( ( OSS_FRAME_ID_T(message_tvb, packet->frame.subframe1) ^ b_ID ) != 0 )
                 packet->scm_udid_valid = FALSE;
 
@@ -1836,6 +1853,16 @@ dissect_opensafety_message(opensafety_packet_info *packet,
         {
             proto_item_append_text(opensafety_item, ", SPDO" );
             dissect_opensafety_spdo_message ( message_tvb, pinfo, opensafety_tree, packet, opensafety_item );
+
+            /* Now we know packet->sender, therefore we can add the info text */
+            if ( previous_msg_id != packet->msg_id )
+            {
+                col_append_fstr(pinfo->cinfo, COL_INFO, (u_nrInPackage > 1 ? " | %s - 0x%03X" : "%s - 0x%03X" ),
+                            val_to_str(packet->msg_id, opensafety_message_type_values, "Unknown Message (0x%02X) "),
+                            packet->sender );
+            } else {
+                col_append_fstr(pinfo->cinfo, COL_INFO, ", 0x%03X", packet->sender );
+            }
         }
         else
         {
@@ -1878,7 +1905,7 @@ opensafety_package_dissector(const gchar *protocolName, const gchar *sub_diss_ha
     guint               length, len, frameOffset, frameLength, nodeAddress, gapStart;
     guint8             *swbytes;
     gboolean            handled, dissectorCalled, call_sub_dissector, markAsMalformed;
-    guint8              type, found, i, tempByte;
+    guint8              type, found, i, tempByte, previous_msg_id;
     guint16             frameStart1, frameStart2, byte_offset;
     gint                reported_len;
     dissector_handle_t  protocol_dissector = NULL;
@@ -1891,6 +1918,7 @@ opensafety_package_dissector(const gchar *protocolName, const gchar *sub_diss_ha
     dissectorCalled    = FALSE;
     call_sub_dissector = FALSE;
     markAsMalformed    = FALSE;
+    previous_msg_id    = 0;
 
     /* registering frame end routine, to prevent a malformed dissection preventing
      * further dissector calls (see bug #6950) */
@@ -2158,8 +2186,14 @@ opensafety_package_dissector(const gchar *protocolName, const gchar *sub_diss_ha
             packet->frame.length = frameLength;
             packet->frame.malformed = FALSE;
 
-            if ( dissect_opensafety_message(packet, next_tvb, pinfo, opensafety_item, opensafety_tree, found) != TRUE )
+            /* Clearing connection valid bit */
+            if ( packet->msg_type == OPENSAFETY_SPDO_MESSAGE_TYPE )
+                packet->msg_id = packet->msg_id & 0xF8;
+
+            if ( dissect_opensafety_message(packet, next_tvb, pinfo, opensafety_item, opensafety_tree, found, previous_msg_id) != TRUE )
                 markAsMalformed = TRUE;
+
+            previous_msg_id = packet->msg_id;
 
             if ( markAsMalformed )
             {
@@ -2226,7 +2260,7 @@ dissect_opensafety_epl(tvbuff_t *message_tvb, packet_info *pinfo, proto_tree *tr
         else
             epl_msgtype = OPENSAFETY_ACYCLIC_DATA;
 
-        /* We check if we have a asynchronous message, or a synchronoues message. In case of
+        /* We check if we have a asynchronous message, or a synchronous message. In case of
          * asynchronous messages, SPDO packages are not valid. */
 
         result = opensafety_package_dissector("openSAFETY/Powerlink", "",
@@ -2256,7 +2290,7 @@ dissect_opensafety_siii(tvbuff_t *message_tvb, packet_info *pinfo, proto_tree *t
      * a dissector loop. */
     if ( bDissector_Called_Once_Before == FALSE )
     {
-        udp = pinfo->srcport == OPENSAFETY_UDP_PORT_SIII;
+        udp = pinfo->destport == OPENSAFETY_UDP_PORT_SIII;
 
         bDissector_Called_Once_Before = TRUE;
         /* No frames can be sent in AT messages, therefore those get filtered right away */
@@ -2313,6 +2347,9 @@ dissect_opensafety_udpdata(tvbuff_t *message_tvb, packet_info *pinfo, proto_tree
     static guint32 frameNum = 0;
     static guint32 frameIdx = 0;
 
+    if ( pinfo->destport == OPENSAFETY_UDP_PORT_SIII )
+        return dissect_opensafety_siii(message_tvb, pinfo, tree, data);
+
     if ( ! global_enable_udp )
         return result;
 
@@ -2322,16 +2359,14 @@ dissect_opensafety_udpdata(tvbuff_t *message_tvb, packet_info *pinfo, proto_tree
 
     /* More than one openSAFETY package could be transported in the same frame,
      * in such a case, we need to establish the number of packages inside the frame */
-    if ( pinfo->fd->num != frameNum )
+    if ( pinfo->num != frameNum )
     {
         frameIdx = 0;
-        frameNum = pinfo->fd->num;
+        frameNum = pinfo->num;
     }
 
-    result = opensafety_package_dissector((pinfo->destport == OPENSAFETY_UDP_PORT_SIII ? "openSAFETY/SercosIII" : "openSAFETY/UDP" ),
-                                          "", pinfo->destport == OPENSAFETY_UDP_PORT_SIII ? global_siii_udp_frame2_first : global_udp_frame2_first,
-                                          FALSE, frameIdx, message_tvb, pinfo, tree,
-                                          pinfo->destport == OPENSAFETY_UDP_PORT_SIII ? OPENSAFETY_ACYCLIC_DATA : 0 );
+    result = opensafety_package_dissector("openSAFETY/UDP", "", global_udp_frame2_first,
+                                          FALSE, frameIdx, message_tvb, pinfo, tree, OPENSAFETY_ACYCLIC_DATA );
 
     if ( result )
         frameIdx++;
@@ -2342,8 +2377,7 @@ dissect_opensafety_udpdata(tvbuff_t *message_tvb, packet_info *pinfo, proto_tree
 static void
 apply_prefs ( void )
 {
-    static dissector_handle_t opensafety_udpdata_handle;
-    static dissector_handle_t opensafety_siii_handle;
+    static dissector_handle_t opensafety_udpdata_handle = NULL;
     static guint    opensafety_udp_port_number;
     static guint    opensafety_udp_siii_port_number;
     static gboolean opensafety_init = FALSE;
@@ -2352,28 +2386,22 @@ apply_prefs ( void )
     if ( !opensafety_init )
     {
         opensafety_udpdata_handle = find_dissector("opensafety_udpdata");
-        opensafety_siii_handle    = find_dissector("opensafety_siii");
         opensafety_init = TRUE;
     }
     else
     {
         /* Delete dissectors in preparation of a changed config setting */
         dissector_delete_uint ("udp.port", opensafety_udp_port_number, opensafety_udpdata_handle);
-        dissector_delete_uint ("udp.port", opensafety_udp_siii_port_number, opensafety_siii_handle);
+        dissector_delete_uint ("udp.port", opensafety_udp_siii_port_number, opensafety_udpdata_handle);
     }
-
 
     /* Storing the port numbers locally, to being able to delete the old associations */
     opensafety_udp_port_number = global_network_udp_port;
     opensafety_udp_siii_port_number = global_network_udp_port_sercosiii;
 
-    /* Default UDP only based dissector */
-    dissector_add_uint("udp.port", opensafety_udp_port_number, find_dissector("opensafety_udpdata"));
-
-    /* Sercos III dissector does not handle UDP transport, has to be handled
-     *  separately, everything else should be caught by the heuristic dissector
-     */
-    dissector_add_uint("udp.port", opensafety_udp_siii_port_number, find_dissector("opensafety_siii"));
+    /* Default UDP only based dissector, will hand traffic to SIII dissector if needed */
+    dissector_add_uint("udp.port", opensafety_udp_port_number, opensafety_udpdata_handle);
+    dissector_add_uint("udp.port", opensafety_udp_siii_port_number, opensafety_udpdata_handle);
 
 }
 
@@ -2729,7 +2757,7 @@ proto_register_opensafety(void)
     opensafety_module = prefs_register_protocol(proto_opensafety, apply_prefs);
 
     /* Register data dissector */
-    heur_opensafety_spdo_subdissector_list = register_heur_dissector_list("opensafety.spdo");
+    heur_opensafety_spdo_subdissector_list = register_heur_dissector_list("opensafety.spdo", proto_opensafety);
 
     /* Required function calls to register the header fields and subtrees used */
     proto_register_field_array(proto_opensafety, hf, array_length(hf));
@@ -2771,6 +2799,10 @@ proto_register_opensafety(void)
                 "Big Endian Word Coding (Modbus/TCP only)",
                 "Modbus/TCP words can be transcoded either big- or little endian. Default will be little endian",
                 &global_mbtcp_big_endian);
+    prefs_register_bool_preference(opensafety_module, "debug_verbose",
+                "openSAFETY print all dissection information",
+                "Enables additional information in the dissection for better debugging an openSAFETY trace",
+                &global_opensafety_debug_verbose );
 
     prefs_register_obsolete_preference(opensafety_module, "enable_plk");
     prefs_register_obsolete_preference(opensafety_module, "enable_siii");
@@ -2792,10 +2824,9 @@ proto_register_opensafety(void)
                 &global_classify_transport);
 
     /* Registering default and ModBus/TCP dissector */
-    new_register_dissector("opensafety_udpdata", dissect_opensafety_udpdata, proto_opensafety );
-    new_register_dissector("opensafety_mbtcp", dissect_opensafety_mbtcp, proto_opensafety );
-    new_register_dissector("opensafety_siii", dissect_opensafety_siii, proto_opensafety );
-    new_register_dissector("opensafety_pnio", dissect_opensafety_pn_io, proto_opensafety);
+    register_dissector("opensafety_udpdata", dissect_opensafety_udpdata, proto_opensafety );
+    register_dissector("opensafety_mbtcp", dissect_opensafety_mbtcp, proto_opensafety );
+    register_dissector("opensafety_pnio", dissect_opensafety_pn_io, proto_opensafety);
 }
 
 void

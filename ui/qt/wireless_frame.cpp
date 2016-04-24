@@ -32,7 +32,8 @@
 #include <caputils/ws80211_utils.h>
 
 #include <ui/ui_util.h>
-#include <ui/utf8_entities.h>
+#include <wsutil/utf8_entities.h>
+#include <wsutil/frequency-utils.h>
 
 #include <QProcess>
 
@@ -41,6 +42,7 @@
 // - Push more status messages ("switched to...") to the status bar.
 // - Add a "Decrypt in the driver" checkbox?
 // - Check for frequency and channel type changes.
+// - Find something appropriate to run from the helperToolButton on Linux.
 
 // Questions:
 // - From our perspective, what's the difference between "NOHT" and "HT20"?
@@ -77,8 +79,8 @@ WirelessFrame::WirelessFrame(QWidget *parent) :
 
     ui->fcsFilterFrame->setVisible(ws80211_has_fcs_filter());
 
-    updateWidgets();
-    startTimer(update_interval_);
+    getInterfaceInfo();
+    iface_timer_id_ = startTimer(update_interval_);
 }
 
 WirelessFrame::~WirelessFrame()
@@ -95,8 +97,19 @@ void WirelessFrame::setCaptureInProgress(bool capture_in_progress)
 // Check to see if the ws80211 interface list matches the one in our
 // combobox. Rebuild ours if necessary and select the first interface if
 // the current selection goes away.
-void WirelessFrame::timerEvent(QTimerEvent *)
+void WirelessFrame::timerEvent(QTimerEvent *event)
 {
+    if (event->timerId() != iface_timer_id_) {
+        QFrame::timerEvent(event);
+        return;
+    }
+
+    // Don't interfere with user activity.
+    if (ui->interfaceComboBox->view()->isVisible()
+        || ui->channelComboBox->view()->isVisible()
+        || ui->channelTypeComboBox->view()->isVisible()
+        || ui->fcsComboBox->view()->isVisible()) return;
+
     ws80211_free_interfaces(interfaces_);
     interfaces_ = ws80211_find_interfaces();
     const QString old_iface = ui->interfaceComboBox->currentText();
@@ -131,7 +144,7 @@ void WirelessFrame::timerEvent(QTimerEvent *)
     }
 
     if (ui->interfaceComboBox->currentText().compare(old_iface) != 0) {
-        on_channelComboBox_activated(ui->interfaceComboBox->currentIndex());
+        getInterfaceInfo();
     }
 }
 
@@ -176,10 +189,14 @@ void WirelessFrame::on_prefsToolButton_clicked()
     emit showWirelessPreferences(QString("wlan"));
 }
 
-void WirelessFrame::on_interfaceComboBox_currentIndexChanged(const QString &cur_iface)
+void WirelessFrame::getInterfaceInfo()
 {
+    const QString cur_iface = ui->interfaceComboBox->currentText();
+
     ui->channelComboBox->clear();
     ui->channelTypeComboBox->clear();
+    ui->fcsComboBox->clear();
+
     if (cur_iface.isEmpty()) {
         updateWidgets();
         return;
@@ -197,7 +214,7 @@ void WirelessFrame::on_interfaceComboBox_currentIndexChanged(const QString &cur_
                 guint32 frequency = g_array_index(iface->frequencies, guint32, i);
                 double ghz = frequency / 1000.0;
                 QString chan_str = QString("%1 " UTF8_MIDDLE_DOT " %2%3")
-                        .arg(ws80211_frequency_to_channel(frequency))
+                        .arg(ieee80211_mhz_to_chan(frequency))
                         .arg(ghz, 0, 'f', 3)
                         .arg(units);
                 ui->channelComboBox->addItem(chan_str, frequency);
@@ -225,33 +242,51 @@ void WirelessFrame::on_interfaceComboBox_currentIndexChanged(const QString &cur_
                     ui->channelTypeComboBox->setCurrentIndex(ui->channelTypeComboBox->count() - 1);
                 }
             }
+            if (iface->channel_types & (1 << WS80211_CHAN_VHT80)) {
+                ui->channelTypeComboBox->addItem("VHT 80", WS80211_CHAN_VHT80);
+                if (iface_info.current_chan_type == WS80211_CHAN_VHT80) {
+                    ui->channelTypeComboBox->setCurrentIndex(ui->channelTypeComboBox->count() - 1);
+                }
+            }
+            if (iface->channel_types & (1 << WS80211_CHAN_VHT160)) {
+                ui->channelTypeComboBox->addItem("VHT 160", WS80211_CHAN_VHT160);
+                if (iface_info.current_chan_type == WS80211_CHAN_VHT160) {
+                    ui->channelTypeComboBox->setCurrentIndex(ui->channelTypeComboBox->count() - 1);
+                }
+            }
 
             if (ws80211_has_fcs_filter()) {
                 ui->fcsComboBox->setCurrentIndex(iface_info.current_fcs_validation);
             }
         }
     }
+
     updateWidgets();
 }
 
-void WirelessFrame::setChannel()
+void WirelessFrame::setInterfaceInfo()
 {
     QString cur_iface = ui->interfaceComboBox->currentText();
     int cur_chan_idx = ui->channelComboBox->currentIndex();
     int cur_type_idx = ui->channelTypeComboBox->currentIndex();
+    int cur_fcs_idx = ui->fcsComboBox->currentIndex();
 
     if (cur_iface.isEmpty() || cur_chan_idx < 0 || cur_type_idx < 0) return;
 
 #if defined(HAVE_LIBNL) && defined(HAVE_NL80211)
-    const QString frequency = ui->channelComboBox->itemData(cur_chan_idx).toString();
+    int frequency = ui->channelComboBox->itemData(cur_chan_idx).toInt();
     int chan_type = ui->channelTypeComboBox->itemData(cur_type_idx).toInt();
+    int bandwidth = getBandwidthFromChanType(chan_type);
+    int center_freq = getCenterFrequency(frequency, bandwidth);
     const gchar *chan_type_s = ws80211_chan_type_to_str(chan_type);
     gchar *data, *primary_msg, *secondary_msg;
     int ret;
 
-    if (frequency.isEmpty() || chan_type < 0) return;
+    if (frequency < 0 || chan_type < 0) return;
 
-    ret = sync_interface_set_80211_chan(cur_iface.toUtf8().constData(), frequency.toUtf8().constData(), chan_type_s,
+    ret = sync_interface_set_80211_chan(cur_iface.toUtf8().constData(),
+                                        QString::number(frequency).toUtf8().constData(), chan_type_s,
+                                        QString::number(center_freq).toUtf8().constData(), "-1",
                                         &data, &primary_msg, &secondary_msg, main_window_update);
 
     g_free(data);
@@ -268,35 +303,60 @@ void WirelessFrame::setChannel()
     int chan_type = ui->channelTypeComboBox->itemData(cur_type_idx).toInt();
     if (frequency < 0 || chan_type < 0) return;
 
-    if (ws80211_set_freq(cur_iface.toUtf8().constData(), frequency, chan_type) != 0) {
+    if (ws80211_set_freq(cur_iface.toUtf8().constData(), frequency, chan_type, -1, -1) != 0) {
         QString err_str = tr("Unable to set channel or offset.");
         emit pushAdapterStatus(err_str);
     }
 #endif
 
-    updateWidgets();
+    if (cur_fcs_idx >= 0) {
+        if (ws80211_set_fcs_validation(cur_iface.toUtf8().constData(), (enum ws80211_fcs_validation) cur_fcs_idx) != 0) {
+            QString err_str = tr("Unable to set FCS validation behavior.");
+            emit pushAdapterStatus(err_str);
+        }
+    }
+
+    getInterfaceInfo();
+}
+
+int WirelessFrame::getCenterFrequency(int control_frequency, int bandwidth)
+{
+    if (bandwidth < 80 || control_frequency < 5180)
+        return -1;
+
+    return ((control_frequency - 5180) / bandwidth) * bandwidth + 5180 + (bandwidth / 2) - 10;
+}
+
+int WirelessFrame::getBandwidthFromChanType(int chan_type)
+{
+    switch (chan_type) {
+    case WS80211_CHAN_VHT80:
+        return 80;
+    case WS80211_CHAN_VHT160:
+        return 160;
+    default:
+        return -1;
+    }
+}
+
+void WirelessFrame::on_interfaceComboBox_activated(int)
+{
+    getInterfaceInfo();
 }
 
 void WirelessFrame::on_channelComboBox_activated(int)
 {
-    setChannel();
+    setInterfaceInfo();
 }
 
 void WirelessFrame::on_channelTypeComboBox_activated(int)
 {
-    setChannel();
+    setInterfaceInfo();
 }
 
-void WirelessFrame::on_fcsComboBox_activated(int index)
+void WirelessFrame::on_fcsComboBox_activated(int)
 {
-    QString cur_iface = ui->interfaceComboBox->currentText();
-    if (cur_iface.isEmpty()) return;
-
-    if (ws80211_set_fcs_validation(cur_iface.toUtf8().constData(), (enum ws80211_fcs_validation) index) != 0) {
-        QString err_str = tr("Unable to set FCS validation behavior.");
-        emit pushAdapterStatus(err_str);
-    }
-    updateWidgets();
+    setInterfaceInfo();
 }
 
 /*

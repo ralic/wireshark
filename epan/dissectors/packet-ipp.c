@@ -55,8 +55,6 @@ static gint ett_ipp = -1;
 static gint ett_ipp_as = -1;
 static gint ett_ipp_attr = -1;
 
-static dissector_handle_t data_handle;
-
 #define PRINT_JOB              0x0002
 #define PRINT_URI              0x0003
 #define VALIDATE_JOB           0x0004
@@ -190,8 +188,8 @@ static void add_charstring_value(const gchar *tag_desc, proto_tree *tree,
 static int add_value_head(const gchar *tag_desc, proto_tree *tree,
                                         tvbuff_t *tvb, int offset, int name_length, int value_length, char **name_val);
 
-static void
-dissect_ipp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
+static int
+dissect_ipp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data _U_)
 {
     proto_tree  *ipp_tree;
     proto_item  *ti;
@@ -207,59 +205,57 @@ dissect_ipp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
     else
         col_set_str(pinfo->cinfo, COL_INFO, "IPP response");
 
-    if (tree) {
-        ti = proto_tree_add_item(tree, proto_ipp, tvb, offset, -1, ENC_NA);
-        ipp_tree = proto_item_add_subtree(ti, ett_ipp);
+    ti = proto_tree_add_item(tree, proto_ipp, tvb, offset, -1, ENC_NA);
+    ipp_tree = proto_item_add_subtree(ti, ett_ipp);
 
-        proto_tree_add_item(ipp_tree, hf_ipp_version, tvb, offset, 2, ENC_BIG_ENDIAN);
-        offset += 2;
+    proto_tree_add_item(ipp_tree, hf_ipp_version, tvb, offset, 2, ENC_BIG_ENDIAN);
+    offset += 2;
 
-        if (is_request) {
-            proto_tree_add_item(ipp_tree, hf_ipp_operation_id, tvb, offset, 2, ENC_BIG_ENDIAN);
-        } else {
-            status_code = tvb_get_ntohs(tvb, offset);
-            switch (status_code & STATUS_TYPE_MASK) {
+    if (is_request) {
+        proto_tree_add_item(ipp_tree, hf_ipp_operation_id, tvb, offset, 2, ENC_BIG_ENDIAN);
+    } else {
+        status_code = tvb_get_ntohs(tvb, offset);
+        switch (status_code & STATUS_TYPE_MASK) {
 
-            case STATUS_SUCCESSFUL:
-                status_type = "Successful";
-                break;
+        case STATUS_SUCCESSFUL:
+            status_type = "Successful";
+            break;
 
-            case STATUS_INFORMATIONAL:
-                status_type = "Informational";
-                break;
+        case STATUS_INFORMATIONAL:
+            status_type = "Informational";
+            break;
 
-            case STATUS_REDIRECTION:
-                status_type = "Redirection";
-                break;
+        case STATUS_REDIRECTION:
+            status_type = "Redirection";
+            break;
 
-            case STATUS_CLIENT_ERROR:
-                status_type = "Client error";
-                break;
+        case STATUS_CLIENT_ERROR:
+            status_type = "Client error";
+            break;
 
-            case STATUS_SERVER_ERROR:
-                status_type = "Server error";
-                break;
+        case STATUS_SERVER_ERROR:
+            status_type = "Server error";
+            break;
 
-            default:
-                status_type = "Unknown";
-                break;
-            }
-            proto_tree_add_uint_format_value(ipp_tree, hf_ipp_status_code, tvb, offset, 2, status_code,
-                                "%s (%s)", status_type, val_to_str(status_code, status_vals, "0x804x"));
+        default:
+            status_type = "Unknown";
+            break;
         }
-        offset += 2;
-
-        proto_tree_add_item(ipp_tree, hf_ipp_request_id, tvb, offset, 4, ENC_BIG_ENDIAN);
-        offset += 4;
-
-        offset = parse_attributes(tvb, offset, ipp_tree);
-
-        if (tvb_offset_exists(tvb, offset)) {
-            call_dissector(data_handle,
-                           tvb_new_subset_remaining(tvb, offset), pinfo,
-                           ipp_tree);
-        }
+        proto_tree_add_uint_format_value(ipp_tree, hf_ipp_status_code, tvb, offset, 2, status_code,
+                            "%s (%s)", status_type, val_to_str(status_code, status_vals, "0x804x"));
     }
+    offset += 2;
+
+    proto_tree_add_item(ipp_tree, hf_ipp_request_id, tvb, offset, 4, ENC_BIG_ENDIAN);
+    offset += 4;
+
+    offset = parse_attributes(tvb, offset, ipp_tree);
+
+    if (tvb_offset_exists(tvb, offset)) {
+        call_data_dissector(tvb_new_subset_remaining(tvb, offset), pinfo,
+                        ipp_tree);
+    }
+    return tvb_captured_length(tvb);
 }
 
 #define TAG_TYPE(x)       ((x) & 0xF0)
@@ -719,9 +715,8 @@ proto_reg_handoff_ipp(void)
      * Register ourselves as running atop HTTP and using port 631.
      */
     ipp_handle = create_dissector_handle(dissect_ipp, proto_ipp);
-    http_dissector_add(631, ipp_handle);
+    http_tcp_dissector_add(631, ipp_handle);
     dissector_add_string("media_type", "application/ipp", ipp_handle);
-    data_handle = find_dissector("data");
 }
 
 /*

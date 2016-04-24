@@ -259,8 +259,8 @@ smex_time_to_string (int pb5_days_since_midnight_9_10_oct_1995, int pb5_seconds,
 }
 
 
-static void
-dissect_vcdu(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
+static int
+dissect_vcdu(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data _U_)
 {
     int offset           = 0;
     gboolean ccsds_tree_added = FALSE;
@@ -451,6 +451,8 @@ dissect_vcdu(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
         /* add "Data" section if ccsds parsing did not do so already */
         proto_tree_add_item(vcdu_tree, hf_vcdu_data, tvb, offset, -1, ENC_NA);
     }
+
+    return tvb_captured_length(tvb);
 }
 
 
@@ -668,7 +670,7 @@ void
 proto_reg_handoff_vcdu(void)
 {
     dissector_add_for_decode_as("udp.port", vcdu_handle);
-    ccsds_handle = find_dissector("ccsds");
+    ccsds_handle = find_dissector_add_dependency("ccsds", proto_vcdu);
 }
 
 /*

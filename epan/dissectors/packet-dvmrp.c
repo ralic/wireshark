@@ -745,7 +745,7 @@ proto_register_dvmrp(void)
 			  NULL, 0, NULL, HFILL }},
 
 		{ &hf_netmask,
-			{ "Netmask", "dvmrp.netmask", FT_IPv4, BASE_NONE,
+			{ "Netmask", "dvmrp.netmask", FT_IPv4, BASE_NETMASK,
 			  NULL, 0, "DVMRP Netmask", HFILL }},
 
 		{ &hf_metric,
@@ -901,7 +901,7 @@ proto_reg_handoff_dvmrp(void)
 {
 	dissector_handle_t dvmrp_handle;
 
-	dvmrp_handle = new_create_dissector_handle(dissect_dvmrp, proto_dvmrp);
+	dvmrp_handle = create_dissector_handle(dissect_dvmrp, proto_dvmrp);
 	dissector_add_uint("igmp.type", IGMP_DVMRP, dvmrp_handle);
 }
 

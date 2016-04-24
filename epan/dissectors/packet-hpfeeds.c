@@ -219,7 +219,7 @@ static void hpfeeds_stats_tree_init(stats_tree* st)
 
 static int hpfeeds_stats_tree_packet(stats_tree* st _U_, packet_info* pinfo _U_, epan_dissect_t* edt _U_, const void* p)
 {
-    struct HpfeedsTap *pi = (struct HpfeedsTap *)p;
+    const struct HpfeedsTap *pi = (const struct HpfeedsTap *)p;
     wmem_list_frame_t* head = wmem_list_head(channels_list);
     wmem_list_frame_t* cur = head;
     struct channel_node* ch_node;
@@ -461,7 +461,7 @@ proto_register_hpfeeds(void)
         "hpfeeds"       /* abbrev     */
         );
 
-    heur_subdissector_list = register_heur_dissector_list("hpfeeds");
+    heur_subdissector_list = register_heur_dissector_list("hpfeeds", proto_hpfeeds);
 
     proto_register_field_array(proto_hpfeeds, hf, array_length(hf));
     proto_register_subtree_array(ett, array_length(ett));
@@ -499,7 +499,7 @@ proto_reg_handoff_hpfeeds(void)
     static gint16 hpfeeds_dissector_port;
 
     if (!hpfeeds_prefs_initialized) {
-        hpfeeds_handle = new_create_dissector_handle(dissect_hpfeeds, proto_hpfeeds);
+        hpfeeds_handle = create_dissector_handle(dissect_hpfeeds, proto_hpfeeds);
         stats_tree_register("hpfeeds", "hpfeeds", "HPFEEDS", 0, hpfeeds_stats_tree_packet, hpfeeds_stats_tree_init, NULL);
         hpfeeds_prefs_initialized = TRUE;
     }

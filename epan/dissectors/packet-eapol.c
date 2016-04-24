@@ -57,7 +57,6 @@ static dissector_handle_t eapol_handle;
 
 static dissector_handle_t eap_handle;
 static dissector_handle_t mka_handle;
-static dissector_handle_t data_handle;
 
 #define EAPOL_HDR_LEN   4
 
@@ -101,8 +100,8 @@ static const true_false_string keytype_tfs = { "Unicast", "Broadcast" };
 #define KEYDES_KEY_INDEX_TYPE_MASK      0x80
 #define KEYDES_KEY_INDEX_NUMBER_MASK    0x7F
 
-static void
-dissect_eapol(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
+static int
+dissect_eapol(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data _U_)
 {
   int         offset = 0;
   guint8      eapol_type;
@@ -163,9 +162,10 @@ dissect_eapol(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
   case EAPOL_ENCAP_ASF_ALERT:   /* XXX - is this an SNMP trap? */
   default:
     next_tvb = tvb_new_subset_remaining(tvb, offset);
-    call_dissector(data_handle, next_tvb, pinfo, eapol_tree);
+    call_data_dissector(next_tvb, pinfo, eapol_tree);
     break;
   }
+  return tvb_captured_length(tvb);
 }
 
 static int
@@ -307,8 +307,8 @@ proto_register_eapol(void)
 
   eapol_keydes_type_dissector_table = register_dissector_table("eapol.keydes.type",
                                                                "EAPOL Key Descriptor Type",
-                                                               FT_UINT8,
-                                                               BASE_DEC);
+                                                               proto_eapol, FT_UINT8,
+                                                               BASE_DEC, DISSECTOR_TABLE_ALLOW_DUPLICATE);
 }
 
 void
@@ -319,9 +319,8 @@ proto_reg_handoff_eapol(void)
   /*
    * Get handles for the EAP and raw data dissectors.
    */
-  eap_handle  = find_dissector("eap");
-  mka_handle  = find_dissector("mka");
-  data_handle = find_dissector("data");
+  eap_handle  = find_dissector_add_dependency("eap", proto_eapol);
+  mka_handle  = find_dissector_add_dependency("mka", proto_eapol);
 
   dissector_add_uint("ethertype", ETHERTYPE_EAPOL, eapol_handle);
   dissector_add_uint("ethertype", ETHERTYPE_RSN_PREAUTH, eapol_handle);
@@ -329,7 +328,7 @@ proto_reg_handoff_eapol(void)
   /*
    * EAPOL key descriptor types.
    */
-  eapol_rc4_key_handle = new_create_dissector_handle(dissect_eapol_rc4_key,
+  eapol_rc4_key_handle = create_dissector_handle(dissect_eapol_rc4_key,
                                                      proto_eapol);
   dissector_add_uint("eapol.keydes.type", EAPOL_RC4_KEY, eapol_rc4_key_handle);
 }

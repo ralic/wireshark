@@ -77,13 +77,13 @@ source $MYDIR/test-backend.sh
 source $MYDIR/config.sh
 
 # needed by some tests
-TEST_OUTDIR=$(mktemp -d)
-TEST_OUTDIR_CLEAN=${TEST_OUTDIR_CLEAN:-1}
-if [ -z "$TEST_OUTDIR" ] || ! cd "$TEST_OUTDIR"; then
-	# If for any reason the temporary tests output directory cannot be created...
-	TEST_OUTDIR=.
-	TEST_OUTDIR_CLEAN=0
+TEST_OUTDIR="$PWD/$(mktemp -d wstest.XXXXXXXXXX)"
+if [ $? -ne 0 ] || [ ! -d "$TEST_OUTDIR" ] || ! cd "$TEST_OUTDIR"; then
+	# Error out if TEST_OUTDIR cannot be created
+	echo "Failed to create directory '$TEST_OUTDIR'"
+	exit 1
 fi
+TEST_OUTDIR_CLEAN=${TEST_OUTDIR_CLEAN:-1}
 
 # Configuration paths
 HOME_ENV="HOME"
@@ -109,6 +109,7 @@ source $TESTS_DIR/suite-decryption.sh
 source $TESTS_DIR/suite-nameres.sh
 source $TESTS_DIR/suite-wslua.sh
 source $TESTS_DIR/suite-mergecap.sh
+source $TESTS_DIR/suite-text2pcap.sh
 
 test_cleanup() {
 	if [ $TEST_OUTDIR_CLEAN = 1 ]; then
@@ -170,6 +171,7 @@ test_suite() {
 	test_suite_add "Lua API" wslua_suite
 	test_suite_add "Mergecap" mergecap_suite
 	test_suite_add "File formats" fileformats_suite
+	test_suite_add "Text2pcap" text2pcap_suite
 }
 
 
@@ -218,6 +220,9 @@ if [ -n "$RUN_SUITE" ] ; then
 		"wslua")
 			test_suite_run "Lua API" wslua_suite
 			exit $? ;;
+		"text2pcap")
+			test_suite_run "Text2pcap" text2pcap_suite
+			exit $? ;;
 	esac
 fi
 
@@ -234,14 +239,25 @@ do
 
 	#echo $current_title $current_function
 	test_suite_show "${menu_title[MENU_LEVEL]}" "${menu_function[MENU_LEVEL]}"
-	echo "1-$TEST_STEPS  : Select item"
-	echo "Enter: Test All"
+	if [ $MENU_LEVEL -gt 0 ]; then
+		echo "T or Enter:  Run suite"
+	else
+	echo "1-$TEST_STEPS : Select suite"
+	fi
+
+	# DBG
+	#echo "Menu level: $MENU_LEVEL"
+	#echo "Menu Title: ${menu_title[MENU_LEVEL]}"
+	#echo "Menu Function: ${menu_function[MENU_LEVEL]}"
+	#echo "Test title size: ${#test_title[@]}"
+	# END DBG
+
 	if [[ ! $MENU_LEVEL -eq 0 ]]; then
 		echo "U    : Up"
 	fi
 	echo "Q    : Quit"
 	echo ""
-	read -n1 key
+	read key
 	newl=$'\x0d'
 	echo "$newl----------------------------------------------------------------------"
 
@@ -266,52 +282,16 @@ done
 			#echo "----------------------------------------------------------------------"
 		fi
 	;;
-		"1")
-		let "MENU_LEVEL += 1"
-		menu_title[MENU_LEVEL]=${test_title[1]}
-		menu_function[MENU_LEVEL]=${test_function[1]}
+		## Now we're only interested in digits when the menu level is at the top (0)
+		[0-9]*)
+		if [ $MENU_LEVEL -eq 0 ]; then
+			if [ $key -le ${#test_title[@]} ]; then
+				let "MENU_LEVEL += 1"
+				menu_title[MENU_LEVEL]=${test_title[$key]}
+				menu_function[MENU_LEVEL]=${test_function[$key]}
+			fi
+		fi
 	;;
-		"2")
-		let "MENU_LEVEL += 1"
-		menu_title[MENU_LEVEL]=${test_title[2]}
-		menu_function[MENU_LEVEL]=${test_function[2]}
-	;;
-		"3")
-		let "MENU_LEVEL += 1"
-		menu_title[MENU_LEVEL]=${test_title[3]}
-		menu_function[MENU_LEVEL]=${test_function[3]}
-	;;
-		"4")
-		let "MENU_LEVEL += 1"
-		menu_title[MENU_LEVEL]=${test_title[4]}
-		menu_function[MENU_LEVEL]=${test_function[4]}
-	;;
-		"5")
-		let "MENU_LEVEL += 1"
-		menu_title[MENU_LEVEL]=${test_title[5]}
-		menu_function[MENU_LEVEL]=${test_function[5]}
-	;;
-		"6")
-		let "MENU_LEVEL += 1"
-		menu_title[MENU_LEVEL]=${test_title[6]}
-		menu_function[MENU_LEVEL]=${test_function[6]}
-	;;
-		"7")
-		let "MENU_LEVEL += 1"
-		menu_title[MENU_LEVEL]=${test_title[7]}
-		menu_function[MENU_LEVEL]=${test_function[7]}
-	;;
-		"8")
-		let "MENU_LEVEL += 1"
-		menu_title[MENU_LEVEL]=${test_title[8]}
-		menu_function[MENU_LEVEL]=${test_function[8]}
-	;;
-		"9")
-		let "MENU_LEVEL += 1"
-		menu_title[MENU_LEVEL]=${test_title[9]}
-		menu_function[MENU_LEVEL]=${test_function[9]}
-	;;
-
 	esac
 done
 

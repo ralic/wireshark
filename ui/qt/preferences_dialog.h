@@ -26,13 +26,11 @@
 
 #include <glib.h>
 
-#include "color.h"
-
 #include <epan/prefs.h>
 
 #include "wireshark_application.h"
 
-#include <QDialog>
+#include "geometry_state_dialog.h"
 #include <QTreeWidgetItem>
 
 class QComboBox;
@@ -44,7 +42,7 @@ namespace Ui {
 class PreferencesDialog;
 }
 
-class PreferencesDialog : public QDialog
+class PreferencesDialog : public GeometryStateDialog
 {
     Q_OBJECT
 
@@ -82,7 +80,7 @@ private:
 
 private slots:
     void on_prefsTree_currentItemChanged(QTreeWidgetItem *current, QTreeWidgetItem *previous);
-    void on_advancedSearchLineEdit_textEdited(const QString &search_str);
+    void on_advancedSearchLineEdit_textEdited(const QString &search_re);
     void lineEditPrefDestroyed();
     void enumPrefDestroyed();
     void uintPrefEditingFinished();

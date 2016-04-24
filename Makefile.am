@@ -19,14 +19,17 @@
 # along with this program; if not, write to the Free Software
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 
+include ./Makefile.am.inc
+
 AM_DISTCHECK_CONFIGURE_FLAGS=@GUI_CONFIGURE_FLAGS@
 # Make sure to keep ACLOCAL_AMFLAGS in Makefile.am and AC_CONFIG_MACRO_DIRS
 # in configure.ac in sync, otherwise there will be an error running autogen.sh.
-ACLOCAL_AMFLAGS = `./aclocal-flags`
+ACLOCAL_AMFLAGS = -I m4
 
-if HAVE_WARNINGS_AS_ERRORS
-AM_CLEAN_CFLAGS = -Werror
-endif
+# Common headers
+COMMONCPPFLAGS =
+
+AM_CPPFLAGS = $(INCLUDEDIRS) $(WS_CPPFLAGS) $(COMMONCPPFLAGS)
 
 bin_PROGRAMS = \
 	@wireshark_bin@		\
@@ -42,12 +45,11 @@ bin_PROGRAMS = \
 	@dumpcap_bin@		\
 	@reordercap_bin@	\
 	@rawshark_bin@		\
-	@androiddump_bin@	\
 	@echld_test_bin@
 
-EXTRA_PROGRAMS = wireshark-gtk wireshark tshark tfshark capinfos captype editcap \
-	mergecap dftest randpkt text2pcap dumpcap reordercap rawshark androiddump \
-	echld_test
+EXTRA_PROGRAMS = wireshark-gtk wireshark tshark tfshark capinfos captype \
+	editcap mergecap dftest randpkt text2pcap dumpcap reordercap \
+	rawshark echld_test
 
 #
 # Wireshark configuration files are put in $(pkgdatadir).
@@ -360,50 +362,27 @@ endif		# HAVE_PLUGINS
 
 include Makefile.common
 
+if HAVE_EXTCAP
+SHARK_COMMON_SRC += $(EXTCAP_COMMON_SRC)
+endif
+
 if ENABLE_STATIC
-if HAVE_GTK
-wireshark_gtk_LDFLAGS = -Wl,-static -all-static
-endif
-if HAVE_Qt
-wireshark_LDFLAGS = -Wl,-static -all-static
-endif
+EXTRALINKFLAGS = -Wl,-static -all-static
 else
-if HAVE_GTK
-wireshark_gtk_LDFLAGS = -export-dynamic
-endif
-if HAVE_Qt
-wireshark_LDFLAGS = -export-dynamic @Qt_LDFLAGS@
-endif
+EXTRALINKFLAGS = -export-dynamic
 endif
 
 # Libraries and plugin flags with which to link wireshark.
 #
-# Note that Wireshark, when built with a version of GTK+ that runs
-# atop X11, doesn't have to be linked with @SOCKET_LIBS@ or @NSL_LIBS@,
-# as those should also be included in @GTK_LIBS@ (as those are also
-# needed for X applications, and GTK+ applications are X applications
-# if the version of GTK+ they're built with runs atop X11).
-#
-# However, it *does* have to be linked with @GLIB_LIBS@; not all of
-# the necessary GLib libraries are included in @GTK_LIBS@.  To quote
-# Gentoo bug 423743 at
-#
-#	https://bugs.gentoo.org/show_bug.cgi?id=423743
-#
-# "The Makefile.am claims including GLIB_LIBS when linking wireshark is
-# unnecessary, because wireshark links to GTK_LIBS which is a superset.
-# It is not actually a superset: gmodule is included in GLIB_LIBS but
-# not in GTK_LIBS (unless accidentally on older glibs/gtks)."
-#
-# although it's also possible that -lgmodule is in GTK_LIBS but not
-# GLIB_LIBS (that's the case on my machine right now, for example).
+# GTK_CFLAGS/GTK_LIBS is a strict superset of GLIB_CFLAGS/GLIB_LIBS
+# (see configure.ac for pkg-config modules used).
 #
 wireshark_common_ldadd = \
 	capchild/libcapchild.a		\
 	caputils/libcaputils.a		\
 	ui/libui.a			\
 	ui/libui_dirty.a		\
-	codecs/libcodec.a		\
+	codecs/libwscodecs.la		\
 	wiretap/libwiretap.la		\
 	epan/libwireshark.la		\
 	wsutil/libwsutil.la		\
@@ -411,7 +390,6 @@ wireshark_common_ldadd = \
 	$(plugin_ldadd)			\
 	@PCAP_LIBS@			\
 	@C_ARES_LIBS@			\
-	@ADNS_LIBS@			\
 	@KRB5_LIBS@			\
 	@APPLICATIONSERVICES_FRAMEWORKS@	\
 	@SYSTEMCONFIGURATION_FRAMEWORKS@	\
@@ -419,35 +397,39 @@ wireshark_common_ldadd = \
 	@LIBGCRYPT_LIBS@		\
 	@LIBGNUTLS_LIBS@		\
 	@LIBSMI_LDFLAGS@		\
-	@SBC_LIBS@			\
-	@GLIB_LIBS@
+	@LIBNL_LIBS@
 
 if HAVE_Qt
 wireshark_SOURCES = $(WIRESHARK_COMMON_SRC) wireshark-qt.cpp
-wireshark_INCLUDES = $(WIRESHARK_COMMON_INCLUDES)
-wireshark_CFLAGS = $(AM_CLEAN_CFLAGS)
+
+wireshark_CPPFLAGS = $(AM_CPPFLAGS) $(GLIB_CFLAGS) $(Qt_CFLAGS)
+
+wireshark_LDFLAGS = $(AM_LDFLAGS) $(EXTRALINKFLAGS) $(Qt_LDFLAGS)
+
 wireshark_LDADD = \
-	ui/qt/libqtui.a \
-	$(wireshark_common_ldadd) \
-	@Qt_LIBS@
+	ui/qt/libqtui.a			\
+	$(wireshark_common_ldadd)	\
+	$(GLIB_LIBS)			\
+	$(Qt_LIBS)
 endif
 
 if HAVE_GTK
 wireshark_gtk_SOURCES = $(WIRESHARK_COMMON_SRC)
-wireshark_gtk_INCLUDES = $(WIRESHARK_COMMON_INCLUDES)
-wireshark_gtk_CFLAGS = $(AM_CLEAN_CFLAGS)
+
+wireshark_gtk_CPPFLAGS = $(AM_CPPFLAGS) $(GTK_CFLAGS)
+
+wireshark_gtk_LDFLAGS = $(AM_LDFLAGS) $(EXTRALINKFLAGS)
+
 wireshark_gtk_LDADD = \
-	ui/gtk/libgtkui.a \
-	$(wireshark_common_ldadd) \
-	@PORTAUDIO_LIBS@		\
-	@GTK_LIBS@
+	ui/gtk/libgtkui.a		\
+	$(wireshark_common_ldadd)	\
+	$(GTK_LIBS)			\
+	@PORTAUDIO_LIBS@
 endif
 
-if ENABLE_STATIC
-tshark_LDFLAGS = -Wl,-static -all-static
-else
-tshark_LDFLAGS = -export-dynamic
-endif
+tshark_CPPFLAGS = $(AM_CPPFLAGS) $(GLIB_CFLAGS)
+
+tshark_LDFLAGS = $(AM_LDFLAGS) $(EXTRALINKFLAGS)
 
 # Libraries and plugin flags with which to link tshark.
 tshark_LDADD = \
@@ -462,10 +444,7 @@ tshark_LDADD = \
 	$(plugin_ldadd)			\
 	@GLIB_LIBS@			\
 	@PCAP_LIBS@			\
-	@SOCKET_LIBS@			\
-	@NSL_LIBS@			\
 	@C_ARES_LIBS@			\
-	@ADNS_LIBS@			\
 	@KRB5_LIBS@			\
 	@SYSTEMCONFIGURATION_FRAMEWORKS@	\
 	@COREFOUNDATION_FRAMEWORKS@	\
@@ -473,13 +452,9 @@ tshark_LDADD = \
 	@LIBGNUTLS_LIBS@		\
 	@LIBSMI_LDFLAGS@
 
-tshark_CFLAGS = $(AM_CLEAN_CFLAGS)
+tfshark_CPPFLAGS = $(AM_CPPFLAGS) $(GLIB_CFLAGS)
 
-if ENABLE_STATIC
-tfshark_LDFLAGS = -Wl,-static -all-static
-else
-tfshark_LDFLAGS = -export-dynamic
-endif
+tfshark_LDFLAGS = $(AM_LDFLAGS) $(EXTRALINKFLAGS)
 
 # Libraries and plugin flags with which to link tfshark.
 tfshark_LDADD = \
@@ -492,21 +467,15 @@ tfshark_LDADD = \
 	$(plugin_ldadd)			\
 	@GLIB_LIBS@			\
 	@PCAP_LIBS@			\
-	@SOCKET_LIBS@			\
-	@NSL_LIBS@			\
 	@KRB5_LIBS@			\
 	@SYSTEMCONFIGURATION_FRAMEWORKS@	\
 	@COREFOUNDATION_FRAMEWORKS@	\
 	@LIBGNUTLS_LIBS@		\
 	@LIBSMI_LDFLAGS@
 
-tfshark_CFLAGS = $(AM_CLEAN_CFLAGS)
+rawshark_CPPFLAGS = $(AM_CPPFLAGS) $(GLIB_CFLAGS)
 
-if ENABLE_STATIC
-rawshark_LDFLAGS = -Wl,-static -all-static
-else
-rawshark_LDFLAGS = -export-dynamic
-endif
+rawshark_LDFLAGS = $(AM_LDFLAGS) $(EXTRALINKFLAGS)
 
 # Libraries and plugin flags with which to link rawshark.
 rawshark_LDADD = \
@@ -519,10 +488,7 @@ rawshark_LDADD = \
 	$(plugin_ldadd)			\
 	@GLIB_LIBS@			\
 	@PCAP_LIBS@			\
-	@SOCKET_LIBS@			\
-	@NSL_LIBS@			\
 	@C_ARES_LIBS@			\
-	@ADNS_LIBS@			\
 	@KRB5_LIBS@			\
 	@SYSTEMCONFIGURATION_FRAMEWORKS@	\
 	@COREFOUNDATION_FRAMEWORKS@	\
@@ -530,40 +496,29 @@ rawshark_LDADD = \
 	@LIBGNUTLS_LIBS@		\
 	@LIBSMI_LDFLAGS@
 
-rawshark_CFLAGS = $(AM_CLEAN_CFLAGS)
-
-if ENABLE_STATIC
-androiddump_LDFLAGS = -Wl,-static -all-static
-else
-androiddump_LDFLAGS = -export-dynamic
-endif
-
-# Libraries and plugin flags with which to link androiddump.
-androiddump_LDADD = \
-	wiretap/libwiretap.la		\
-	wsutil/libwsutil.la		\
-	@GLIB_LIBS@			\
-	@SOCKET_LIBS@
-
-androiddump_CFLAGS = $(AM_CLEAN_CFLAGS)
-
-# Libraries with which to link text2pcap.
-text2pcap_LDADD = \
-	wsutil/libwsutil.la		\
-	@GLIB_LIBS@
+text2pcap_CPPFLAGS = $(AM_CPPFLAGS) $(GLIB_CFLAGS)
 
 # Don't turn on -Werror for text2pcap: its source includes text2pcap-scanner.c
 # which is generated (and therefore not always clean).
 # We could generate text2pcap.o as a library with -Werror but for now it
 # doesn't seem worth the effort.
-#text2pcap_CFLAGS = $(AM_CLEAN_CFLAGS)
+text2pcap_CFLAGS = $(GENERATED_CFLAGS)
+
+# Libraries with which to link text2pcap.
+text2pcap_LDADD = \
+	writecap/libwritecap.a		\
+	wsutil/libwsutil.la		\
+	@GLIB_LIBS@
+
+mergecap_CPPFLAGS = $(AM_CPPFLAGS) $(GLIB_CFLAGS)
 
 # Libraries with which to link mergecap.
 mergecap_LDADD = \
 	wiretap/libwiretap.la		\
 	wsutil/libwsutil.la		\
 	@GLIB_LIBS@
-mergecap_CFLAGS = $(AM_CLEAN_CFLAGS)
+
+capinfos_CPPFLAGS = $(AM_CPPFLAGS) $(GLIB_CFLAGS)
 
 # Libraries with which to link capinfos.
 capinfos_LDADD = \
@@ -571,41 +526,43 @@ capinfos_LDADD = \
 	wsutil/libwsutil.la		\
 	@GLIB_LIBS@			\
 	@LIBGCRYPT_LIBS@
-capinfos_CFLAGS = $(AM_CLEAN_CFLAGS)
+
+captype_CPPFLAGS = $(AM_CPPFLAGS) $(GLIB_CFLAGS)
 
 # Libraries with which to link captype.
 captype_LDADD = \
 	wiretap/libwiretap.la		\
 	wsutil/libwsutil.la		\
 	@GLIB_LIBS@
-captype_CFLAGS = $(AM_CLEAN_CFLAGS)
+
+editcap_CPPFLAGS = $(AM_CPPFLAGS) $(GLIB_CFLAGS)
 
 # Libraries with which to link editcap.
 editcap_LDADD = \
 	wiretap/libwiretap.la		\
 	wsutil/libwsutil.la		\
 	@GLIB_LIBS@
-editcap_CFLAGS = $(AM_CLEAN_CFLAGS)
+
+reordercap_CPPFLAGS = $(AM_CPPFLAGS) $(GLIB_CFLAGS)
 
 # Libraries with which to link reordercap.
 reordercap_LDADD = \
 	wiretap/libwiretap.la		\
 	wsutil/libwsutil.la		\
 	@GLIB_LIBS@
-reordercap_CFLAGS = $(AM_CLEAN_CFLAGS)
+
+randpkt_CPPFLAGS = $(AM_CPPFLAGS) $(GLIB_CFLAGS)
 
 # Libraries with which to link randpkt.
 randpkt_LDADD = \
+	randpkt_core/librandpkt_core.a	\
 	wiretap/libwiretap.la		\
 	wsutil/libwsutil.la		\
 	@GLIB_LIBS@			\
 	@PCAP_LIBS@			\
-	@SOCKET_LIBS@			\
-	@NSL_LIBS@			\
-	@C_ARES_LIBS@			\
-	@ADNS_LIBS@
+	@C_ARES_LIBS@
 
-randpkt_CFLAGS = $(AM_CLEAN_CFLAGS)
+dftest_CPPFLAGS = $(AM_CPPFLAGS) $(GLIB_CFLAGS)
 
 # Libraries and plugin flags with which to link dftest.
 dftest_LDADD = \
@@ -617,64 +574,50 @@ dftest_LDADD = \
 	$(plugin_ldadd)			\
 	@GLIB_LIBS@			\
 	@PCAP_LIBS@			\
-	@SOCKET_LIBS@			\
-	@NSL_LIBS@			\
 	@C_ARES_LIBS@			\
-	@ADNS_LIBS@			\
 	@KRB5_LIBS@			\
 	@LIBGCRYPT_LIBS@		\
 	@LIBGNUTLS_LIBS@		\
 	@LIBSMI_LDFLAGS@
 
-dftest_CFLAGS = $(AM_CLEAN_CFLAGS)
+echld_CPPFLAGS = $(AM_CPPFLAGS) $(GLIB_CFLAGS)
 
 echld_test_LDADD = \
 	epan/libwireshark.la		\
 	echld/libechld.la		\
+	writecap/libwritecap.a		\
 	wsutil/libwsutil.la		\
 	@GLIB_LIBS@			\
 	@PCAP_LIBS@			\
-	@SOCKET_LIBS@			\
-	@NSL_LIBS@			\
-	@C_ARES_LIBS@			\
-	@ADNS_LIBS@
+	@C_ARES_LIBS@
 
 echld_test_DEPENDENCIES = \
 	echld/libechld.la \
 	epan/libwireshark.la
 
-echld_test_CFLAGS = $(AM_CLEAN_CFLAGS)
+dumpcap_CPPFLAGS = $(AM_CPPFLAGS) $(GLIB_CFLAGS)
 
+dumpcap_CFLAGS = $(AM_CFLAGS) $(PIE_CFLAGS)
+
+dumpcap_LDFLAGS = $(AM_LDFLAGS) $(PIE_LDFLAGS)
 
 # Libraries with which to link dumpcap.
 dumpcap_LDADD = \
 	caputils/libcaputils.a		\
+	writecap/libwritecap.a		\
 	wsutil/libwsutil.la		\
 	@GLIB_LIBS@			\
 	@PCAP_LIBS@			\
-	@SOCKET_LIBS@			\
-	@NSL_LIBS@			\
 	@SYSTEMCONFIGURATION_FRAMEWORKS@	\
 	@COREFOUNDATION_FRAMEWORKS@	\
-	@LIBCAP_LIBS@
-dumpcap_CFLAGS = $(AM_CLEAN_CFLAGS) $(PIE_CFLAGS)
-dumpcap_LDFLAGS = $(PIE_LDFLAGS)
-
-# Common headers
-AM_CPPFLAGS = -I$(top_srcdir) -I$(top_srcdir)/wiretap \
-	$(LIBGNUTLS_CFLAGS) $(LIBGCRYPT_CFLAGS) $(LIBSMI_CFLAGS) \
-	@LUA_CFLAGS@ $(SBC_CFLAGS) -DTOP_SRCDIR=\"$(abs_top_srcdir)\"
+	@LIBCAP_LIBS@			\
+	@LIBNL_LIBS@
 
 #
 # Build the version string
 #
 # FORCE is the portable version of .PHONY
 FORCE:
-
-AM_V_PERL = $(am__v_PERL_@AM_V@)
-am__v_PERL_ = $(am__v_PERL_@AM_DEFAULT_V@)
-am__v_PERL_0 = @echo "  PERL    " $@;
-am__v_PERL_1 =
 
 version.h: FORCE
 	$(AM_V_PERL)$(PERL) $(srcdir)/make-version.pl $(srcdir)
@@ -726,6 +669,7 @@ MAINTAINERCLEANFILES =		\
 	ylwrap
 
 EXTRA_DIST = \
+	.editorconfig		\
 	.mailmap		\
 	INSTALL.configure	\
 	Makefile.am.inc		\
@@ -742,619 +686,43 @@ EXTRA_DIST = \
 	README.vmware		\
 	README.windows		\
 	abi-descriptor.template	\
-	aclocal-fallback/libsmi.m4 \
-	aclocal-fallback/libgcrypt.m4 \
-	aclocal-fallback/glib-2.0.m4 \
-	aclocal-fallback/gtk-2.0.m4 \
-	aclocal-fallback/gtk-3.0.m4 \
-	aclocal-fallback/ax_check_compile_flag.m4	\
-	aclocal-fallback/ax_gcc_x86_cpuid.m4	\
-	aclocal-fallback/ax_ext.m4	\
-	aclocal-fallback/ax_gcc_x86_avx_xgetbv.m4	\
-	aclocal-flags		\
-	adns_dll.dep		\
-	adns_dll.rc		\
 	autogen.sh		\
-	capinfos.c		\
-	captype.c		\
 	cfilters		\
 	colorfilters		\
 	config.h.win32		\
 	config.nmake		\
-	debian/README.Debian	\
-	debian/README.Debian.security	\
-	debian/changelog	\
-	debian/compat		\
-	debian/control		\
-	debian/copyright	\
-	debian/dirs		\
-	debian/ethereal-common.NEWS	\
-	debian/headers-check.c	\
-	debian/libwireshark-data.install	\
-	debian/libwireshark-dev.install	\
-	debian/libwireshark0.install	\
-	debian/libwireshark0.symbols	\
-	debian/libwiretap-dev.install	\
-	debian/libwiretap0.docs	\
-	debian/libwiretap0.install	\
-	debian/libwiretap0.symbols	\
-	debian/libwsutil-dev.install	\
-	debian/libwsutil0.install	\
-	debian/libwsutil0.symbols	\
-	debian/license-text-about-dialog	\
-	debian/patches/04_asn2wrs_ply.patch	\
-	debian/patches/05_note-README-when-running-as-root.patch	\
-	debian/patches/06_release-version.patch	\
-	debian/patches/08_wireshark-desktop-menu.patch	\
-	debian/patches/09_idl2wrs.patch	\
-	debian/patches/16_licence_about_location.patch	\
-	debian/patches/series	\
-	debian/po/POTFILES.in	\
-	debian/po/cs.po	\
-	debian/po/da.po	\
-	debian/po/de.po	\
-	debian/po/es.po	\
-	debian/po/eu.po	\
-	debian/po/fi.po	\
-	debian/po/fr.po	\
-	debian/po/hu.po	\
-	debian/po/id.po	\
-	debian/po/it.po	\
-	debian/po/ja.po	\
-	debian/po/ko.po	\
-	debian/po/nl.po	\
-	debian/po/pt.po	\
-	debian/po/pt_BR.po	\
-	debian/po/ru.po	\
-	debian/po/sk.po	\
-	debian/po/sv.po	\
-	debian/po/templates.pot	\
-	debian/po/vi.po	\
-	debian/postinst		\
-	debian/rules		\
-	debian/source/format	\
-	debian/templates	\
-	debian/tshark.docs	\
-	debian/tshark.install	\
-	debian/tshark.manpages	\
-	debian/wireshark-common.config	\
-	debian/wireshark-common.install	\
-	debian/wireshark-common.manpages \
-	debian/wireshark-common.postinst	\
-	debian/wireshark-common.postrm	\
-	debian/wireshark-dev.docs \
-	debian/wireshark-dev.install	\
-	debian/wireshark-dev.manpages \
-	debian/wireshark-dev.prerm \
-	debian/wireshark-doc.docs	\
-	debian/wireshark-gtk.docs	\
-	debian/wireshark-gtk.install	\
-	debian/wireshark.manpages \
-	debian/wireshark.menu	\
-	debian/wireshark-qt.docs	\
-	debian/wireshark-qt.install	\
+	debian			\
 	dfilters		\
 	doxygen_global.cfg	\
 	doxygen.cfg.in		\
-	dumpcap.c		\
-	editcap.c		\
-	epan/print.ps		\
-	fix/FIX.xml		\
-	fix/FIX40.xml		\
-	fix/FIX41.xml		\
-	fix/FIX42.xml		\
-	fix/FIX43.xml		\
-	fix/FIX44.xml		\
-	fix/FIX50.xml		\
-	fix/FIX50SP1.xml	\
-	fix/FIX50SP2.xml	\
-	fix/README		\
-	fix/Values.xsl		\
-	fix/hfDecl.xsl		\
-	fix/hfField.xsl		\
-	fix/hfList.xsl		\
-	idl/coseventcomm.idl	\
-	idl/cosnaming.idl	\
-	idl/tango.idl	\
-	idl/parlay/am.idl	\
-	idl/parlay/cccs.idl	\
-	idl/parlay/cm.idl	\
-	idl/parlay/common_cc_data.idl	\
-	idl/parlay/cs.idl	\
-	idl/parlay/dsc.idl	\
-	idl/parlay/fw_data.idl	\
-	idl/parlay/fw_if.idl	\
-	idl/parlay/fw_if_access.idl	\
-	idl/parlay/fw_if_app.idl	\
-	idl/parlay/fw_if_entop.idl	\
-	idl/parlay/fw_if_service.idl	\
-	idl/parlay/gcc_data.idl	\
-	idl/parlay/gcc_interfaces.idl	\
-	idl/parlay/gms.idl	\
-	idl/parlay/mm.idl	\
-	idl/parlay/mmccs.idl	\
-	idl/parlay/mmm.idl	\
-	idl/parlay/mpcc_data.idl	\
-	idl/parlay/mpcc_interfaces.idl	\
-	idl/parlay/osa.idl	\
-	idl/parlay/pam_data.idl	\
-	idl/parlay/pam_interfaces.idl	\
-	idl/parlay/Parlay.idl	\
-	idl/parlay/policy_data.idl	\
-	idl/parlay/policy_interfaces.idl	\
-	idl/parlay/README.parlay	\
-	idl/parlay/termcap.idl	\
-	idl/parlay/ui_data.idl	\
-	idl/parlay/ui_interfaces.idl	\
-	image/capinfos.rc.in	\
-	image/captype.rc.in	\
-	image/capture_comment.svg	\
-	image/capture_comment_add.png	\
-	image/capture_comment_disabled.png	\
-	image/capture_comment_update.png	\
-	image/clist_ascend.xpm			\
-	image/clist_descend.xpm			\
-	image/copy-8.png			\
-	image/dumpcap.rc.in	\
-	image/editcap.rc.in	\
-	image/expert_chat.png	\
-	image/expert_chat@2x.png	\
-	image/expert_error.png	\
-	image/expert_error@2x.png	\
-	image/expert_indicators.svg	\
-	image/expert_none.png	\
-	image/expert_none@2x.png	\
-	image/expert_note.png	\
-	image/expert_note@2x.png	\
-	image/expert_warn.png	\
-	image/expert_warn@2x.png	\
-	image/file_dlg_win32.rc \
-	image/hi16-app-wireshark.png	\
-	image/hi32-app-wireshark.png	\
-	image/hi48-app-wireshark.png	\
-	image/languages/de.svg		\
-	image/languages/en.svg		\
-	image/languages/fr.svg		\
-	image/languages/it.svg		\
-	image/languages/ja_JP.svg	\
-	image/languages/pl.svg		\
-	image/languages/zh_CN.svg	\
-	image/layout_1.png		\
-	image/layout_1@2x.png		\
-	image/layout_2.png		\
-	image/layout_2@2x.png		\
-	image/layout_3.png		\
-	image/layout_3@2x.png		\
-	image/layout_4.png		\
-	image/layout_4@2x.png		\
-	image/layout_5.png		\
-	image/layout_5@2x.png		\
-	image/layout_6.png		\
-	image/layout_6@2x.png		\
-	image/libwireshark.rc.in	\
-	image/libwsutil.rc.in		\
-	image/lo16-app-wireshark.png	\
-	image/lo32-app-wireshark.png	\
-	image/lo48-app-wireshark.png	\
-	image/Makefile.nmake			\
-	image/mergecap.rc.in			\
-	image/minus-8.png			\
-	image/nsis-checked.bmp			\
-	image/nsis-unchecked.bmp		\
-	image/openhand-16.png			\
-	image/plus-8.png			\
-	image/rawshark.rc.in			\
-	image/README.image			\
-	image/reordercap.rc.in			\
-	image/rubberband-16.png			\
-	image/status.qrc			\
-	image/stock_dialog_error_48.xpm		\
-	image/stock_dialog_info_48.xpm		\
-	image/stock_dialog_question_48.xpm	\
-	image/stock_dialog_stop_48.xpm		\
-	image/stock_dialog_warning_48.xpm	\
-	image/text2pcap.rc.in			\
-	image/tfshark.rc.in			\
-	image/toolbar/12x12/media-playback-start.png	\
-	image/toolbar/12x12/media-playback-start.svg	\
-	image/toolbar/12x12/media-playback-start@2x.png	\
-	image/toolbar/14x14/x-filter-bookmark.active.png \
-	image/toolbar/14x14/x-filter-bookmark.active.svg \
-	image/toolbar/14x14/x-filter-bookmark.active@2x.png \
-	image/toolbar/14x14/x-filter-bookmark.png \
-	image/toolbar/14x14/x-filter-bookmark.selected.png \
-	image/toolbar/14x14/x-filter-bookmark.selected.svg \
-	image/toolbar/14x14/x-filter-bookmark.selected@2x.png \
-	image/toolbar/14x14/x-filter-bookmark.svg \
-	image/toolbar/14x14/x-filter-bookmark@2x.png \
-	image/toolbar/14x14/x-filter-clear.active.png \
-	image/toolbar/14x14/x-filter-clear.active.svg \
-	image/toolbar/14x14/x-filter-clear.active@2x.png \
-	image/toolbar/14x14/x-filter-clear.png \
-	image/toolbar/14x14/x-filter-clear.selected.png \
-	image/toolbar/14x14/x-filter-clear.selected.svg \
-	image/toolbar/14x14/x-filter-clear.selected@2x.png \
-	image/toolbar/14x14/x-filter-clear.svg \
-	image/toolbar/14x14/x-filter-clear@2x.png \
-	image/toolbar/14x14/x-filter-dropdown.png \
-	image/toolbar/14x14/x-filter-dropdown.svg \
-	image/toolbar/14x14/x-filter-dropdown@2x.png \
-	image/toolbar/14x14/x-filter-matching-bookmark.active.png \
-	image/toolbar/14x14/x-filter-matching-bookmark.active.svg \
-	image/toolbar/14x14/x-filter-matching-bookmark.active@2x.png \
-	image/toolbar/14x14/x-filter-matching-bookmark.png \
-	image/toolbar/14x14/x-filter-matching-bookmark.selected.png \
-	image/toolbar/14x14/x-filter-matching-bookmark.selected.svg \
-	image/toolbar/14x14/x-filter-matching-bookmark.selected@2x.png \
-	image/toolbar/14x14/x-filter-matching-bookmark.svg \
-	image/toolbar/14x14/x-filter-matching-bookmark@2x.png \
-	image/toolbar/16x16/edit-find.png		\
-	image/toolbar/16x16/edit-find.svg		\
-	image/toolbar/16x16/edit-find@2x.png		\
-	image/toolbar/16x16/go-first.png		\
-	image/toolbar/16x16/go-first.svg		\
-	image/toolbar/16x16/go-first@2x.png		\
-	image/toolbar/16x16/go-jump.png			\
-	image/toolbar/16x16/go-jump.svg			\
-	image/toolbar/16x16/go-jump@2x.png		\
-	image/toolbar/16x16/go-last.png			\
-	image/toolbar/16x16/go-last.svg			\
-	image/toolbar/16x16/go-last@2x.png		\
-	image/toolbar/16x16/go-next.png			\
-	image/toolbar/16x16/go-next.svg			\
-	image/toolbar/16x16/go-next@2x.png		\
-	image/toolbar/16x16/go-previous.png		\
-	image/toolbar/16x16/go-previous.svg		\
-	image/toolbar/16x16/go-previous@2x.png		\
-	image/toolbar/16x16/x-capture-file-close.png	\
-	image/toolbar/16x16/x-capture-file-close.svg	\
-	image/toolbar/16x16/x-capture-file-close@2x.png	\
-	image/toolbar/16x16/x-capture-file-close@2x.svg	\
-	image/toolbar/16x16/x-capture-file-reload.png	\
-	image/toolbar/16x16/x-capture-file-reload.svg	\
-	image/toolbar/16x16/x-capture-file-reload@2x.png	\
-	image/toolbar/16x16/x-capture-file-reload@2x.svg	\
-	image/toolbar/16x16/x-capture-file-save.png	\
-	image/toolbar/16x16/x-capture-file-save.svg	\
-	image/toolbar/16x16/x-capture-file-save@2x.png	\
-	image/toolbar/16x16/x-capture-file-save@2x.svg	\
-	image/toolbar/16x16/x-capture-options-gear.svg	\
-	image/toolbar/16x16/x-capture-options-wrench.svg	\
-	image/toolbar/16x16/x-capture-options.png	\
-	image/toolbar/16x16/x-capture-options@2x.png	\
-	image/toolbar/16x16/x-capture-restart-fin.svg	\
-	image/toolbar/16x16/x-capture-restart-triangle1.svg	\
-	image/toolbar/16x16/x-capture-restart-triangle2.svg	\
-	image/toolbar/16x16/x-capture-restart-turn1.svg	\
-	image/toolbar/16x16/x-capture-restart-turn2.svg	\
-	image/toolbar/16x16/x-capture-restart.png	\
-	image/toolbar/16x16/x-capture-restart@2x.png	\
-	image/toolbar/16x16/x-capture-start.on.png	\
-	image/toolbar/16x16/x-capture-start.on.svg	\
-	image/toolbar/16x16/x-capture-start.on@2x.png	\
-	image/toolbar/16x16/x-capture-start.png		\
-	image/toolbar/16x16/x-capture-start.svg		\
-	image/toolbar/16x16/x-capture-start@2x.png	\
-	image/toolbar/16x16/x-capture-stop-red.svg	\
-	image/toolbar/16x16/x-capture-stop-white.svg	\
-	image/toolbar/16x16/x-capture-stop.png		\
-	image/toolbar/16x16/x-capture-stop@2x.png	\
-	image/toolbar/16x16/x-colorize-packets.png	\
-	image/toolbar/16x16/x-colorize-packets.svg	\
-	image/toolbar/16x16/x-colorize-packets@2x.png	\
-	image/toolbar/16x16/x-resize-columns.png	\
-	image/toolbar/16x16/x-resize-columns.svg	\
-	image/toolbar/16x16/x-resize-columns@2x.png	\
-	image/toolbar/16x16/x-stay-last.png		\
-	image/toolbar/16x16/x-stay-last.svg		\
-	image/toolbar/16x16/x-stay-last@2x.png		\
-	image/toolbar/16x16/zoom-in.png			\
-	image/toolbar/16x16/zoom-in.svg			\
-	image/toolbar/16x16/zoom-in@2x.png		\
-	image/toolbar/16x16/zoom-original.png		\
-	image/toolbar/16x16/zoom-original.svg		\
-	image/toolbar/16x16/zoom-original@2x.png	\
-	image/toolbar/16x16/zoom-out.png		\
-	image/toolbar/16x16/zoom-out.svg		\
-	image/toolbar/16x16/zoom-out@2x.png		\
-	image/toolbar/24x14/x-filter-apply.active.png \
-	image/toolbar/24x14/x-filter-apply.active.svg \
-	image/toolbar/24x14/x-filter-apply.active@2x.png \
-	image/toolbar/24x14/x-filter-apply.png \
-	image/toolbar/24x14/x-filter-apply.selected.png \
-	image/toolbar/24x14/x-filter-apply.selected.svg \
-	image/toolbar/24x14/x-filter-apply.selected@2x.png \
-	image/toolbar/24x14/x-filter-apply.svg \
-	image/toolbar/24x14/x-filter-apply@2x.png \
-	image/toolbar/24x24/edit-find.png	\
-	image/toolbar/24x24/edit-find.svg	\
-	image/toolbar/24x24/edit-find@2x.png	\
-	image/toolbar/24x24/go-first.png	\
-	image/toolbar/24x24/go-first.svg	\
-	image/toolbar/24x24/go-first@2x.png	\
-	image/toolbar/24x24/go-jump.png		\
-	image/toolbar/24x24/go-jump.svg		\
-	image/toolbar/24x24/go-jump@2x.png	\
-	image/toolbar/24x24/go-last.png		\
-	image/toolbar/24x24/go-last.svg		\
-	image/toolbar/24x24/go-last@2x.png	\
-	image/toolbar/24x24/go-next.png		\
-	image/toolbar/24x24/go-next.svg		\
-	image/toolbar/24x24/go-next@2x.png	\
-	image/toolbar/24x24/go-previous.png	\
-	image/toolbar/24x24/go-previous.svg	\
-	image/toolbar/24x24/go-previous@2x.png	\
-	image/toolbar/24x24/x-capture-file-close.png		\
-	image/toolbar/24x24/x-capture-file-close.svg		\
-	image/toolbar/24x24/x-capture-file-close@2x.png		\
-	image/toolbar/24x24/x-capture-file-close@2x.svg		\
-	image/toolbar/24x24/x-capture-file-reload.png		\
-	image/toolbar/24x24/x-capture-file-reload.svg		\
-	image/toolbar/24x24/x-capture-file-reload@2x.png	\
-	image/toolbar/24x24/x-capture-file-reload@2x.svg	\
-	image/toolbar/24x24/x-capture-file-save.png		\
-	image/toolbar/24x24/x-capture-file-save.svg		\
-	image/toolbar/24x24/x-capture-file-save@2x.png		\
-	image/toolbar/24x24/x-capture-file-save@2x.svg		\
-	image/toolbar/24x24/x-capture-options-gear.svg		\
-	image/toolbar/24x24/x-capture-options-wrench.svg	\
-	image/toolbar/24x24/x-capture-options.png		\
-	image/toolbar/24x24/x-capture-options@2x.png		\
-	image/toolbar/24x24/x-capture-restart-fin.svg		\
-	image/toolbar/24x24/x-capture-restart-triangle1.svg	\
-	image/toolbar/24x24/x-capture-restart-triangle2.svg	\
-	image/toolbar/24x24/x-capture-restart-turn1.svg		\
-	image/toolbar/24x24/x-capture-restart-turn2.svg		\
-	image/toolbar/24x24/x-capture-restart.png		\
-	image/toolbar/24x24/x-capture-restart@2x.png		\
-	image/toolbar/24x24/x-capture-start.on.png		\
-	image/toolbar/24x24/x-capture-start.on.svg		\
-	image/toolbar/24x24/x-capture-start.on@2x.png		\
-	image/toolbar/24x24/x-capture-start.png		\
-	image/toolbar/24x24/x-capture-start.svg		\
-	image/toolbar/24x24/x-capture-start@2x.png	\
-	image/toolbar/24x24/x-capture-stop-red.svg	\
-	image/toolbar/24x24/x-capture-stop-white.svg	\
-	image/toolbar/24x24/x-capture-stop.png		\
-	image/toolbar/24x24/x-capture-stop@2x.png	\
-	image/toolbar/24x24/x-colorize-packets.png	\
-	image/toolbar/24x24/x-colorize-packets.svg	\
-	image/toolbar/24x24/x-colorize-packets@2x.png	\
-	image/toolbar/24x24/x-resize-columns-motion.svg	\
-	image/toolbar/24x24/x-resize-columns.png	\
-	image/toolbar/24x24/x-resize-columns.svg	\
-	image/toolbar/24x24/x-resize-columns@2x.png	\
-	image/toolbar/24x24/x-stay-last.png		\
-	image/toolbar/24x24/x-stay-last.svg		\
-	image/toolbar/24x24/x-stay-last@2x.png		\
-	image/toolbar/24x24/zoom-in.png			\
-	image/toolbar/24x24/zoom-in.svg			\
-	image/toolbar/24x24/zoom-in@2x.png		\
-	image/toolbar/24x24/zoom-original.png		\
-	image/toolbar/24x24/zoom-original.svg		\
-	image/toolbar/24x24/zoom-original@2x.png	\
-	image/toolbar/24x24/zoom-out.png		\
-	image/toolbar/24x24/zoom-out.svg		\
-	image/toolbar/24x24/zoom-out@2x.png		\
-	image/toolbar.qrc			\
-	image/toolbar/analyze_24.xpm 		\
-	image/toolbar/audio_player_24.xpm	\
-	image/toolbar/autoscroll_24.xpm		\
-	image/toolbar/capture_airpcap_16.xpm	\
-	image/toolbar/capture_capture_16.xpm	\
-	image/toolbar/capture_details_16.xpm	\
-	image/toolbar/capture_details_24.xpm	\
-	image/toolbar/capture_ethernet_16.xpm	\
-	image/toolbar/capture_filter_24.xpm	\
-	image/toolbar/capture_interfaces_16.png	\
-	image/toolbar/capture_interfaces_16.svg \
-	image/toolbar/capture_interfaces_24.png	\
-	image/toolbar/capture_interfaces_24.svg \
-	image/toolbar/capture_pause_16.png	\
-	image/toolbar/capture_pause_16.svg	\
-	image/toolbar/capture_pause_24.png	\
-	image/toolbar/capture_pause_24.svg	\
-	image/toolbar/capture_prepare_16.xpm	\
-	image/toolbar/checkbox_16.xpm		\
-	image/toolbar/colorize_24.xpm		\
-	image/toolbar/conversations_16.xpm	\
-	image/toolbar/decode_24.xpm		\
-	image/toolbar/decode_as_16.xpm		\
-	image/toolbar/display_filter_24.xpm	\
-	image/toolbar/endpoints_16.xpm		\
-	image/toolbar/expert_info_16.xpm	\
-	image/toolbar/file_set_list_16.xpm	\
-	image/toolbar/file_set_next_16.xpm	\
-	image/toolbar/file_set_previous_16.xpm	\
-	image/toolbar/flow_graph_16.xpm	\
-	image/toolbar/gnome_emblem_web_16.png	\
-	image/toolbar/gnome_emblem_web_24.png	\
-	image/toolbar/graphs_16.xpm	\
-	image/toolbar/icon_color_0.xpm	\
-	image/toolbar/icon_color_1.xpm	\
-	image/toolbar/icon_color_2.xpm	\
-	image/toolbar/icon_color_3.xpm	\
-	image/toolbar/icon_color_4.xpm	\
-	image/toolbar/icon_color_5.xpm	\
-	image/toolbar/icon_color_6.xpm	\
-	image/toolbar/icon_color_7.xpm	\
-	image/toolbar/icon_color_8.xpm	\
-	image/toolbar/icon_color_9.xpm	\
-	image/toolbar/internet_24.xpm	\
-	image/toolbar/modem_16.png	\
-	image/toolbar/modem_16.xpm	\
-	image/toolbar/network_bluetooth_16.png	\
-	image/toolbar/network_usb.svg		\
-	image/toolbar/network_usb_16.png	\
-	image/toolbar/network_virtual_16.xpm	\
-	image/toolbar/network_wired_16.png	\
-	image/toolbar/network_wireless_16.png	\
-	image/toolbar/pipe_16.png	\
-	image/toolbar/remote_arrow_16.png	\
-	image/toolbar/remote_globe_16.png	\
-	image/toolbar/remote_sat_16.png	\
-	image/toolbar/resize_columns_24.xpm	\
-	image/toolbar/svg-to-png.sh	\
-	image/toolbar/svg/x-filter-apply.svg	\
-	image/toolbar/svg/x-filter-bookmark.svg	\
-	image/toolbar/svg/x-filter-clear.svg	\
-	image/toolbar/telephone_16.xpm	\
-	image/toolbar/telephony_16.xpm	\
-	image/toolbar/time_24.xpm	\
-	image/toolbar/voip_flow_24.xpm	\
-	image/toolbar/web_support_24.xpm	\
-	image/toolbar/wep_closed_24.xpm	\
-	image/tshark.rc.in	\
-	image/voip_select.xpm	\
-	image/wireshark.exe.manifest.in \
-	image/wireshark.ico	\
-	image/wireshark.rc.in	\
-	image/wiresharkdoc.ico	\
-	image/wiresharkinst.ico	\
-	image/WiresharkDoc-16.png	\
-	image/WiresharkDoc-24.png	\
-	image/WiresharkDoc-32.png	\
-	image/WiresharkDoc-48.png	\
-	image/WiresharkDoc-64.png	\
-	image/WiresharkDoc-128.png	\
-	image/WiresharkDoc-256.png	\
-	image/wiretap.rc.in	\
-	image/wsicon.qrc	\
-	image/wsicon.svg	\
-	image/wsicon16.png	\
-	image/wsicon24.png	\
-	image/wsicon32.png	\
-	image/wsicon48.png	\
-	image/wsicon64.png	\
-	image/wsicon128.png	\
-	image/wsicon256.png	\
-	image/wsicon512.png	\
-	image/wsicon1024.png	\
-	image/wsicon-ask.png	\
-	image/wsicon-ask.svg	\
-	image/wsiconcap.svg	\
-	image/wsiconcap16.png	\
-	image/wsiconcap24.png	\
-	image/wsiconcap32.png	\
-	image/wsiconcap48.png	\
-	image/wsiconcap64.png	\
-	image/wsiconcap128.png	\
-	image/wsiconcap256.png	\
-	image/wsiconcap512.png	\
-	image/wsiconcap1024.png	\
-	image/wsiconinst.svg	\
-	image/wsiconinst256.png	\
-	image/wslogo-dev.svg	\
-	image/wslogo.eps	\
-	image/wslogo.svg	\
-	image/wssplash_dev.png	\
-	image/wssplash.png	\
+	fix			\
+	idl			\
+	image			\
 	ipmap.html		\
+	m4			\
 	macosx-setup.sh		\
-	macosx-support-lib-patches/glib-gconvert.c.patch \
-	macosx-support-lib-patches/glib-pkgconfig.patch \
-	macosx-support-lib-patches/gnutls-pkgconfig.patch \
-	macosx-support-lib-patches/portaudio-pa_mac_core.h.patch \
-	macosx-support-lib-patches/portaudio-pa_mac_core.c.patch \
-	macosx-support-lib-patches/qt-fix-pc-file \
-	macosx-support-lib-patches/qt-fix-pc-files \
+	macosx-support-lib-patches	\
 	make-version.pl		\
 	manuf			\
 	manuf.tmpl		\
-	mergecap.c		\
 	pdml2html.xsl		\
-	reordercap.c		\
 	smi_modules		\
 	text2pcap-scanner.l	\
 	text2pcap.h		\
 	services		\
 	wireshark.desktop	\
-	wireshark-mime-package.xml \
+	wireshark-gtk.desktop	\
+	wireshark-mime-package.xml	\
 	wireshark.appdata.xml	\
 	wireshark.pc.in		\
 	wka.tmpl		\
 	CMakeLists.txt		\
-	CMakeListsCustom.txt.example		\
+	CMakeListsCustom.txt.example	\
 	cmakeconfig.h.in	\
-	wsutil/CMakeLists.txt	\
 	CMakeOptions.txt	\
-	wiretap/CMakeLists.txt	\
 	README.cmake		\
 	ConfigureChecks.cmake	\
-	cmake/modules/CheckCCompilerFlag.cmake	\
-	cmake/modules/CheckCLinkerFlag.cmake	\
-	cmake/modules/CMakeInstallDirs.cmake	\
-	cmake/modules/COPYING-CMAKE-SCRIPTS	\
-	cmake/modules/FindADNS.cmake		\
-	cmake/modules/FindAIRPCAP.cmake		\
-	cmake/modules/FindASCIIDOC.cmake	\
-	cmake/modules/FindCAP.cmake		\
-	cmake/modules/FindCARES.cmake		\
-	cmake/modules/FindChocolatey.cmake	\
-	cmake/modules/FindDOXYGEN.cmake		\
-	cmake/modules/FindFOP.cmake		\
-	cmake/modules/FindFreetype.cmake	\
-	cmake/modules/FindGCRYPT.cmake		\
-	cmake/modules/FindGEOIP.cmake		\
-	cmake/modules/FindGLIB2.cmake		\
-	cmake/modules/FindGMODULE2.cmake	\
-	cmake/modules/FindGNUTLS.cmake		\
-	cmake/modules/FindGTHREAD2.cmake	\
-	cmake/modules/FindGTK2.cmake		\
-	cmake/modules/FindGTK3.cmake		\
-	cmake/modules/FindHtmlViewer.cmake	\
-	cmake/modules/FindKERBEROS.cmake	\
-	cmake/modules/FindLEX.cmake		\
-	cmake/modules/FindLUA.cmake		\
-	cmake/modules/FindLYNX.cmake		\
-	cmake/modules/FindM.cmake		\
-	cmake/modules/FindNL.cmake		\
-	cmake/modules/FindOS_X_FRAMEWORKS.cmake	\
-	cmake/modules/FindPCAP.cmake		\
-	cmake/modules/FindPOD.cmake		\
-	cmake/modules/FindPORTAUDIO.cmake	\
-	cmake/modules/FindPowerShell.cmake	\
-	cmake/modules/FindSBC.cmake		\
-	cmake/modules/FindSED.cmake		\
-	cmake/modules/FindSETCAP.cmake		\
-	cmake/modules/FindSH.cmake		\
-	cmake/modules/FindSMI.cmake		\
-	cmake/modules/FindWinSparkle.cmake		\
-	cmake/modules/FindWireshark.cmake	\
-	cmake/modules/FindWSWinLibs.cmake	\
-	cmake/modules/FindXMLLINT.cmake		\
-	cmake/modules/FindXSLTPROC.cmake	\
-	cmake/modules/FindYACC.cmake		\
-	cmake/modules/FindYAPP.cmake		\
-	cmake/modules/FindZLIB.cmake		\
-	cmake/modules/GenerateTestSh.cmake	\
-	cmake/modules/gmxTestLargeFiles.cmake	\
-	cmake/modules/hhc.cmake	\
-	cmake/modules/LICENSE.txt		\
-	cmake/modules/LocatePythonModule.cmake	\
-	cmake/modules/readme.txt		\
-	cmake/modules/UseABICheck.cmake		\
-	cmake/modules/UseAsn2Wrs.cmake		\
-	cmake/modules/UseCheckAPI.cmake		\
-	cmake/modules/UseCustomIncludes.cmake		\
-	cmake/modules/UseLemon.cmake		\
-	cmake/modules/UseMakeDissectorReg.cmake	\
-	cmake/modules/UseMakeTapReg.cmake	\
-	cmake/modules/UseWinLibs.cmake		\
-	cmake/modules/WiresharkConfig.cmake.in	\
-	cmake/modules/WiresharkConfigVersion.cmake.in \
-	cmake/modules/WiresharkPlugin.cmake	\
-	cmake/TestFileOffsetBits.c	\
-	cmake/TestLargeFiles.c.cmakein	\
-	cmake/TestWindowsFSeek.c	\
-	ui/win32/Makefile.nmake			\
-	ui/win32/console_win32.c		\
-	ui/win32/console_win32.h		\
-	ui/win32/file_dlg_win32.c		\
-	ui/win32/file_dlg_win32.h		\
-	ui/win32/print_win32.c			\
-	ui/win32/print_win32.h			\
-	ui/win32/settings.ini			\
+	cmake			\
 	CPackConfig.txt
 
 install-exec-hook:
@@ -1373,7 +741,6 @@ endif
 
 
 DIST_SUBDIRS = \
-	asn1		\
 	capchild	\
 	caputils	\
 	codecs		\
@@ -1387,14 +754,18 @@ DIST_SUBDIRS = \
 	help		\
 	packaging	\
 	plugins		\
+	randpkt_core	\
 	tools		\
 	wiretap		\
+	writecap	\
 	wsutil		\
+	extcap		\
 	docbook
 
 SUBDIRS = \
 	tools			\
 	wsutil			\
+	writecap		\
 	wiretap			\
 	epan			\
 	capchild		\
@@ -1406,6 +777,8 @@ SUBDIRS = \
 	ui			\
 	@wireshark_SUBDIRS@	\
 	ui/cli			\
+	randpkt_core		\
+	@extcap_subdir@		\
 	.			\
 	doc
 
@@ -1492,9 +865,9 @@ if NOT_OS_X
 	install -m 644 $(srcdir)/wireshark.appdata.xml $(DESTDIR)$(datadir)/appdata/wireshark.appdata.xml
 	mkdir -p $(DESTDIR)$(datadir)/applications
 	if test x$(DESKTOP_FILE_INSTALL) != x ; then \
-		$(DESKTOP_FILE_INSTALL) --dir $(DESTDIR)$(datadir)/applications $(srcdir)/wireshark.desktop; \
+		$(DESKTOP_FILE_INSTALL) --dir $(DESTDIR)$(datadir)/applications $(srcdir)/wireshark.desktop  $(srcdir)/wireshark-gtk.desktop ; \
 	else \
-		install -m 644 $(srcdir)/wireshark.desktop $(DESTDIR)$(datadir)/applications/wireshark.desktop; \
+		install -m 644 $(srcdir)/wireshark.desktop $(srcdir)/wireshark-gtk.desktop $(DESTDIR)$(datadir)/applications; \
 	fi
 	for size in 16 24 32 48 64 128 256; \
 	do \
@@ -1513,6 +886,7 @@ if BUILDING_WIRESHARK
 if NOT_OS_X
 	rm -f $(DESTDIR)$(datadir)/appdata/wireshark.appdata.xml
 	rm -f $(DESTDIR)$(datadir)/applications/wireshark.desktop
+	rm -f $(DESTDIR)$(datadir)/applications/wireshark-gtk.desktop
 	rm -f $(DESTDIR)$(datadir)/mime/packages/wireshark.xml
 	for size in 16 24 32 48 64 128 256; \
 	do \
@@ -1617,7 +991,10 @@ osx-app: $(PROGRAMS) $(SCRIPTS) $(MANS) $(DATA) packaging/macosx/Info.plist
 		cd $(srcdir)/packaging/macosx ; \
 		./osx-app.sh @OSX_APP_FLAGS@ \
 			--create-bundle \
-			--binary-path ../staging/$(PACKAGE).inst$(bindir) ; \
+			--binary-path ../staging/$(PACKAGE).inst$(bindir) \
+			--plugin-path ../staging/$(PACKAGE).inst$(plugindir) \
+			--extcap-path ../staging/$(PACKAGE).inst$(extcapdir) \
+			--library-path ../staging/$(PACKAGE).inst$(libdir) ; \
 	else \
 		echo "Error: OS X packaging tools not found." ; \
 		echo "Package build abandoned." ; \
@@ -1666,13 +1043,14 @@ checkapi: checkapi_local
 	cd ui && $(MAKE) checkapi
 	cd ui/gtk && $(MAKE) checkapi
 ##	cd epan && $(MAKE) checkapi
-##	cd epan/crypt && $(MAKE) checkapi
+	cd epan/crypt && $(MAKE) checkapi
 	cd epan/dfilter && $(MAKE) checkapi
 ##	cd epan/ftypes && $(MAKE) checkapi
-##	cd epan/wslua && $(MAKE) checkapi
+	cd epan/wslua && $(MAKE) checkapi
 	cd epan/dissectors && $(MAKE) checkapi
-	cd epan/dissectors/dcerpc && $(MAKE) checkapi
 	cd plugins && $(MAKE) checkapi
+	cd randpkt_core && $(MAKE) checkapi
+	cd writecap && $(MAKE) checkapi
 	cd wsutil && $(MAKE) checkapi
 
 wsar_html: doxygen.cfg doxygen_global.cfg FORCE
@@ -1681,6 +1059,7 @@ if HAVE_DOXYGEN
 	cd epan && $(MAKE) $@
 	cd capchild && $(MAKE) $@
 	cd caputils && $(MAKE) $@
+	cd randpkt_core && $(MAKE) $@
 	cd ui && $(MAKE) $@
 	(umask 022 ; $(DOXYGEN) doxygen.cfg)
 endif
@@ -1690,3 +1069,7 @@ if HAVE_DOXYGEN
 	rm -f wsar_html.zip
 	zip -rq wsar_html.zip wsar_html
 endif
+
+# Update AUTHORS file with entries from git shortlog
+gen-authors:
+	cd $(top_srcdir) && $(PERL) tools/generate_authors.pl AUTHORS.src > AUTHORS

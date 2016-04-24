@@ -111,6 +111,10 @@ void RelatedPacketDelegate::paint(QPainter *painter, const QStyleOptionViewItem 
     // The current decorations are based on what looked good and were easy
     // to code.
 
+    // It might be useful to have a JACKPOT_MODE define that shows each
+    // decoration in sequence in order to make it easier to create
+    // screenshots for the User's Guide.
+
     // Vertical line. Lower and upper half for the start and end of the
     // conversation respectively, solid for conversation member, dashed
     // for other packets in the start-end range.
@@ -143,6 +147,7 @@ void RelatedPacketDelegate::paint(QPainter *painter, const QStyleOptionViewItem 
 
     // Related packet indicator. Rightward arrow for requests, leftward
     // arrow for responses, circle for others.
+    // XXX These are comically oversized when we have multi-line rows.
     if (related_frames_.contains(fd->num)) {
         painter->setBrush(fg);
         switch (related_frames_[fd->num]) {

@@ -27,9 +27,11 @@
 #include "epan/addr_resolv.h"
 #include "epan/dissectors/packet-h225.h"
 
-#include "ui/utf8_entities.h"
+#include "ui/rtp_stream.h"
+#include <wsutil/utf8_entities.h>
 
 #include "qt_ui_utils.h"
+#include "rtp_player_dialog.h"
 #include "sequence_dialog.h"
 #include "stock_icon.h"
 #include "wireshark_application.h"
@@ -62,37 +64,47 @@ const int comments_col_ = 8;
 
 Q_DECLARE_METATYPE(voip_calls_info_t*)
 
+enum { voip_calls_type_ = 1000 };
+
 class VoipCallsTreeWidgetItem : public QTreeWidgetItem
 {
 public:
-    VoipCallsTreeWidgetItem(QTreeWidget *tree, voip_calls_info_t *call_info) : QTreeWidgetItem(tree) {
-        setData(0, Qt::UserRole, qVariantFromValue(call_info));
+    VoipCallsTreeWidgetItem(QTreeWidget *tree, voip_calls_info_t *call_info) :
+        QTreeWidgetItem(tree, voip_calls_type_),
+        call_info_(call_info)
+    {
         drawData();
     }
 
+    voip_calls_info_t *callInfo() {
+        // XXX Not needed? We explicitly pass selected conversations to RtpPlayerDialog.
+//        call_info_->selected = isSelected() ? TRUE : FALSE;
+        return call_info_;
+    }
+
     void drawData() {
-        voip_calls_info_t *call_info = data(0, Qt::UserRole).value<voip_calls_info_t*>();
-        if (!call_info) {
+        if (!call_info_) {
+            setText(start_time_col_, QObject::tr("Error"));
             return;
         }
 
         // XXX Pull digit count from capture file precision
-        setText(start_time_col_, QString::number(nstime_to_sec(&(call_info->start_rel_ts)), 'f', 6));
-        setText(stop_time_col_, QString::number(nstime_to_sec(&(call_info->stop_rel_ts)), 'f', 6));
-        setText(initial_speaker_col_, address_to_display_qstring(&(call_info->initial_speaker)));
-        setText(from_col_, call_info->from_identity);
-        setText(to_col_, call_info->to_identity);
-        setText(protocol_col_, ((call_info->protocol == VOIP_COMMON) && call_info->protocol_name) ?
-                        call_info->protocol_name : voip_protocol_name[call_info->protocol]);
-        setText(packets_col_, QString::number(call_info->npackets));
-        setText(state_col_, voip_call_state_name[call_info->call_state]);
+        setText(start_time_col_, QString::number(nstime_to_sec(&(call_info_->start_rel_ts)), 'f', 6));
+        setText(stop_time_col_, QString::number(nstime_to_sec(&(call_info_->stop_rel_ts)), 'f', 6));
+        setText(initial_speaker_col_, address_to_display_qstring(&(call_info_->initial_speaker)));
+        setText(from_col_, call_info_->from_identity);
+        setText(to_col_, call_info_->to_identity);
+        setText(protocol_col_, ((call_info_->protocol == VOIP_COMMON) && call_info_->protocol_name) ?
+                        call_info_->protocol_name : voip_protocol_name[call_info_->protocol]);
+        setText(packets_col_, QString::number(call_info_->npackets));
+        setText(state_col_, voip_call_state_name[call_info_->call_state]);
 
         /* Add comments based on the protocol */
         QString call_comments;
-        switch (call_info->protocol) {
+        switch (call_info_->protocol) {
         case VOIP_ISUP:
         {
-            isup_calls_info_t *isup_info = (isup_calls_info_t *)call_info->prot_info;
+            isup_calls_info_t *isup_info = (isup_calls_info_t *)call_info_->prot_info;
             call_comments = QString("%1-%2 %3 %4-%5")
                     .arg(isup_info->ni)
                     .arg(isup_info->opc)
@@ -103,11 +115,11 @@ public:
             break;
         case VOIP_H323:
         {
-            h323_calls_info_t *h323_info = (h323_calls_info_t *)call_info->prot_info;
+            h323_calls_info_t *h323_info = (h323_calls_info_t *)call_info_->prot_info;
             gboolean flag = FALSE;
             static const QString on_str = QObject::tr("On");
             static const QString off_str = QObject::tr("Off");
-            if (call_info->call_state == VOIP_CALL_SETUP) {
+            if (call_info_->call_state == VOIP_CALL_SETUP) {
                 flag = h323_info->is_faststart_Setup;
             } else {
                 if ((h323_info->is_faststart_Setup) && (h323_info->is_faststart_Proc)) {
@@ -121,7 +133,7 @@ public:
             break;
         case VOIP_COMMON:
         default:
-            call_comments = call_info->call_comment;
+            call_comments = call_info_->call_comment;
             break;
         }
         setText(comments_col_, call_comments);
@@ -129,24 +141,25 @@ public:
 
     bool operator< (const QTreeWidgetItem &other) const
     {
-        voip_calls_info_t *this_call_info = data(0, Qt::UserRole).value<voip_calls_info_t*>();
-        voip_calls_info_t *other_call_info = other.data(0, Qt::UserRole).value<voip_calls_info_t*>();
-        if (!this_call_info || !other_call_info) {
-            return false;
+        if (other.type() != voip_calls_type_) return QTreeWidgetItem::operator< (other);
+        const VoipCallsTreeWidgetItem *other_row = static_cast<const VoipCallsTreeWidgetItem *>(&other);
+
+        if (!call_info_ || !other_row->call_info_) {
+            return QTreeWidgetItem::operator< (other);
         }
 
         switch (treeWidget()->sortColumn()) {
         case start_time_col_:
-            return nstime_cmp(&(this_call_info->start_rel_ts), &(other_call_info->start_rel_ts)) < 0;
+            return nstime_cmp(&(call_info_->start_rel_ts), &(other_row->call_info_->start_rel_ts)) < 0;
             break;
         case stop_time_col_:
-            return nstime_cmp(&(this_call_info->stop_rel_ts), &(other_call_info->stop_rel_ts)) < 0;
+            return nstime_cmp(&(call_info_->stop_rel_ts), &(other_row->call_info_->stop_rel_ts)) < 0;
             break;
         case initial_speaker_col_:
-            return cmp_address(&(this_call_info->initial_speaker), &(other_call_info->initial_speaker)) < 0;
+            return cmp_address(&(call_info_->initial_speaker), &(other_row->call_info_->initial_speaker)) < 0;
             break;
         case packets_col_:
-            return this_call_info->npackets < other_call_info->npackets;
+            return call_info_->npackets < other_row->call_info_->npackets;
             break;
         default:
             break;
@@ -155,7 +168,8 @@ public:
         // Fall back to string comparison
         return QTreeWidgetItem::operator <(other);
     }
-
+private:
+    voip_calls_info_t *call_info_;
 };
 
 VoipCallsDialog::VoipCallsDialog(QWidget &parent, CaptureFile &cf, bool all_flows) :
@@ -164,6 +178,8 @@ VoipCallsDialog::VoipCallsDialog(QWidget &parent, CaptureFile &cf, bool all_flow
     parent_(parent)
 {
     ui->setupUi(this);
+    loadGeometry(parent.width() * 4 / 5, parent.height() * 2 / 3);
+
     ui->callTreeWidget->sortByColumn(start_time_col_, Qt::AscendingOrder);
     setWindowSubtitle(all_flows ? tr("SIP Flows") : tr("VoIP Calls"));
 
@@ -171,11 +187,7 @@ VoipCallsDialog::VoipCallsDialog(QWidget &parent, CaptureFile &cf, bool all_flow
 
     prepare_button_ = ui->buttonBox->addButton(tr("Prepare Filter"), QDialogButtonBox::ApplyRole);
     sequence_button_ = ui->buttonBox->addButton(tr("Flow Sequence"), QDialogButtonBox::ApplyRole);
-    player_button_ = ui->buttonBox->addButton(tr("Play Call"), QDialogButtonBox::ApplyRole);
-    player_button_->setIcon(StockIcon("media-playback-start"));
-
-    // XXX Use recent settings instead
-    resize(parent.width() * 4 / 5, parent.height() * 2 / 3);
+    player_button_ = RtpPlayerDialog::addPlayerButton(ui->buttonBox);
 
     memset (&tapinfo_, 0, sizeof(tapinfo_));
     tapinfo_.tap_packet = tapPacket;
@@ -186,6 +198,7 @@ VoipCallsDialog::VoipCallsDialog(QWidget &parent, CaptureFile &cf, bool all_flow
     tapinfo_.fs_option = all_flows ? FLOW_ALL : FLOW_ONLY_INVITES; /* flow show option */
     tapinfo_.graph_analysis = sequence_analysis_info_new();
     tapinfo_.graph_analysis->type = SEQ_ANALYSIS_VOIP;
+    sequence_info_ = new SequenceInfo(tapinfo_.graph_analysis);
 
     voip_calls_init_all_taps(&tapinfo_);
 
@@ -201,8 +214,16 @@ VoipCallsDialog::~VoipCallsDialog()
 {
     delete ui;
 
+    voip_calls_reset_all_taps(&tapinfo_);
     voip_calls_remove_all_tap_listeners(&tapinfo_);
-    sequence_analysis_info_free(tapinfo_.graph_analysis);
+    sequence_info_->unref();
+    g_queue_free(tapinfo_.callsinfos);
+}
+
+void VoipCallsDialog::endRetapPackets()
+{
+    voip_calls_remove_all_tap_listeners(&tapinfo_);
+    WiresharkDialog::endRetapPackets();
 }
 
 void VoipCallsDialog::captureFileClosing()
@@ -240,7 +261,7 @@ void VoipCallsDialog::changeEvent(QEvent *event)
 
 gboolean VoipCallsDialog::tapPacket(void *, packet_info *, epan_dissect_t *, const void *)
 {
-#ifdef QT_MULTIMEDIAWIDGETS_LIB
+#ifdef QT_MULTIMEDIA_LIB
 //    voip_calls_tapinfo_t *tapinfo = (voip_calls_tapinfo_t *) tapinfo_ptr;
     // add_rtp_packet for voip player.
 //    return TRUE;
@@ -254,6 +275,19 @@ void VoipCallsDialog::tapDraw(void *tapinfo_ptr)
 
     if (!tapinfo || !tapinfo->redraw) {
         return;
+    }
+
+    GList *graph_item = g_queue_peek_nth_link(tapinfo->graph_analysis->items, 0);
+    for (; graph_item; graph_item = g_list_next(graph_item)) {
+        for (GList *rsi_entry = g_list_first(tapinfo->rtp_stream_list); rsi_entry; rsi_entry = g_list_next(rsi_entry)) {
+            seq_analysis_item_t * sai = (seq_analysis_item_t *)graph_item->data;
+            rtp_stream_info_t *rsi = (rtp_stream_info_t *)rsi_entry->data;
+
+            if (rsi->start_fd->num == sai->frame_number) {
+                rsi->call_num = sai->conv_num;
+                // VOIP_CALLS_DEBUG("setting conv num %u for frame %u", sai->conv_num, sai->frame_number);
+            }
+        }
     }
 
     VoipCallsDialog *voip_calls_dialog = static_cast<VoipCallsDialog *>(tapinfo->tap_data);
@@ -306,7 +340,7 @@ void VoipCallsDialog::updateWidgets()
     }
     prepare_button_->setEnabled(selected && have_ga_items);
     sequence_button_->setEnabled(selected && have_ga_items);
-#if defined(QT_MULTIMEDIAWIDGETS_LIB) && 0 // We don't have a playback dialog yet.
+#if defined(QT_MULTIMEDIA_LIB)
     player_button_->setEnabled(selected && have_ga_items);
 #else
     player_button_->setEnabled(false);
@@ -326,7 +360,11 @@ void VoipCallsDialog::prepareFilter()
     /* Build a new filter based on frame numbers */
     const char *or_prepend = "";
     foreach (QTreeWidgetItem *ti, ui->callTreeWidget->selectedItems()) {
-        voip_calls_info_t *call_info = ti->data(0, Qt::UserRole).value<voip_calls_info_t*>();
+        VoipCallsTreeWidgetItem *vc_ti = static_cast<VoipCallsTreeWidgetItem *>(ti);
+        voip_calls_info_t *call_info = vc_ti->callInfo();
+        if (!call_info) {
+            return;
+        }
         selected_calls << call_info->call_num;
     }
 
@@ -334,7 +372,7 @@ void VoipCallsDialog::prepareFilter()
     while (cur_ga_item && cur_ga_item->data) {
         seq_analysis_item_t *ga_item = (seq_analysis_item_t*) cur_ga_item->data;
         if (selected_calls.contains(ga_item->conv_num)) {
-            filter_str += QString("%1frame.number == %2").arg(or_prepend).arg(ga_item->fd->num);
+            filter_str += QString("%1frame.number == %2").arg(or_prepend).arg(ga_item->frame_number);
             or_prepend = " or ";
         }
         cur_ga_item = g_list_next(cur_ga_item);
@@ -437,7 +475,11 @@ void VoipCallsDialog::showSequence()
 
     QSet<guint16> selected_calls;
     foreach (QTreeWidgetItem *ti, ui->callTreeWidget->selectedItems()) {
-        voip_calls_info_t *call_info = ti->data(0, Qt::UserRole).value<voip_calls_info_t*>();
+        VoipCallsTreeWidgetItem *vc_ti = static_cast<VoipCallsTreeWidgetItem *>(ti);
+        voip_calls_info_t *call_info = vc_ti->callInfo();
+        if (!call_info) {
+            return;
+        }
         selected_calls << call_info->call_num;
     }
 
@@ -449,16 +491,44 @@ void VoipCallsDialog::showSequence()
         cur_ga_item = g_list_next(cur_ga_item);
     }
 
-    SequenceDialog *sequence_dialog = new SequenceDialog(parent_, cap_file_, tapinfo_.graph_analysis);
+    SequenceDialog *sequence_dialog = new SequenceDialog(parent_, cap_file_, sequence_info_);
     // XXX This goes away when we close the VoIP Calls dialog.
     connect(sequence_dialog, SIGNAL(goToPacket(int)),
             this, SIGNAL(goToPacket(int)));
     sequence_dialog->show();
 }
 
+void VoipCallsDialog::showPlayer()
+{
+#ifdef QT_MULTIMEDIA_LIB
+    RtpPlayerDialog rtp_player_dialog(*this, cap_file_);
+
+    foreach (QTreeWidgetItem *ti, ui->callTreeWidget->selectedItems()) {
+        VoipCallsTreeWidgetItem *vc_ti = static_cast<VoipCallsTreeWidgetItem *>(ti);
+        for (GList *rsi_entry = g_list_first(tapinfo_.rtp_stream_list); rsi_entry; rsi_entry = g_list_next(rsi_entry)) {
+            rtp_stream_info_t *rsi = (rtp_stream_info_t *)rsi_entry->data;
+            if (!rsi) continue;
+
+            //VOIP_CALLS_DEBUG("checking call %u, start frame %u == stream call %u, start frame %u, setup frame %u",
+            //                vc_ti->callInfo()->call_num, vc_ti->callInfo()->start_fd->num,
+            //                rsi->call_num, rsi->start_fd->num, rsi->setup_frame_number);
+            if (vc_ti->callInfo()->call_num == rsi->call_num) {
+                //VOIP_CALLS_DEBUG("adding call number %u", vc_ti->callInfo()->call_num);
+                rtp_player_dialog.addRtpStream(rsi);
+            }
+        }
+    }
+
+    connect(&rtp_player_dialog, SIGNAL(goToPacket(int)), this, SIGNAL(goToPacket(int)));
+
+    rtp_player_dialog.exec();
+#endif // QT_MULTIMEDIA_LIB
+}
+
 void VoipCallsDialog::on_callTreeWidget_itemActivated(QTreeWidgetItem *item, int)
 {
-    voip_calls_info_t *call_info = item->data(0, Qt::UserRole).value<voip_calls_info_t*>();
+    VoipCallsTreeWidgetItem *vc_ti = static_cast<VoipCallsTreeWidgetItem *>(item);
+    voip_calls_info_t *call_info = vc_ti->callInfo();
     if (!call_info) {
         return;
     }
@@ -481,6 +551,8 @@ void VoipCallsDialog::on_buttonBox_clicked(QAbstractButton *button)
         prepareFilter();
     } else if (button == sequence_button_) {
         showSequence();
+    } else if (button == player_button_) {
+        showPlayer();
     }
 }
 

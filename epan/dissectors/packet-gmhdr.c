@@ -216,15 +216,15 @@ dissect_gmtlv(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *gmhdr_tree, gui
 
 
 
-static void
-dissect_gmhdr(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
+static int
+dissect_gmhdr(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data _U_)
 {
-  proto_tree          *ti;
-  gint16               length;
-  volatile guint16     encap_proto;
-  volatile gboolean    is_802_2;
-  proto_tree *volatile gmhdr_tree = NULL;
-  volatile guint       offset = 0;
+  proto_tree *ti;
+  gint16      length;
+  guint16     encap_proto;
+  gboolean    is_802_2;
+  proto_tree *gmhdr_tree = NULL;
+  guint       offset = 0;
 
   length = tvb_get_guint8(tvb, offset); /* Length of the Gigamon header */
 
@@ -274,6 +274,7 @@ dissect_gmhdr(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
 
     call_dissector_with_data(ethertype_handle, tvb, pinfo, tree, &ethertype_data);
   }
+  return tvb_captured_length(tvb);
 }
 
 static int
@@ -518,7 +519,7 @@ proto_reg_handoff_gmhdr(void)
 {
   dissector_handle_t gmhdr_handle;
 
-  ethertype_handle = find_dissector("ethertype");
+  ethertype_handle = find_dissector_add_dependency("ethertype", proto_gmhdr);
 
   gmhdr_handle = create_dissector_handle(dissect_gmhdr, proto_gmhdr);
   dissector_add_uint("ethertype", ETHERTYPE_GIGAMON, gmhdr_handle);

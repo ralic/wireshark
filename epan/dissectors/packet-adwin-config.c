@@ -319,7 +319,7 @@ get_adwin_TCPUpdate_len(packet_info *pinfo _U_, tvbuff_t *tvb,
 }
 
 static int
-dissect_TCPFlashUpdate(tvbuff_t *tvb,  packet_info *pinfo _U_, proto_tree *tree, void* data _U_)
+dissect_TCPFlashUpdate(tvbuff_t *tvb,  packet_info *pinfo, proto_tree *tree, void* data _U_)
 {
 	proto_tree *adwin_tree;
 	proto_item *ti;
@@ -565,7 +565,7 @@ proto_register_adwin_config(void)
 		},
 		{ &hf_adwin_config_netmask,
 		  { "Netmask", "adwin_config.netmask",
-		    FT_IPv4, BASE_NONE, NULL, 0x0,
+		    FT_IPv4, BASE_NETMASK, NULL, 0x0,
 		    NULL, HFILL }
 		},
 		{ &hf_adwin_config_netmask_count,

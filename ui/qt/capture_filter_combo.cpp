@@ -30,11 +30,11 @@
 #include "capture_filter_combo.h"
 #include "wireshark_application.h"
 
-CaptureFilterCombo::CaptureFilterCombo(QWidget *parent) :
+CaptureFilterCombo::CaptureFilterCombo(QWidget *parent, bool plain) :
     QComboBox(parent),
     cf_edit_(NULL)
 {
-    cf_edit_ = new CaptureFilterEdit(this, true);
+    cf_edit_ = new CaptureFilterEdit(this, plain);
 
     setEditable(true);
     // Enabling autocompletion here gives us two simultaneous completions:
@@ -83,11 +83,11 @@ CaptureFilterCombo::CaptureFilterCombo(QWidget *parent) :
     connect(cf_edit_, SIGNAL(captureFilterSyntaxChanged(bool)),
             this, SIGNAL(captureFilterSyntaxChanged(bool)));
     connect(cf_edit_, SIGNAL(startCapture()), this, SIGNAL(startCapture()));
-    connect(cf_edit_, SIGNAL(startCapture()), this, SLOT(rebuildFilterList()));
+    connect(cf_edit_, SIGNAL(startCapture()), this, SLOT(saveAndRebuildFilterList()));
     connect(wsApp, SIGNAL(appInitialized()), this, SLOT(rebuildFilterList()));
     connect(wsApp, SIGNAL(preferencesChanged()), this, SLOT(rebuildFilterList()));
 
-    rebuildFilterList(false);
+    lineEdit()->setReadOnly(true);
     clearEditText();
 }
 
@@ -102,22 +102,23 @@ void CaptureFilterCombo::writeRecent(FILE *rf) {
     }
 }
 
-void CaptureFilterCombo::rebuildFilterList(bool insert_edit_text)
+void CaptureFilterCombo::saveAndRebuildFilterList()
 {
-    GList *cfilter_list = recent_get_cfilter_list(NULL);
-    QString cur_filter = currentText();
-
-    if (insert_edit_text && !currentText().isEmpty()) {
+    if (!currentText().isEmpty()) {
         recent_add_cfilter(NULL, currentText().toUtf8().constData());
     }
-
+    rebuildFilterList();
+}
+void CaptureFilterCombo::rebuildFilterList()
+{
     lineEdit()->blockSignals(true);
+    GList *cfilter_list = recent_get_cfilter_list(NULL);
     clear();
     for (GList *li = g_list_first(cfilter_list); li != NULL; li = g_list_next(li)) {
         insertItem(0, (const gchar *) li->data);
     }
-    lineEdit()->setText(cur_filter);
     lineEdit()->blockSignals(false);
+    lineEdit()->setReadOnly(false);
 }
 
 /*

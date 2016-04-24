@@ -1,11 +1,11 @@
 /* Do not modify this file. Changes will be overwritten.                      */
 /* Generated automatically by the ASN.1 to Wireshark dissector compiler       */
 /* packet-idmp.c                                                              */
-/* ../../tools/asn2wrs.py -b -L -p idmp -c ./idmp.cnf -s ./packet-idmp-template -D . -O ../../epan/dissectors IDMProtocolSpecification.asn CommonProtocolSpecification.asn */
+/* asn2wrs.py -b -L -p idmp -c ./idmp.cnf -s ./packet-idmp-template -D . -O ../.. IDMProtocolSpecification.asn CommonProtocolSpecification.asn */
 
 /* Input file: packet-idmp-template.c */
 
-#line 1 "../../asn1/idmp/packet-idmp-template.c"
+#line 1 "./asn1/idmp/packet-idmp-template.c"
 /* packet-idmp.c
  * Routines for X.519 Internet Directly Mapped Procotol (IDMP) packet dissection
  * Graeme Lunt 2010
@@ -39,6 +39,8 @@
 #include <epan/asn1.h>
 #include <epan/ipproto.h>
 #include <epan/strutil.h>
+
+#include <wsutil/str_util.h>
 
 #include "packet-tcp.h"
 
@@ -136,7 +138,7 @@ static int call_idmp_oid_callback(tvbuff_t *tvb, int offset, packet_info *pinfo,
 
 
 /*--- Included file: packet-idmp-hf.c ---*/
-#line 1 "../../asn1/idmp/packet-idmp-hf.c"
+#line 1 "./asn1/idmp/packet-idmp-hf.c"
 static int hf_idmp_bind = -1;                     /* IdmBind */
 static int hf_idmp_bindResult = -1;               /* IdmBindResult */
 static int hf_idmp_bindError = -1;                /* IdmBindError */
@@ -171,13 +173,13 @@ static int hf_idmp_present = -1;                  /* INTEGER */
 static int hf_idmp_absent = -1;                   /* NULL */
 
 /*--- End of included file: packet-idmp-hf.c ---*/
-#line 130 "../../asn1/idmp/packet-idmp-template.c"
+#line 132 "./asn1/idmp/packet-idmp-template.c"
 
 /* Initialize the subtree pointers */
 static gint ett_idmp = -1;
 
 /*--- Included file: packet-idmp-ett.c ---*/
-#line 1 "../../asn1/idmp/packet-idmp-ett.c"
+#line 1 "./asn1/idmp/packet-idmp-ett.c"
 static gint ett_idmp_IDM_PDU = -1;
 static gint ett_idmp_IdmBind = -1;
 static gint ett_idmp_IdmBindResult = -1;
@@ -190,11 +192,11 @@ static gint ett_idmp_Code = -1;
 static gint ett_idmp_InvokeId = -1;
 
 /*--- End of included file: packet-idmp-ett.c ---*/
-#line 134 "../../asn1/idmp/packet-idmp-template.c"
+#line 136 "./asn1/idmp/packet-idmp-template.c"
 
 
 /*--- Included file: packet-idmp-fn.c ---*/
-#line 1 "../../asn1/idmp/packet-idmp-fn.c"
+#line 1 "./asn1/idmp/packet-idmp-fn.c"
 
 
 static int
@@ -618,7 +620,7 @@ dissect_idmp_IDM_PDU(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U
 
 
 /*--- End of included file: packet-idmp-fn.c ---*/
-#line 136 "../../asn1/idmp/packet-idmp-template.c"
+#line 138 "./asn1/idmp/packet-idmp-template.c"
 
 void
 register_idmp_protocol_info(const char *oid, const ros_info_t *rinfo, int proto _U_, const char *name)
@@ -644,7 +646,7 @@ static int dissect_idmp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *parent_tr
 
     asn1_ctx_init(&asn1_ctx, ASN1_ENC_BER, TRUE, pinfo);
 
-    conv = find_conversation (pinfo->fd->num, &pinfo->src, &pinfo->dst,
+    conv = find_conversation (pinfo->num, &pinfo->src, &pinfo->dst,
                               pinfo->ptype, pinfo->srcport, pinfo->destport, 0);
     if (conv) {
         /* Found a conversation, also use index for the generated dst_ref */
@@ -689,7 +691,7 @@ static int dissect_idmp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *parent_tr
                 tvb = process_reassembled_data (tvb, offset, pinfo,
                                                 "Reassembled IDMP", fd_head, &idmp_frag_items, NULL, tree);
                 offset = 0;
-            } else if (pinfo->fd->num != fd_head->reassembled_in) {
+            } else if (pinfo->num != fd_head->reassembled_in) {
                 /* Add a "Reassembled in" link if not reassembled in this frame */
                 proto_tree_add_uint (tree, hf_idmp_reassembled_in,
                                      tvb, 0, 0, fd_head->reassembled_in);
@@ -803,7 +805,7 @@ void proto_register_idmp(void)
 
 
 /*--- Included file: packet-idmp-hfarr.c ---*/
-#line 1 "../../asn1/idmp/packet-idmp-hfarr.c"
+#line 1 "./asn1/idmp/packet-idmp-hfarr.c"
     { &hf_idmp_bind,
       { "bind", "idmp.bind_element",
         FT_NONE, BASE_NONE, NULL, 0,
@@ -934,7 +936,7 @@ void proto_register_idmp(void)
         NULL, HFILL }},
 
 /*--- End of included file: packet-idmp-hfarr.c ---*/
-#line 319 "../../asn1/idmp/packet-idmp-template.c"
+#line 321 "./asn1/idmp/packet-idmp-template.c"
     };
 
     /* List of subtrees */
@@ -944,7 +946,7 @@ void proto_register_idmp(void)
         &ett_idmp_fragments,
 
 /*--- Included file: packet-idmp-ettarr.c ---*/
-#line 1 "../../asn1/idmp/packet-idmp-ettarr.c"
+#line 1 "./asn1/idmp/packet-idmp-ettarr.c"
     &ett_idmp_IDM_PDU,
     &ett_idmp_IdmBind,
     &ett_idmp_IdmBindResult,
@@ -957,7 +959,7 @@ void proto_register_idmp(void)
     &ett_idmp_InvokeId,
 
 /*--- End of included file: packet-idmp-ettarr.c ---*/
-#line 327 "../../asn1/idmp/packet-idmp-template.c"
+#line 329 "./asn1/idmp/packet-idmp-template.c"
     };
     module_t *idmp_module;
 
@@ -968,7 +970,7 @@ void proto_register_idmp(void)
     proto_register_field_array(proto_idmp, hf, array_length(hf));
     proto_register_subtree_array(ett, array_length(ett));
 
-    new_register_dissector("idmp", dissect_idmp_tcp, proto_idmp);
+    register_dissector("idmp", dissect_idmp_tcp, proto_idmp);
 
     register_init_routine (&idmp_reassemble_init);
     register_cleanup_routine (&idmp_reassemble_cleanup);

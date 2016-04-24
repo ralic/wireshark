@@ -93,6 +93,7 @@ register_codec_plugin(gpointer data, gpointer user_data _U_)
     (plugin->register_codec_module)();
 }
 
+
 /*
  * For all codec plugins, call their register routines.
  */
@@ -168,6 +169,20 @@ register_codec(const char *name, codec_init_fn init_fn, codec_release_fn release
     return TRUE;
 }
 
+/* Deregister a codec by name. */
+gboolean
+deregister_codec(const char *name)
+{
+    gpointer key, value;
+
+    if (registered_codecs && g_hash_table_lookup_extended(registered_codecs, name, &key, &value)) {
+        g_hash_table_remove(registered_codecs, name);
+        g_free(value);
+        return TRUE;
+    }
+    return FALSE;
+}
+
 void *codec_init(codec_handle_t codec)
 {
     if (!codec) return NULL;
@@ -180,19 +195,19 @@ void codec_release(codec_handle_t codec, void *context)
     (codec->release_fn)(context);
 }
 
-int codec_get_channels(codec_handle_t codec, void *context)
+unsigned codec_get_channels(codec_handle_t codec, void *context)
 {
     if (!codec) return 0;
     return (codec->channels_fn)(context);
 }
 
-int codec_get_frequency(codec_handle_t codec, void *context)
+unsigned codec_get_frequency(codec_handle_t codec, void *context)
 {
     if (!codec) return 0;
     return (codec->frequency_fn)(context);
 }
 
-int codec_decode(codec_handle_t codec, void *context, const void *input, int inputSizeBytes, void *output, int *outputSizeBytes)
+size_t codec_decode(codec_handle_t codec, void *context, const void *input, size_t inputSizeBytes, void *output, size_t *outputSizeBytes)
 {
     if (!codec) return 0;
     return (codec->decode_fn)(context, input, inputSizeBytes, output, outputSizeBytes);

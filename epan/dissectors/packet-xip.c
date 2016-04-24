@@ -43,7 +43,6 @@ void proto_register_xip(void);
 void proto_reg_handoff_xip(void);
 
 /* Next dissector handles. */
-static dissector_handle_t data_handle;
 static dissector_handle_t xip_serval_handle;
 
 static gint proto_xip			= -1;
@@ -68,6 +67,8 @@ static expert_field ei_xip_invalid_len = EI_INIT;
 static expert_field ei_xip_next_header = EI_INIT;
 static expert_field ei_xip_bad_num_dst = EI_INIT;
 static expert_field ei_xip_bad_num_src = EI_INIT;
+
+static dissector_handle_t xip_handle;
 
 /* XIA principals. */
 #define XIDTYPE_NAT		0x00
@@ -482,7 +483,7 @@ dissect_xip_next_header(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree,
 	switch (next_header) {
 	case XIA_NEXT_HEADER_DATA:
 		next_tvb = tvb_new_subset_remaining(tvb, offset);
-		return call_dissector(data_handle, next_tvb, pinfo, tree);
+		return call_data_dissector(next_tvb, pinfo, tree);
 	default:
 		expert_add_info_format(pinfo, next_ti, &ei_xip_next_header,
 		 "Unrecognized next header type: 0x%02x", next_header);
@@ -681,9 +682,9 @@ proto_register_xip(void)
 	proto_xip = proto_register_protocol(
 		"eXpressive Internet Protocol",
 		"XIP",
-	        "xip");
+		"xip");
 
-	new_register_dissector("xip", dissect_xip, proto_xip);
+	xip_handle = register_dissector("xip", dissect_xip, proto_xip);
 	proto_register_field_array(proto_xip, hf, array_length(hf));
 	proto_register_subtree_array(ett, array_length(ett));
 
@@ -694,13 +695,9 @@ proto_register_xip(void)
 void
 proto_reg_handoff_xip(void)
 {
-	dissector_handle_t xip_handle;
-
-	xip_handle = new_create_dissector_handle(dissect_xip, proto_xip);
 	dissector_add_uint("ethertype", ETHERTYPE_XIP, xip_handle);
 
-	xip_serval_handle = find_dissector("xipserval");
-	data_handle = find_dissector("data");
+	xip_serval_handle = find_dissector_add_dependency("xipserval", proto_xip);
 }
 
 /*

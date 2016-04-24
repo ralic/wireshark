@@ -59,10 +59,10 @@ esac
 
 ACVER=`$AUTOCONF --version | grep '^autoconf' | sed 's/.*) *//'`
 case "$ACVER" in
-'' | 0.* | 1.* | 2.[0-5]* )
+'' | 0.* | 1.* | 2.[0-5]* | 2.6[0123]* )
   cat >&2 <<_EOF_
 
-	You must have autoconf 2.60 or later installed to compile $PROJECT.
+	You must have autoconf 2.64 or later installed to compile $PROJECT.
 	Download the appropriate package for your distribution/OS,
 	or get the source tarball at ftp://ftp.gnu.org/pub/gnu/autoconf/
 _EOF_
@@ -107,11 +107,11 @@ else
 	LIBTOOLIZE=glibtoolize
 fi
 case "$LTVER" in
-'' | 0.* | 1.[0-3]* )
+'' | 0.* | 1.* | 2.2 )
 
   cat >&2 <<_EOF_
 
-	You must have libtool 1.4 or later installed to compile $PROJECT.
+	You must have libtool 2.2.2 or later installed to compile $PROJECT.
 	Download the appropriate package for your distribution/OS,
 	or get the source tarball at ftp://ftp.gnu.org/pub/gnu/libtool/
 _EOF_
@@ -135,24 +135,13 @@ fi
 
 $DIE
 
-aclocal_flags=`./aclocal-flags`
+aclocal_flags="-I m4"
 aclocalinclude="$ACLOCAL_FLAGS $aclocal_flags";
 echo $ACLOCAL $aclocalinclude
 $ACLOCAL $aclocalinclude || exit 1
-#
-# We do NOT want libtoolize overwriting our versions of config.guess and
-# config.sub, so move them away and then move them back.
-# We don't omit "--force", as we want libtoolize to install other files
-# without whining.
-#
-mv config.guess config.guess.save-libtool
-mv config.sub config.sub.save-libtool
 LTARGS=" --copy --force"
 echo $LIBTOOLIZE $LTARGS
 $LIBTOOLIZE $LTARGS || exit 1
-rm -f config.guess config.sub
-mv config.guess.save-libtool config.guess
-mv config.sub.save-libtool config.sub
 echo $AUTOHEADER
 $AUTOHEADER || exit 1
 echo $AUTOMAKE --add-missing --gnu $am_opt

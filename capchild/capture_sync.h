@@ -36,6 +36,8 @@
 extern "C" {
 #endif /* __cplusplus */
 
+struct _info_data;
+
 /**
  * Start a new capture session.
  *  Create a capture child which is doing the real capture work.
@@ -46,11 +48,12 @@ extern "C" {
  *
  *  @param capture_opts the options
  *  @param cap_session a handle for the capture session
+ *  @param cap_data a struct with capture info data
  *  @param update_cb update screen
  *  @return             TRUE if a capture could be started, FALSE if not
  */
 extern gboolean
-sync_pipe_start(capture_options *capture_opts, capture_session *cap_session, void(*update_cb)(void));
+sync_pipe_start(capture_options *capture_opts, capture_session *cap_session, struct _info_data* cap_data, void(*update_cb)(void));
 
 /** User wants to stop capturing, gracefully close the capture child */
 extern void
@@ -63,6 +66,7 @@ sync_pipe_kill(ws_process_id fork_child);
 /** Set wireless channel using dumpcap */
 extern int
 sync_interface_set_80211_chan(const gchar *iface, const char *freq, const gchar *type,
+                              const gchar *center_freq1, const gchar *center_freq2,
                               gchar **data, gchar **primary_msg,
                               gchar **secondary_msg, void (*update_cb)(void));
 

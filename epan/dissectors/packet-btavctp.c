@@ -28,6 +28,7 @@
 #include <epan/prefs.h>
 #include <epan/expert.h>
 #include <epan/decode_as.h>
+#include <epan/proto_data.h>
 
 #include "packet-bluetooth.h"
 #include "packet-btl2cap.h"
@@ -39,7 +40,7 @@
 #define PACKET_TYPE_CONTINUE  0x02
 #define PACKET_TYPE_END       0x03
 
-static int proto_btavctp                        = -1;
+int proto_btavctp = -1;
 
 static int hf_btavctp_transaction               = -1;
 static int hf_btavctp_packet_type               = -1;
@@ -55,7 +56,6 @@ static expert_field ei_btavctp_unexpected_frame = EI_INIT;
 static expert_field ei_btavctp_invalid_profile = EI_INIT;
 
 static dissector_handle_t btavctp_handle;
-static dissector_handle_t data_handle    = NULL;
 
 typedef struct _fragment_t {
     guint   length;
@@ -107,7 +107,6 @@ dissect_btavctp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data)
     proto_item      *pitem;
     proto_item      *ipid_item = NULL;
     btavctp_data_t  *avctp_data;
-    btl2cap_data_t  *l2cap_data;
     tvbuff_t        *next_tvb;
     gint            offset = 0;
     guint           packet_type;
@@ -118,11 +117,28 @@ dissect_btavctp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data)
     guint           length;
     guint           i_frame;
     gboolean        ipid = FALSE;
+    guint32         interface_id;
+    guint32         adapter_id;
+    guint32         chandle;
+    guint32         psm;
+    gint            previous_proto;
 
-    /* Reject the packet if data is NULL */
-    if (data == NULL)
-        return 0;
-    l2cap_data = (btl2cap_data_t *) data;
+    previous_proto = (GPOINTER_TO_INT(wmem_list_frame_data(wmem_list_frame_prev(wmem_list_tail(pinfo->layers)))));
+    if (previous_proto == proto_btl2cap) {
+        btl2cap_data_t  *l2cap_data;
+
+        l2cap_data = (btl2cap_data_t *) data;
+
+        interface_id = l2cap_data->interface_id;
+        adapter_id   = l2cap_data->adapter_id;
+        chandle      = l2cap_data->chandle;
+        psm          = l2cap_data->psm;
+    } else {
+        interface_id = HCI_INTERFACE_DEFAULT;
+        adapter_id   = HCI_ADAPTER_DEFAULT;
+        chandle      = 0;
+        psm          = 0;
+    }
 
     ti = proto_tree_add_item(tree, proto_btavctp, tvb, offset, tvb_captured_length_remaining(tvb, offset), ENC_NA);
     btavctp_tree = proto_item_add_subtree(ti, ett_btavctp);
@@ -196,10 +212,10 @@ dissect_btavctp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data)
 
     avctp_data = wmem_new(wmem_packet_scope(), btavctp_data_t);
     avctp_data->cr           = cr;
-    avctp_data->interface_id = l2cap_data->interface_id;
-    avctp_data->adapter_id   = l2cap_data->adapter_id;
-    avctp_data->chandle      = l2cap_data->chandle;
-    avctp_data->psm          = l2cap_data->psm;
+    avctp_data->interface_id = interface_id;
+    avctp_data->adapter_id   = adapter_id;
+    avctp_data->chandle      = chandle;
+    avctp_data->psm          = psm;
 
     length = tvb_reported_length_remaining(tvb, offset);
 
@@ -214,43 +230,26 @@ dissect_btavctp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data)
         uuid.data[1] = pid & 0xFF;
 
         if (!dissector_try_string(bluetooth_uuid_table, print_numeric_uuid(&uuid), next_tvb, pinfo, tree, avctp_data)) {
-            call_dissector(data_handle, next_tvb, pinfo, tree);
+            call_data_dissector(next_tvb, pinfo, tree);
         }
 
     } else {
         fragment_t     *fragment;
         wmem_tree_key_t key[6];
-        guint32         k_interface_id;
-        guint32         k_adapter_id;
-        guint32         k_chandle;
-        guint32         k_psm;
-        guint32         k_frame_number;
-        guint32         interface_id;
-        guint32         adapter_id;
-        guint32         chandle;
-        guint32         psm;
+        guint32         frame_number;
 
-        interface_id = l2cap_data->interface_id;
-        adapter_id   = l2cap_data->adapter_id;
-        chandle      = l2cap_data->chandle;
-        psm          = l2cap_data->psm;
-
-        k_interface_id = interface_id;
-        k_adapter_id   = adapter_id;
-        k_chandle      = chandle;
-        k_psm          = psm;
-        k_frame_number = pinfo->fd->num;
+        frame_number = pinfo->num;
 
         key[0].length = 1;
-        key[0].key = &k_interface_id;
+        key[0].key = &interface_id;
         key[1].length = 1;
-        key[1].key = &k_adapter_id;
+        key[1].key = &adapter_id;
         key[2].length = 1;
-        key[2].key = &k_chandle;
+        key[2].key = &chandle;
         key[3].length = 1;
-        key[3].key = &k_psm;
+        key[3].key = &psm;
         key[4].length = 1;
-        key[4].key = &k_frame_number;
+        key[4].key = &frame_number;
         key[5].length = 0;
         key[5].key = NULL;
 
@@ -285,7 +284,7 @@ dissect_btavctp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data)
                     fragments = NULL;
             }
 
-            call_dissector(data_handle, next_tvb, pinfo, tree);
+            call_data_dissector(next_tvb, pinfo, tree);
 
         } else if (packet_type == PACKET_TYPE_CONTINUE) {
             fragments = (fragments_t *)wmem_tree_lookup32_array_le(reassembling, key);
@@ -309,29 +308,25 @@ dissect_btavctp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data)
                 fragments->chandle      = chandle;
                 fragments->psm          = psm;
 
-                k_interface_id = interface_id;
-                k_adapter_id   = adapter_id;
-                k_chandle      = chandle;
-                k_psm          = psm;
-                k_frame_number = pinfo->fd->num;
+                frame_number = pinfo->num;
 
                 key[0].length = 1;
-                key[0].key = &k_interface_id;
+                key[0].key = &interface_id;
                 key[1].length = 1;
-                key[1].key = &k_adapter_id;
+                key[1].key = &adapter_id;
                 key[2].length = 1;
-                key[2].key = &k_chandle;
+                key[2].key = &chandle;
                 key[3].length = 1;
-                key[3].key = &k_psm;
+                key[3].key = &psm;
                 key[4].length = 1;
-                key[4].key = &k_frame_number;
+                key[4].key = &frame_number;
                 key[5].length = 0;
                 key[5].key = NULL;
 
                 wmem_tree_insert32_array(reassembling, key, fragments);
             }
 
-            call_dissector(data_handle, next_tvb, pinfo, tree);
+            call_data_dissector(next_tvb, pinfo, tree);
 
         } else if (packet_type == PACKET_TYPE_END) {
             guint    i_length = 0;
@@ -357,22 +352,18 @@ dissect_btavctp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data)
                 fragments->chandle      = chandle;
                 fragments->psm          = psm;
 
-                k_interface_id = interface_id;
-                k_adapter_id   = adapter_id;
-                k_chandle      = chandle;
-                k_psm          = psm;
-                k_frame_number = pinfo->fd->num;
+                frame_number = pinfo->num;
 
                 key[0].length = 1;
-                key[0].key = &k_interface_id;
+                key[0].key = &interface_id;
                 key[1].length = 1;
-                key[1].key = &k_adapter_id;
+                key[1].key = &adapter_id;
                 key[2].length = 1;
-                key[2].key = &k_chandle;
+                key[2].key = &chandle;
                 key[3].length = 1;
-                key[3].key = &k_psm;
+                key[3].key = &psm;
                 key[4].length = 1;
-                key[4].key = &k_frame_number;
+                key[4].key = &frame_number;
                 key[5].length = 0;
                 key[5].key = NULL;
 
@@ -382,7 +373,7 @@ dissect_btavctp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data)
             length = 0;
             if (!fragments || fragments->count != fragments->number_of_packets) {
                 expert_add_info(pinfo, pitem, &ei_btavctp_unexpected_frame);
-                call_dissector(data_handle, next_tvb, pinfo, tree);
+                call_data_dissector(next_tvb, pinfo, tree);
             } else {
                 guint8   *reassembled;
                 bluetooth_uuid_t  uuid;
@@ -392,7 +383,7 @@ dissect_btavctp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data)
                     length += fragment->length;
                 }
 
-                reassembled = (guint8 *) wmem_alloc(wmem_file_scope(), length);
+                reassembled = (guint8 *) wmem_alloc(pinfo->pool, length);
 
                 for (i_frame = 1; i_frame <= fragments->count; ++i_frame) {
                     fragment = (fragment_t *)wmem_tree_lookup32_le(fragments->fragment, i_frame);
@@ -411,13 +402,13 @@ dissect_btavctp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data)
                 uuid.data[1] = fragments->pid & 0xFF;
 
                 if (!dissector_try_string(bluetooth_uuid_table, print_numeric_uuid(&uuid), next_tvb, pinfo, tree, avctp_data)) {
-                    call_dissector(data_handle, next_tvb, pinfo, tree);
+                    call_data_dissector(next_tvb, pinfo, tree);
                 }
             }
 
             fragments = NULL;
         } else {
-                call_dissector(data_handle, next_tvb, pinfo, tree);
+            call_data_dissector(next_tvb, pinfo, tree);
         }
     }
 
@@ -481,7 +472,7 @@ proto_register_btavctp(void)
     reassembling = wmem_tree_new_autoreset(wmem_epan_scope(), wmem_file_scope());
 
     proto_btavctp = proto_register_protocol("Bluetooth AVCTP Protocol", "BT AVCTP", "btavctp");
-    btavctp_handle = new_register_dissector("btavctp", dissect_btavctp, proto_btavctp);
+    btavctp_handle = register_dissector("btavctp", dissect_btavctp, proto_btavctp);
 
     proto_register_field_array(proto_btavctp, hf, array_length(hf));
     proto_register_subtree_array(ett, array_length(ett));
@@ -498,8 +489,6 @@ proto_register_btavctp(void)
 void
 proto_reg_handoff_btavctp(void)
 {
-    data_handle    = find_dissector("data");
-
     dissector_add_string("bluetooth.uuid", "17", btavctp_handle);
 
     dissector_add_uint("btl2cap.psm", BTL2CAP_PSM_AVCTP_CTRL, btavctp_handle);

@@ -54,10 +54,10 @@ extern tpg_parser_data_t* tpg_start(proto_tree* root_tree,
 #define TPG_TREE(vp) (((tpg_parser_data_t*)(vp))->tree)
 #define TPG_DATA(vp,type) (((type*)(((tpg_parser_data_t*)(vp))->private_data)))
 
-#define TPG_STRING(i) tvb_get_string(wmem_packet_scope(), (i)->tvb,(i)->offset,(i)->len)
-#define TPG_INT(i) strtol(tvb_get_string(wmem_packet_scope(), (i)->tvb,(i)->offset,(i)->len),NULL,10)
-#define TPG_UINT(i) strtoul(tvb_get_string(wmem_packet_scope(), (i)->tvb,(i)->offset,(i)->len),NULL,10)
-#define TPG_UINT_HEX(i) strtoul(tvb_get_string(wmem_packet_scope(), (i)->tvb,(i)->offset,(i)->len),NULL,16)
+#define TPG_STRING(i) tvb_get_string_enc(wmem_packet_scope(), (i)->tvb,(i)->offset,(i)->len, ENC_ASCII)
+#define TPG_INT(i) strtol(tvb_get_string_enc(wmem_packet_scope(), (i)->tvb,(i)->offset,(i)->len, ENC_ASCII),NULL,10)
+#define TPG_UINT(i) strtoul(tvb_get_string_enc(wmem_packet_scope(), (i)->tvb,(i)->offset,(i)->len, ENC_ASCII),NULL,10)
+#define TPG_UINT_HEX(i) strtoul(tvb_get_string_enc(wmem_packet_scope(), (i)->tvb,(i)->offset,(i)->len, ENC_ASCII),NULL,16)
 #define TPG_TVB(i) tvb_new_subset((i)->tvb,(i)->offset,(i)->len,(i)->len)
 
 WS_DLL_PUBLIC guint32 tpg_ipv4(tvbparse_elem_t*);
@@ -75,8 +75,7 @@ WS_DLL_PUBLIC guint8* tpg_ipv6(tvbparse_elem_t*);
 #define TPG_ADD_UINT(tpg,  hfid, elem, value) proto_tree_add_uint(ep_stack_peek(((tpg_parser_data_t*)tpg)->stack), hfid, (elem)->tvb, (elem)->offset, (elem)->len, value)
 #define TPG_ADD_IPV4(tpg,  hfid, elem, value) proto_tree_add_ipv4(ep_stack_peek(((tpg_parser_data_t*)tpg)->stack), hfid, (elem)->tvb, (elem)->offset, (elem)->len, value)
 #define TPG_ADD_IPV6(tpg,  hfid, elem, value) proto_tree_add_ipv6(ep_stack_peek(((tpg_parser_data_t*)tpg)->stack), hfid, (elem)->tvb, (elem)->offset, (elem)->len, value)
-#define TPG_ADD_TEXT(tpg, elem) proto_tree_add_text(ep_stack_peek(((tpg_parser_data_t*)tpg)->stack), (elem)->tvb, (elem)->offset, (elem)->len, \
-                                                             "%s",tvb_format_text((elem)->tvb, (elem)->offset, (elem)->len))
+#define TPG_ADD_TEXT(tpg, elem) proto_tree_add_format_text(ep_stack_peek(((tpg_parser_data_t*)tpg)->stack), (elem)->tvb, (elem)->offset, (elem)->len)
 
 #define TPG_SET_TEXT(pi, elem) proto_item_set_text((pi), "%s",tvb_format_text((elem)->tvb, (elem)->offset, (elem)->len))
 

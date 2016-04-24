@@ -45,8 +45,6 @@ static int hf_kismet_time = -1;
 static gint ett_kismet = -1;
 static gint ett_kismet_reqresp = -1;
 
-static dissector_handle_t data_handle;
-
 #define TCP_PORT_KISMET	2501
 
 static guint global_kismet_tcp_port = TCP_PORT_KISMET;
@@ -83,7 +81,7 @@ dissect_kismet(tvbuff_t * tvb, packet_info * pinfo, proto_tree * tree, void * da
 
 	/*
 	 * Check if it is an ASCII based protocol with reasonable length
-	 * packets, if not return, and try annother dissector.
+	 * packets, if not return, and try another dissector.
 	 */
 	if (linelen < 8) {
 		/*
@@ -138,7 +136,7 @@ dissect_kismet(tvbuff_t * tvb, packet_info * pinfo, proto_tree * tree, void * da
 		/*
 		 * Put the whole packet into the tree as data.
 		 */
-		call_dissector(data_handle, tvb, pinfo, kismet_tree);
+		call_data_dissector(tvb, pinfo, kismet_tree);
 		return tvb_captured_length(tvb);
 	}
 
@@ -238,7 +236,7 @@ dissect_kismet(tvbuff_t * tvb, packet_info * pinfo, proto_tree * tree, void * da
 						t.nsecs = 0;
 
 						/*
-						 * Format ascii representaion of time
+						 * Format ascii representation of time
 						 */
 						ptr = abs_time_secs_to_str(wmem_packet_scope(), t.secs, ABSOLUTE_TIME_LOCAL, TRUE);
 						proto_tree_add_time_format_value(reqresp_tree, hf_kismet_time, tvb, offset, tokenlen, &t, "%s", ptr);
@@ -338,8 +336,7 @@ proto_reg_handoff_kismet(void)
 	static guint tcp_port;
 
 	if (!kismet_prefs_initialized) {
-		kismet_handle = new_create_dissector_handle(dissect_kismet, proto_kismet);
-		data_handle = find_dissector("data");
+		kismet_handle = create_dissector_handle(dissect_kismet, proto_kismet);
 		kismet_prefs_initialized = TRUE;
 	} else {
 		dissector_delete_uint("tcp.port", tcp_port, kismet_handle);

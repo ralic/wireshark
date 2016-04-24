@@ -224,7 +224,7 @@ static gboolean logcat_text_read_packet(FILE_T fh, struct wtap_pkthdr *phdr,
 }
 
 static gboolean logcat_text_read(wtap *wth, int *err _U_ , gchar **err_info _U_,
-        gint64 *data_offset _U_) {
+        gint64 *data_offset) {
     *data_offset = file_tell(wth->fh);
 
     return logcat_text_read_packet(wth->fh, &wth->phdr, wth->frame_buffer,
@@ -232,7 +232,7 @@ static gboolean logcat_text_read(wtap *wth, int *err _U_ , gchar **err_info _U_,
 }
 
 static gboolean logcat_text_seek_read(wtap *wth, gint64 seek_off,
-        struct wtap_pkthdr *phdr, Buffer *buf, int *err _U_, gchar **err_info _U_) {
+        struct wtap_pkthdr *phdr, Buffer *buf, int *err, gchar **err_info _U_) {
     if (file_seek(wth->random_fh, seek_off, SEEK_SET, err) == -1)
         return FALSE;
 
@@ -432,6 +432,17 @@ static gboolean logcat_text_dump_text(wtap_dumper *wdh,
 
     switch (wdh->encap) {
     case WTAP_ENCAP_WIRESHARK_UPPER_PDU:
+        {
+            gint skipped_length;
+
+            skipped_length = logcat_exported_pdu_length(pd);
+            pd += skipped_length;
+
+            if (!wtap_dump_file_write(wdh, (const gchar*) pd, phdr->caplen - skipped_length, err)) {
+                return FALSE;
+            }
+        }
+        break;
     case WTAP_ENCAP_LOGCAT:
         /* Skip EXPORTED_PDU*/
         if (wdh->encap == WTAP_ENCAP_WIRESHARK_UPPER_PDU) {
@@ -548,7 +559,6 @@ static gboolean logcat_text_dump_open(wtap_dumper *wdh, guint dump_type, int *er
 
     wdh->priv = dumper;
     wdh->subtype_write = logcat_text_dump_text;
-    wdh->subtype_close = NULL;
 
     return TRUE;
 }

@@ -64,8 +64,6 @@
 void proto_register_gsm_sms_ud(void);
 void proto_reg_handoff_gsm_sms_ud(void);
 
-static void dissect_gsm_sms_ud(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree);
-
 static int proto_gsm_sms_ud = -1;
 
 /*
@@ -94,6 +92,8 @@ static int hf_gsm_sms_udh_multiple_messages_msg_part = -1;
 /* static int hf_gsm_sms_udh_ports = -1; */
 static int hf_gsm_sms_udh_ports_src = -1;
 static int hf_gsm_sms_udh_ports_dst = -1;
+static int hf_gsm_sms_udh_national_single_shift = -1;
+static int hf_gsm_sms_udh_national_locking_shift = -1;
 
 static gint ett_gsm_sms = -1;
 static gint ett_udh = -1;
@@ -158,7 +158,7 @@ gsm_sms_ud_defragment_cleanup(void)
 /*
  * Value-arrays for field-contents
  */
-/* 3GPP TS 23.040 V6.1.0 (2003-06) */
+/* 3GPP TS 23.040 V12.2.0 (2014-10) */
 static const value_string vals_udh_iei[] = {
     { 0x00, "SMS - Concatenated short messages, 8-bit reference number" },
     { 0x01, "SMS - Special SMS Message Indication" },
@@ -190,9 +190,45 @@ static const value_string vals_udh_iei[] = {
     { 0x20, "SMS - RFC 822 E-Mail Header" },
     { 0x21, "SMS - Hyperlink format element" },
     { 0x22, "SMS - Reply Address Element" },
+    { 0x23, "SMS - Enhanced Voice Mail Information" },
+    { 0x24, "SMS - National Language Single Shift" },
+    { 0x25, "SMS - National Language Locking Shift" },
     { 0x00, NULL }
 };
 
+/* 3GPP TS 23.038 V12.0.0 (2014-10) */
+static const value_string vals_udh_national_languages_single_shift[] = {
+    { 0x01, "Turkish" },
+    { 0x02, "Spanish" },
+    { 0x03, "Portuguese" },
+    { 0x04, "Bengali" },
+    { 0x05, "Gujarati" },
+    { 0x06, "Hindi" },
+    { 0x07, "Kannada" },
+    { 0x08, "Malayalam" },
+    { 0x09, "Oriya" },
+    { 0x0A, "Punjabi" },
+    { 0x0B, "Tamil" },
+    { 0x0C, "Telugu" },
+    { 0x0D, "Urdu" },
+    { 0x00, NULL }
+};
+
+static const value_string vals_udh_national_languages_locking_shift[] = {
+    { 0x01, "Turkish" },
+    { 0x03, "Portuguese" },
+    { 0x04, "Bengali" },
+    { 0x05, "Gujarati" },
+    { 0x06, "Hindi" },
+    { 0x07, "Kannada" },
+    { 0x08, "Malayalam" },
+    { 0x09, "Oriya" },
+    { 0x0A, "Punjabi" },
+    { 0x0B, "Tamil" },
+    { 0x0C, "Telugu" },
+    { 0x0D, "Urdu" },
+    { 0x00, NULL }
+};
 
 /* Parse Short Message, only if UDH present
  * (otherwise this function is not called).
@@ -324,6 +360,30 @@ parse_gsm_sms_ud_message(proto_tree *sm_tree, tvbuff_t *tvb, packet_info *pinfo,
                 }
                 break;
 
+            case 0x24: /* National Language Single Shift */
+                if (len == 1) {
+                    subtree = proto_item_add_subtree(subtree, ett_udh_ie);
+                    proto_tree_add_item(subtree,
+                            hf_gsm_sms_udh_national_single_shift,
+                            tvb, i++, 1, ENC_BIG_ENDIAN);
+                } else {
+                    proto_item_append_text(subtree, " - Invalid format!");
+                    i += len;
+                }
+                break;
+
+            case 0x25: /* National Language Locking Shift */
+                if (len == 1) {
+                    subtree = proto_item_add_subtree(subtree, ett_udh_ie);
+                    proto_tree_add_item(subtree,
+                            hf_gsm_sms_udh_national_locking_shift,
+                            tvb, i++, 1, ENC_BIG_ENDIAN);
+                } else {
+                    proto_item_append_text(subtree, " - Invalid format!");
+                    i += len;
+                }
+                break;
+
             default:
                 i += len;
                 break;
@@ -388,7 +448,7 @@ parse_gsm_sms_ud_message(proto_tree *sm_tree, tvbuff_t *tvb, packet_info *pinfo,
         sm_tvb = tvb_new_subset_remaining(tvb, i);
     /* Try calling a subdissector */
     if (sm_tvb) {
-        if ((reassembled && pinfo->fd->num == reassembled_in)
+        if ((reassembled && pinfo->num == reassembled_in)
             || frag==0 || (frag==1 && try_dissect_1st_frag)) {
             /* Try calling a subdissector only if:
              *  - the Short Message is reassembled in this very packet,
@@ -436,8 +496,8 @@ parse_gsm_sms_ud_message(proto_tree *sm_tree, tvbuff_t *tvb, packet_info *pinfo,
     return;
 }
 
-static void
-dissect_gsm_sms_ud(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
+static int
+dissect_gsm_sms_ud(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data _U_)
 {
     proto_item *ti;
     proto_tree *subtree;
@@ -445,6 +505,7 @@ dissect_gsm_sms_ud(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
     ti      = proto_tree_add_item(tree, proto_gsm_sms_ud, tvb, 0, -1, ENC_NA);
     subtree = proto_item_add_subtree(ti, ett_gsm_sms);
     parse_gsm_sms_ud_message(subtree, tvb, pinfo, tree);
+    return tvb_captured_length(tvb);
 }
 
 /* Register the protocol with Wireshark */
@@ -521,6 +582,22 @@ proto_register_gsm_sms_ud(void)
         {   &hf_gsm_sms_udh_ports_dst,
             {   "Destination port", "gsm_sms_ud.udh.ports.dst",
                 FT_UINT8, BASE_DEC, NULL, 0x00,
+                NULL,
+                HFILL
+            }
+        },
+        {   &hf_gsm_sms_udh_national_single_shift,
+            {   "Language", "gsm_sms_ud.udh.national.single_shift",
+                FT_UINT8, BASE_DEC,
+                VALS(vals_udh_national_languages_single_shift), 0x00,
+                NULL,
+                HFILL
+            }
+        },
+        {   &hf_gsm_sms_udh_national_locking_shift,
+            {   "Language", "gsm_sms_ud.udh.national.locking_shift",
+                FT_UINT8, BASE_DEC,
+                VALS(vals_udh_national_languages_locking_shift), 0x00,
                 NULL,
                 HFILL
             }
@@ -630,7 +707,7 @@ proto_register_gsm_sms_ud(void)
 
     /* Subdissector code */
     gsm_sms_dissector_table = register_dissector_table("gsm_sms_ud.udh.port",
-        "GSM SMS port IE in UDH", FT_UINT16, BASE_DEC);
+        "GSM SMS port IE in UDH", proto_gsm_sms_ud, FT_UINT16, BASE_DEC, DISSECTOR_TABLE_NOT_ALLOW_DUPLICATE);
 
     /* Preferences for GSM SMS UD */
     gsm_sms_ud_module = prefs_register_protocol(proto_gsm_sms_ud, NULL);
@@ -664,7 +741,7 @@ proto_register_gsm_sms_ud(void)
 void
 proto_reg_handoff_gsm_sms_ud(void)
 {
-    wsp_handle = find_dissector("wsp-cl");
+    wsp_handle = find_dissector_add_dependency("wsp-cl", proto_gsm_sms_ud);
     DISSECTOR_ASSERT(wsp_handle);
 }
 

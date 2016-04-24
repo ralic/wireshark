@@ -68,8 +68,6 @@ static gint ett_quake3_game_seq2 = -1;
 static gint ett_quake3_game_clc = -1;
 static gint ett_quake3_game_svc = -1;
 
-static dissector_handle_t data_handle;
-
 #define QUAKE3_SERVER_PORT 27960
 #define QUAKE3_MASTER_PORT 27950
 static guint gbl_quake3_server_port=QUAKE3_SERVER_PORT;
@@ -332,7 +330,7 @@ dissect_quake3_client_commands(tvbuff_t *tvb, packet_info *pinfo,
 	proto_tree *tree)
 {
 	/* this shouldn't be too difficult */
-	call_dissector(data_handle,tvb, pinfo, tree);
+	call_data_dissector(tvb, pinfo, tree);
 }
 
 
@@ -342,7 +340,7 @@ dissect_quake3_server_commands(tvbuff_t *tvb, packet_info *pinfo,
 {
 	/* It is totally forbidden to decode this any further,
 	I won't do it. */
-	call_dissector(data_handle,tvb, pinfo, tree);
+	call_data_dissector(tvb, pinfo, tree);
 }
 
 
@@ -432,8 +430,8 @@ dissect_quake3_GamePacket(tvbuff_t *tvb, packet_info *pinfo,
 }
 
 
-static void
-dissect_quake3(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
+static int
+dissect_quake3(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data _U_)
 {
 	proto_tree	*quake3_tree = NULL;
 	proto_item	*dir_item = NULL;
@@ -483,6 +481,7 @@ dissect_quake3(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
 
 	col_append_str(pinfo->cinfo, COL_INFO, val_to_str(direction,
 			names_direction, "%u"));
+	return tvb_captured_length(tvb);
 }
 
 
@@ -589,7 +588,6 @@ proto_reg_handoff_quake3(void)
 	if (!initialized) {
 		quake3_handle = create_dissector_handle(dissect_quake3,
 				proto_quake3);
-		data_handle = find_dissector("data");
 		initialized=TRUE;
 	} else {
 		for (i=0;i<4;i++)

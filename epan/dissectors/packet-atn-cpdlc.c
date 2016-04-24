@@ -1,11 +1,11 @@
 /* Do not modify this file. Changes will be overwritten.                      */
 /* Generated automatically by the ASN.1 to Wireshark dissector compiler       */
 /* packet-atn-cpdlc.c                                                         */
-/* ../../tools/asn2wrs.py -u -L -p atn-cpdlc -c ./atn-cpdlc.cnf -s ./packet-atn-cpdlc-template -D . -O ../../epan/dissectors atn-cpdlc.asn */
+/* asn2wrs.py -u -L -p atn-cpdlc -c ./atn-cpdlc.cnf -s ./packet-atn-cpdlc-template -D . -O ../.. atn-cpdlc.asn */
 
 /* Input file: packet-atn-cpdlc-template.c */
 
-#line 1 "../../asn1/atn-cpdlc/packet-atn-cpdlc-template.c"
+#line 1 "./asn1/atn-cpdlc/packet-atn-cpdlc-template.c"
 /* packet-atn-cpdlc-template.c
  * By Mathias Guettler <guettler@web.de>
  * Copyright 2013
@@ -66,6 +66,19 @@ void proto_reg_handoff_atn_cpdlc(void);
 
 static const char *object_identifier_id;
 
+/* IA5 charset (7-bit) for PER IA5 decoding */
+static const gchar ia5alpha[] = {
+    0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f, \
+    0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f, \
+    0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18, 0x19, 0x1a, 0x1b, 0x1c, 0x1d, 0x1e, 0x1f, \
+    0x20, 0x21, 0x22, 0x23, 0x24, 0x25, 0x26, 0x27, 0x28, 0x29, 0x2a, 0x2b, 0x2c, 0x2d, 0x2e, 0x2f, \
+    0x30, 0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37, 0x38, 0x39, 0x3a, 0x3b, 0x3c, 0x3d, 0x3e, 0x3f, \
+    0x40, 0x41, 0x42, 0x43, 0x44, 0x45, 0x46, 0x47, 0x48, 0x49, 0x4a, 0x4b, 0x4c, 0x4d, 0x4e, 0x4f, \
+    0x50, 0x51, 0x52, 0x53, 0x54, 0x55, 0x56, 0x57, 0x58, 0x59, 0x5a, 0x5b, 0x5c, 0x5d, 0x5e, 0x5f, \
+    0x60, 0x61, 0x62, 0x63, 0x64, 0x65, 0x66, 0x67, 0x68, 0x69, 0x6a, 0x6b, 0x6c, 0x6d, 0x6e, 0x6f, \
+    0x70, 0x71, 0x72, 0x73, 0x74, 0x75, 0x76, 0x77, 0x78, 0x79, 0x7a, 0x7b, 0x7c, 0x7d, 0x7e, 0x7f, '\0'
+};
+
 /* forward declarations */
 static int dissect_GroundPDUs_PDU(
     tvbuff_t *tvb _U_,
@@ -90,7 +103,7 @@ static int dissect_ProtectedAircraftPDUs_PDU(
 
 
 /*--- Included file: packet-atn-cpdlc-hf.c ---*/
-#line 1 "../../asn1/atn-cpdlc/packet-atn-cpdlc-hf.c"
+#line 1 "./asn1/atn-cpdlc/packet-atn-cpdlc-hf.c"
 static int hf_atn_cpdlc_GroundPDUs_PDU = -1;      /* GroundPDUs */
 static int hf_atn_cpdlc_AircraftPDUs_PDU = -1;    /* AircraftPDUs */
 static int hf_atn_cpdlc_ProtectedGroundPDUs_PDU = -1;  /* ProtectedGroundPDUs */
@@ -694,11 +707,11 @@ static int hf_atn_cpdlc_windSpeedEnglish = -1;    /* WindSpeedEnglish */
 static int hf_atn_cpdlc_windSpeedMetric = -1;     /* WindSpeedMetric */
 
 /*--- End of included file: packet-atn-cpdlc-hf.c ---*/
-#line 84 "../../asn1/atn-cpdlc/packet-atn-cpdlc-template.c"
+#line 97 "./asn1/atn-cpdlc/packet-atn-cpdlc-template.c"
 
 
 /*--- Included file: packet-atn-cpdlc-ett.c ---*/
-#line 1 "../../asn1/atn-cpdlc/packet-atn-cpdlc-ett.c"
+#line 1 "./asn1/atn-cpdlc/packet-atn-cpdlc-ett.c"
 static gint ett_atn_cpdlc_GroundPDUs = -1;
 static gint ett_atn_cpdlc_UplinkMessage = -1;
 static gint ett_atn_cpdlc_AircraftPDUs = -1;
@@ -843,12 +856,12 @@ static gint ett_atn_cpdlc_Winds = -1;
 static gint ett_atn_cpdlc_WindSpeed = -1;
 
 /*--- End of included file: packet-atn-cpdlc-ett.c ---*/
-#line 86 "../../asn1/atn-cpdlc/packet-atn-cpdlc-template.c"
+#line 99 "./asn1/atn-cpdlc/packet-atn-cpdlc-template.c"
 static gint ett_atn_cpdlc = -1;
 
 
 /*--- Included file: packet-atn-cpdlc-fn.c ---*/
-#line 1 "../../asn1/atn-cpdlc/packet-atn-cpdlc-fn.c"
+#line 1 "./asn1/atn-cpdlc/packet-atn-cpdlc-fn.c"
 
 static const value_string atn_cpdlc_CPDLCUserAbortReason_vals[] = {
   {   0, "undefined" },
@@ -5294,7 +5307,7 @@ static int dissect_ProtectedAircraftPDUs_PDU(tvbuff_t *tvb _U_, packet_info *pin
 
 
 /*--- End of included file: packet-atn-cpdlc-fn.c ---*/
-#line 89 "../../asn1/atn-cpdlc/packet-atn-cpdlc-template.c"
+#line 102 "./asn1/atn-cpdlc/packet-atn-cpdlc-template.c"
 
 /* Wireshark ID of CPDLC protocol */
 static int proto_atn_cpdlc = -1;
@@ -5410,7 +5423,7 @@ dissect_atn_cpdlc_heur(
     proto_tree *tree,
     void *data _U_)
 {
-    atn_conversation_t *atn_cv = NULL;
+    atn_conversation_t *volatile atn_cv = NULL;
     volatile gboolean is_atn_cpdlc = FALSE;
     volatile gboolean is_pm = FALSE;
     int type;
@@ -5468,7 +5481,7 @@ dissect_atn_cpdlc_heur(
     /* note: */
     /* all subsequent PDU's belonging to this conversation */
     /* are considered CPDLC */
-    /* if the first CPDLC PDU has been decoded succesfully */
+    /* if the first CPDLC PDU has been decoded successfully */
     /* (This is done in "atn-ulcs" by using "call_dissector_with_data()") */
 
     /* DT: dstref present, srcref is always zero */
@@ -5511,7 +5524,7 @@ void proto_register_atn_cpdlc (void)
     static hf_register_info hf_atn_cpdlc[] = {
 
 /*--- Included file: packet-atn-cpdlc-hfarr.c ---*/
-#line 1 "../../asn1/atn-cpdlc/packet-atn-cpdlc-hfarr.c"
+#line 1 "./asn1/atn-cpdlc/packet-atn-cpdlc-hfarr.c"
     { &hf_atn_cpdlc_GroundPDUs_PDU,
       { "GroundPDUs", "atn-cpdlc.GroundPDUs",
         FT_UINT32, BASE_DEC, VALS(atn_cpdlc_GroundPDUs_vals), 0,
@@ -7918,13 +7931,13 @@ void proto_register_atn_cpdlc (void)
         NULL, HFILL }},
 
 /*--- End of included file: packet-atn-cpdlc-hfarr.c ---*/
-#line 304 "../../asn1/atn-cpdlc/packet-atn-cpdlc-template.c"
+#line 317 "./asn1/atn-cpdlc/packet-atn-cpdlc-template.c"
       };
 
     static gint *ett[] = {
 
 /*--- Included file: packet-atn-cpdlc-ettarr.c ---*/
-#line 1 "../../asn1/atn-cpdlc/packet-atn-cpdlc-ettarr.c"
+#line 1 "./asn1/atn-cpdlc/packet-atn-cpdlc-ettarr.c"
     &ett_atn_cpdlc_GroundPDUs,
     &ett_atn_cpdlc_UplinkMessage,
     &ett_atn_cpdlc_AircraftPDUs,
@@ -8069,7 +8082,7 @@ void proto_register_atn_cpdlc (void)
     &ett_atn_cpdlc_WindSpeed,
 
 /*--- End of included file: packet-atn-cpdlc-ettarr.c ---*/
-#line 308 "../../asn1/atn-cpdlc/packet-atn-cpdlc-template.c"
+#line 321 "./asn1/atn-cpdlc/packet-atn-cpdlc-template.c"
         &ett_atn_cpdlc
     };
 
@@ -8088,7 +8101,7 @@ void proto_register_atn_cpdlc (void)
         ett,
         array_length(ett));
 
-    new_register_dissector(
+    register_dissector(
         "atn-cpdlc",
         dissect_atn_cpdlc,
         proto_atn_cpdlc);

@@ -33,6 +33,7 @@
 #include <epan/packet.h>
 #include <epan/tvbparse.h>
 #include <epan/dtd.h>
+#include <epan/proto_data.h>
 #include <wsutil/filesystem.h>
 #include <epan/prefs.h>
 #include <epan/expert.h>
@@ -75,8 +76,8 @@ static tvbparse_wanted_t *want_heur;
 static GHashTable *xmpli_names;
 static GHashTable *media_types;
 
-static xml_ns_t xml_ns     = {(gchar *)"xml",     "/", -1, -1, -1, NULL, NULL, NULL};
-static xml_ns_t unknown_ns = {(gchar *)"unknown", "?", -1, -1, -1, NULL, NULL, NULL};
+static xml_ns_t xml_ns     = {"xml",     "/", -1, -1, -1, NULL, NULL, NULL};
+static xml_ns_t unknown_ns = {"unknown", "?", -1, -1, -1, NULL, NULL, NULL};
 static xml_ns_t *root_ns;
 
 static gboolean pref_heuristic_unicode    = FALSE;
@@ -104,6 +105,7 @@ static const gchar *default_media_types[] = {
     "application/ccmp+xml",
     "application/cpim-pidf+xml",
     "application/cpl+xml",
+    "application/dds-web+xml",
     "application/mathml+xml",
     "application/media_control+xml",
     "application/note+xml",
@@ -134,6 +136,7 @@ static const gchar *default_media_types[] = {
     "application/vnd.etsi.simservs+xml",
     "application/vnd.oma.xdm-apd+xml",
     "application/vnd.3gpp.cw+xml",
+    "application/vnd.3gpp.sms+xml",
     "application/vnd.3gpp.SRVCC-info+xml",
     "application/vnd.wv.csp+xml",
     "application/vnd.wv.csp.xml",
@@ -207,7 +210,7 @@ dissect_xml(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data _U_)
         colinfo_str = "/XML";
     } else {
         char *colinfo_str_buf;
-        colinfo_str_buf = wmem_strdup_printf(wmem_packet_scope(), "/%s", root_ns->name);
+        colinfo_str_buf = wmem_strconcat(wmem_packet_scope(), "/", root_ns->name, NULL);
         ascii_strup_inplace(colinfo_str_buf);
         colinfo_str = colinfo_str_buf;
     }
@@ -235,9 +238,8 @@ static gboolean dissect_xml_heur(tvbuff_t *tvb, packet_info *pinfo, proto_tree *
         return TRUE;
     } else if (pref_heuristic_unicode) {
         /* XXX - UCS-2, or UTF-16? */
-        const guint8 *data_str    = tvb_get_string_enc(NULL, tvb, 0, tvb_captured_length(tvb), ENC_UCS_2|ENC_LITTLE_ENDIAN);
+        const guint8 *data_str    = tvb_get_string_enc(pinfo->pool, tvb, 0, tvb_captured_length(tvb), ENC_UCS_2|ENC_LITTLE_ENDIAN);
         tvbuff_t     *unicode_tvb = tvb_new_child_real_data(tvb, data_str, tvb_captured_length(tvb)/2, tvb_captured_length(tvb)/2);
-        tvb_set_free_cb(unicode_tvb, g_free);
         if (tvbparse_peek(tvbparse_init(unicode_tvb, 0, -1, NULL, want_ignore), want_heur)) {
             add_new_data_source(pinfo, unicode_tvb, "UTF8");
             dissect_xml(unicode_tvb, pinfo, tree, data);
@@ -829,7 +831,7 @@ static void add_xml_field(wmem_array_t *hfs, int *p_id, const gchar *name, const
 static void add_xml_attribute_names(gpointer k, gpointer v, gpointer p)
 {
     struct _attr_reg_data *d = (struct _attr_reg_data *)p;
-    const gchar *basename = wmem_strdup_printf(wmem_epan_scope(), "%s.%s", d->basename, (gchar *)k);
+    const gchar *basename = wmem_strconcat(wmem_epan_scope(), d->basename, ".", (gchar *)k, NULL);
 
     add_xml_field(d->hf, (int*) v, (gchar *)k, basename);
 }
@@ -838,7 +840,7 @@ static void add_xml_attribute_names(gpointer k, gpointer v, gpointer p)
 static void add_xmlpi_namespace(gpointer k _U_, gpointer v, gpointer p)
 {
     xml_ns_t *ns       = (xml_ns_t *)v;
-    const gchar *basename = wmem_strdup_printf(wmem_epan_scope(), "%s.%s", (gchar *)p, ns->name);
+    const gchar *basename = wmem_strconcat(wmem_epan_scope(), (gchar *)p, ".", ns->name, NULL);
     gint     *ett_p    = &(ns->ett);
     struct _attr_reg_data d;
 
@@ -1160,7 +1162,7 @@ static void register_dtd(dtd_build_data_t *dtd_data, GString *errors)
             root_element->attributes = g_hash_table_new(g_str_hash, g_str_equal);
         }
 
-        /* we then create all the sub hierachies to catch the recurred cases */
+        /* we then create all the sub hierarchies to catch the recurred cases */
         g_ptr_array_add(hier, root_name);
 
         while(root_element->element_names->len) {
@@ -1451,7 +1453,7 @@ proto_register_xml(void)
 
     g_array_free(ett_arr, TRUE);
 
-    new_register_dissector("xml", dissect_xml, xml_ns.hf_tag);
+    register_dissector("xml", dissect_xml, xml_ns.hf_tag);
 
     init_xml_parser();
 

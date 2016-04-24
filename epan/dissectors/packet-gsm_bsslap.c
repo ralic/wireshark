@@ -792,8 +792,8 @@ dissect_gsm_bsslap_u_tdoa_res(tvbuff_t *tvb, proto_tree *tree, packet_info *pinf
 }
 
 
-static void
-dissect_gsm_bsslap(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
+static int
+dissect_gsm_bsslap(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data _U_)
 {
     proto_item *item;
     proto_tree *sub_tree;
@@ -847,13 +847,13 @@ dissect_gsm_bsslap(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
         }
     }
 
-
+    return tvb_captured_length(tvb);
 }
 
 void
 proto_reg_handoff_gsm_bsslap(void)
 {
-    bsslap_rrlp_handle = find_dissector("rrlp");
+    bsslap_rrlp_handle = find_dissector_add_dependency("rrlp", proto_gsm_bsslap);
 }
 
 void

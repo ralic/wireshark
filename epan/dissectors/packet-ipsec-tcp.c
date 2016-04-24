@@ -244,9 +244,9 @@ proto_reg_handoff_tcpencap(void)
 	static guint tcpencap_tcp_port = 0;
 
 	if (!initialized) {
-		tcpencap_handle = new_create_dissector_handle(dissect_tcpencap, proto_tcpencap);
-		esp_handle = find_dissector("esp");
-		udp_handle = find_dissector("udp");
+		tcpencap_handle = create_dissector_handle(dissect_tcpencap, proto_tcpencap);
+		esp_handle = find_dissector_add_dependency("esp", proto_tcpencap);
+		udp_handle = find_dissector_add_dependency("udp", proto_tcpencap);
 
 		heur_dissector_add("tcp", dissect_tcpencap_heur, "TCP Encapsulation of IPsec Packets", "ipsec_tcp", proto_tcpencap, HEURISTIC_ENABLE);
 

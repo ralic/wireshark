@@ -150,7 +150,6 @@ These are the structures you will see most often in EDP frames.
 
 void proto_register_edp(void);
 void proto_reg_handoff_edp(void);
-void proto_register_extreme_oui(void);
 
 static int hf_llc_extreme_pid = -1;
 
@@ -948,8 +947,8 @@ dissect_unknown_tlv(tvbuff_t *tvb, packet_info *pinfo, int offset, int length, p
 		ENC_NA);
 }
 
-static void
-dissect_edp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
+static int
+dissect_edp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data _U_)
 {
 	proto_item *ti;
 	proto_tree *edp_tree;
@@ -1073,7 +1072,7 @@ dissect_edp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
 		case EDP_TYPE_ESRP: /* Extreme Standby Router Protocol */
 			dissect_esrp_tlv(tvb, pinfo, offset, tlv_length, edp_tree);
 			break;
-		case EDP_TYPE_EAPS: /* Ethernet Automatic Protection Swtiching */
+		case EDP_TYPE_EAPS: /* Ethernet Automatic Protection Switching */
 			dissect_eaps_tlv(tvb, pinfo, offset, tlv_length, edp_tree);
 			break;
 		case EDP_TYPE_ESL: /* EAPS shared link */
@@ -1092,6 +1091,7 @@ dissect_edp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
 		offset += tlv_length;
 	}
 
+	return tvb_captured_length(tvb);
 }
 
 void
@@ -1447,6 +1447,14 @@ proto_register_edp(void)
 		{ "End",	"edp.null", FT_PROTOCOL, BASE_NONE, NULL,
 			0x0, "Last element", HFILL }},
 	};
+
+	static hf_register_info extreme_hf[] = {
+		{ &hf_llc_extreme_pid,
+		  { "PID",	"llc.extreme_pid",  FT_UINT16, BASE_HEX,
+		    VALS(extreme_pid_vals), 0x0, NULL, HFILL }
+		}
+	};
+
 	static gint *ett[] = {
 		&ett_edp,
 		&ett_edp_checksum,
@@ -1476,6 +1484,9 @@ proto_register_edp(void)
 	proto_register_subtree_array(ett, array_length(ett));
 	expert_edp = expert_register_protocol(proto_edp);
 	expert_register_field_array(expert_edp, ei, array_length(ei));
+
+    llc_add_oui(OUI_EXTREME, "llc.extreme_pid", "LLC Extreme OUI PID", extreme_hf, proto_edp);
+
 }
 
 void
@@ -1485,19 +1496,6 @@ proto_reg_handoff_edp(void)
 
 	edp_handle = create_dissector_handle(dissect_edp, proto_edp);
 	dissector_add_uint("llc.extreme_pid", 0x00bb, edp_handle);
-}
-
-void
-proto_register_extreme_oui(void)
-{
-	static hf_register_info hf[] = {
-		{ &hf_llc_extreme_pid,
-		  { "PID",	"llc.extreme_pid",  FT_UINT16, BASE_HEX,
-		    VALS(extreme_pid_vals), 0x0, NULL, HFILL }
-		}
-	};
-
-	llc_add_oui(OUI_EXTREME, "llc.extreme_pid", "LLC Extreme OUI PID", hf);
 }
 
 /*

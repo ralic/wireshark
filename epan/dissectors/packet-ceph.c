@@ -27,6 +27,7 @@
 #include <epan/expert.h>
 #include <epan/conversation.h>
 #include <epan/to_str.h>
+#include <epan/proto_data.h>
 
 void proto_reg_handoff_ceph(void);
 void proto_register_ceph(void);
@@ -839,72 +840,65 @@ static gint ett_connect_reply		   = -1;
 static gint ett_filter_data		   = -1;
 
 static const guint8 *C_BANNER = (const guint8*)"ceph v";
-enum c_banner {
-	C_BANNER_SIZE	  = 9,
-	C_BANNER_SIZE_MIN = 6
-};
+
+#define C_BANNER_SIZE     9
+#define C_BANNER_SIZE_MIN 6
 
 /** Feature Flags */
 /* Transmuted from ceph:/src/include/ceph_features.h */
-typedef enum _c_features {
-	C_FEATURE_UID		       = 1U <<  0,
-	C_FEATURE_NOSRCADDR	       = 1U <<  1,
-	C_FEATURE_MONCLOCKCHECK	       = 1U <<  2,
-	C_FEATURE_FLOCK		       = 1U <<  3,
-	C_FEATURE_SUBSCRIBE2	       = 1U <<  4,
-	C_FEATURE_MONNAMES	       = 1U <<  5,
-	C_FEATURE_RECONNECT_SEQ	       = 1U <<  6,
-	C_FEATURE_DIRLAYOUTHASH	       = 1U <<  7,
-	C_FEATURE_OBJECTLOCATOR	       = 1U <<  8,
-	C_FEATURE_PGID64	       = 1U <<  9,
-	C_FEATURE_INCSUBOSDMAP	       = 1U << 10,
-	C_FEATURE_PGPOOL3	       = 1U << 11,
-	C_FEATURE_OSDREPLYMUX	       = 1U << 12,
-	C_FEATURE_OSDENC	       = 1U << 13,
-	C_FEATURE_OMAP		       = 1U << 14,
-	C_FEATURE_MONENC	       = 1U << 15,
-	C_FEATURE_QUERY_T	       = 1U << 16,
-	C_FEATURE_INDEP_PG_MAP	       = 1U << 17,
-	C_FEATURE_CRUSH_TUNABLES       = 1U << 18,
-	C_FEATURE_CHUNKY_SCRUB	       = 1U << 19,
-	C_FEATURE_MON_NULLROUTE	       = 1U << 20,
-	C_FEATURE_MON_GV	       = 1U << 21,
-	C_FEATURE_BACKFILL_RESERVATION = 1U << 22,
-	C_FEATURE_MSG_AUTH	       = 1U << 23,
-	C_FEATURE_RECOVERY_RESERVATION = 1U << 24,
-	C_FEATURE_CRUSH_TUNABLES2      = 1U << 25,
-	C_FEATURE_CREATEPOOLID	       = 1U << 26,
-	C_FEATURE_REPLY_CREATE_INODE   = 1U << 27,
-	C_FEATURE_OSD_HBMSGS	       = 1U << 28,
-	C_FEATURE_MDSENC	       = 1U << 29,
-	C_FEATURE_OSDHASHPSPOOL	       = 1U << 30,
-	C_FEATURE_MON_SINGLE_PAXOS     = 1U << 31,
-	C_FEATURE_OSD_SNAPMAPPER       = 1U <<  0,
-	C_FEATURE_MON_SCRUB	       = 1U <<  1,
-	C_FEATURE_OSD_PACKED_RECOVERY  = 1U <<  2,
-	C_FEATURE_OSD_CACHEPOOL	       = 1U <<  3,
-	C_FEATURE_CRUSH_V2	       = 1U <<  4,
-	C_FEATURE_EXPORT_PEER	       = 1U <<  5,
-	C_FEATURE_OSD_ERASURE_CODES    = 1U <<  6,
-	C_FEATURE_OSD_TMAP2OMAP	       = 1U <<  6,
-	C_FEATURE_OSDMAP_ENC	       = 1U <<  7,
-	C_FEATURE_MDS_INLINE_DATA      = 1U <<  8,
-	C_FEATURE_CRUSH_TUNABLES3      = 1U <<  9,
-	C_FEATURE_OSD_PRIMARY_AFFINITY = 1U <<  9,
-	C_FEATURE_MSGR_KEEPALIVE2      = 1U << 10,
-	C_FEATURE_RESERVED	       = 1U << 31
-} c_features;
+#define C_FEATURE_UID		       (1U <<  0)
+#define C_FEATURE_NOSRCADDR	       (1U <<  1)
+#define C_FEATURE_MONCLOCKCHECK	       (1U <<  2)
+#define C_FEATURE_FLOCK		       (1U <<  3)
+#define C_FEATURE_SUBSCRIBE2	       (1U <<  4)
+#define C_FEATURE_MONNAMES	       (1U <<  5)
+#define C_FEATURE_RECONNECT_SEQ	       (1U <<  6)
+#define C_FEATURE_DIRLAYOUTHASH	       (1U <<  7)
+#define C_FEATURE_OBJECTLOCATOR	       (1U <<  8)
+#define C_FEATURE_PGID64	       (1U <<  9)
+#define C_FEATURE_INCSUBOSDMAP	       (1U << 10)
+#define C_FEATURE_PGPOOL3	       (1U << 11)
+#define C_FEATURE_OSDREPLYMUX	       (1U << 12)
+#define C_FEATURE_OSDENC	       (1U << 13)
+#define C_FEATURE_OMAP		       (1U << 14)
+#define C_FEATURE_MONENC	       (1U << 15)
+#define C_FEATURE_QUERY_T	       (1U << 16)
+#define C_FEATURE_INDEP_PG_MAP	       (1U << 17)
+#define C_FEATURE_CRUSH_TUNABLES       (1U << 18)
+#define C_FEATURE_CHUNKY_SCRUB	       (1U << 19)
+#define C_FEATURE_MON_NULLROUTE	       (1U << 20)
+#define C_FEATURE_MON_GV	       (1U << 21)
+#define C_FEATURE_BACKFILL_RESERVATION (1U << 22)
+#define C_FEATURE_MSG_AUTH	       (1U << 23)
+#define C_FEATURE_RECOVERY_RESERVATION (1U << 24)
+#define C_FEATURE_CRUSH_TUNABLES2      (1U << 25)
+#define C_FEATURE_CREATEPOOLID	       (1U << 26)
+#define C_FEATURE_REPLY_CREATE_INODE   (1U << 27)
+#define C_FEATURE_OSD_HBMSGS	       (1U << 28)
+#define C_FEATURE_MDSENC	       (1U << 29)
+#define C_FEATURE_OSDHASHPSPOOL	       (1U << 30)
+#define C_FEATURE_MON_SINGLE_PAXOS     (1U << 31)
+#define C_FEATURE_OSD_SNAPMAPPER       (1U <<  0)
+#define C_FEATURE_MON_SCRUB	       (1U <<  1)
+#define C_FEATURE_OSD_PACKED_RECOVERY  (1U <<  2)
+#define C_FEATURE_OSD_CACHEPOOL	       (1U <<  3)
+#define C_FEATURE_CRUSH_V2	       (1U <<  4)
+#define C_FEATURE_EXPORT_PEER	       (1U <<  5)
+#define C_FEATURE_OSD_ERASURE_CODES    (1U <<  6)
+#define C_FEATURE_OSD_TMAP2OMAP	       (1U <<  6)
+#define C_FEATURE_OSDMAP_ENC	       (1U <<  7)
+#define C_FEATURE_MDS_INLINE_DATA      (1U <<  8)
+#define C_FEATURE_CRUSH_TUNABLES3      (1U <<  9)
+#define C_FEATURE_OSD_PRIMARY_AFFINITY (1U <<  9)
+#define C_FEATURE_MSGR_KEEPALIVE2      (1U << 10)
+#define C_FEATURE_RESERVED	       (1U << 31)
 
 /** Connect Message Flags */
-typedef enum _c_flags {
-	C_FLAG_LOSSY = 1U << 0
-} c_flags;
+#define C_FLAG_LOSSY	               (1U << 0)
 
-typedef enum _c_pgpool_flags {
-	C_PGPOOL_FLAG_HASHPSPOOL   = 1U << 0, /* hash pg seed and pool together (instead of adding) */
-	C_PGPOOL_FLAG_FULL	   = 1U << 1, /* pool is full */
-	C_PGPOOL_FLAG_FAKE_EC_POOL = 1U << 2 /* require ReplicatedPG to act like an EC pg */
-} c_pgpool_flags;
+#define C_PGPOOL_FLAG_HASHPSPOOL       (1U << 0) /* hash pg seed and pool together (instead of adding) */
+#define C_PGPOOL_FLAG_FULL	       (1U << 1) /* pool is full */
+#define C_PGPOOL_FLAG_FAKE_EC_POOL     (1U << 2) /* require ReplicatedPG to act like an EC pg */
 
 /** Macros to create value_stings.
  *
@@ -922,14 +916,16 @@ typedef enum _c_pgpool_flags {
  *		this is generally 2*bytes.
  */
 #define C_MAKE_STRINGS(base, chars) \
-	typedef VALUE_STRING_ENUM(base##_strings) base; \
+	typedef gint base; \
+	VALUE_STRING_ENUM(base##_strings); \
 	VALUE_STRING_ARRAY(base##_strings); \
 	static const char *base##_string(base val) { \
 		return val_to_str(val, base##_strings, "Unknown (0x0"#chars"X)"); \
 	}
 
 #define C_MAKE_STRINGS_EXT(base, chars) \
-	typedef VALUE_STRING_ENUM(base##_strings) base; \
+	typedef gint base; \
+	VALUE_STRING_ENUM(base##_strings); \
 	VALUE_STRING_ARRAY(base##_strings); \
 	\
 	static value_string_ext \
@@ -943,7 +939,8 @@ typedef enum _c_pgpool_flags {
 	V(C_IPv4, 0x0002, "IPv4") \
 	V(C_IPv6, 0x000A, "IPv6")
 
-typedef VALUE_STRING_ENUM(c_inet_strings) c_inet;
+typedef gint c_inet;
+VALUE_STRING_ENUM(c_inet_strings);
 VALUE_STRING_ARRAY(c_inet_strings);
 
 /** Message Tags */
@@ -964,7 +961,8 @@ VALUE_STRING_ARRAY(c_inet_strings);
 	V(C_TAG_KEEPALIVE2,	0x0E, "keepalive2")					     \
 	V(C_TAG_KEEPALIVE2_ACK, 0x0F, "keepalive2 reply")				     \
 
-typedef VALUE_STRING_ENUM(c_tag_strings) c_tag;
+typedef gint c_tag;
+VALUE_STRING_ENUM(c_tag_strings);
 VALUE_STRING_ARRAY(c_tag_strings);
 static value_string_ext c_tag_strings_ext = VALUE_STRING_EXT_INIT(c_tag_strings);
 
@@ -1389,9 +1387,7 @@ const char *c_node_type_abbr_string(c_node_type val)
 	return val_to_str(val, c_node_type_abbr_strings, "Unknown (0x%02x)");
 }
 
-enum c_mon_sub_flags {
-	C_MON_SUB_FLAG_ONETIME = 0x01
-};
+#define C_MON_SUB_FLAG_ONETIME  0x01
 
 typedef enum _c_state {
 	C_STATE_NEW,
@@ -1552,15 +1548,15 @@ c_pkt_data_init(c_pkt_data *d, packet_info *pinfo, guint off)
 
 		/* Note: Server sends banner first. */
 
-		WMEM_COPY_ADDRESS(wmem_file_scope(), &d->convd->server.addr, &pinfo->src);
+		copy_address_wmem(wmem_file_scope(), &d->convd->server.addr, &pinfo->src);
 		d->convd->server.port = pinfo->srcport;
-		WMEM_COPY_ADDRESS(wmem_file_scope(), &d->convd->client.addr, &pinfo->dst);
+		copy_address_wmem(wmem_file_scope(), &d->convd->client.addr, &pinfo->dst);
 		d->convd->client.port = pinfo->destport;
 		conversation_add_proto_data(d->conv, proto_ceph, d->convd);
 	}
 
 	/*** Set up src and dst pointers correctly. ***/
-	if (ADDRESSES_EQUAL(&d->convd->client.addr, &pinfo->src) &&
+	if (addresses_equal(&d->convd->client.addr, &pinfo->src) &&
 	    d->convd->client.port == pinfo->srcport)
 	{
 		d->src = &d->convd->client;
@@ -1666,10 +1662,8 @@ char *c_format_uuid(tvbuff_t *tvb, guint off)
 	return guid_to_str(wmem_packet_scope(), &uuid);
 }
 
-enum c_ressembly {
-	C_NEEDMORE = G_MAXUINT,
-	C_INVALID  = 0
-};
+#define C_NEEDMORE      G_MAXUINT
+#define C_INVALID       0
 
 /*** Expert info warning functions. ***/
 
@@ -1871,9 +1865,7 @@ guint c_dissect_str(proto_tree *root, int hf, c_str *out,
 	return off;
 }
 
-enum c_size_sockaddr {
-	C_SIZE_SOCKADDR_STORAGE = 128
-};
+#define C_SIZE_SOCKADDR_STORAGE 128
 
 typedef struct _c_sockaddr {
 	const gchar *str;      /** A string representing the entire address. */
@@ -1954,9 +1946,7 @@ guint c_dissect_sockaddr(proto_tree *root, c_sockaddr *out,
 	return off;
 }
 
-enum c_size_entity_addr {
-	C_SIZE_ENTITY_ADDR = 4 + 4 + C_SIZE_SOCKADDR_STORAGE
-};
+#define C_SIZE_ENTITY_ADDR (4 + 4 + C_SIZE_SOCKADDR_STORAGE)
 
 typedef struct _c_entity_addr {
 	c_sockaddr addr;
@@ -1995,9 +1985,7 @@ guint c_dissect_entityaddr(proto_tree *root, int hf, c_entityaddr *out,
 	return off;
 }
 
-enum c_size_entity_name {
-	C_SIZE_ENTITY_NAME = 9
-};
+#define C_SIZE_ENTITY_NAME 9
 
 /** Dissect a ceph_entity_name.
  *
@@ -2203,29 +2191,27 @@ guint c_dissect_flags(proto_tree *tree,
 	return off+1;
 }
 
-enum c_osd_flags {
-	C_OSD_FLAG_ACK		  = 0x00000001,	 /* want (or is) "ack" ack */
-	C_OSD_FLAG_ONNVRAM	  = 0x00000002,	 /* want (or is) "onnvram" ack */
-	C_OSD_FLAG_ONDISK	  = 0x00000004,	 /* want (or is) "ondisk" ack */
-	C_OSD_FLAG_RETRY	  = 0x00000008,	 /* resend attempt */
-	C_OSD_FLAG_READ		  = 0x00000010,	 /* op may read */
-	C_OSD_FLAG_WRITE	  = 0x00000020,	 /* op may write */
-	C_OSD_FLAG_ORDERSNAP	  = 0x00000040,	 /* EOLDSNAP if snapc is out of order */
-	C_OSD_FLAG_PEERSTAT_OLD	  = 0x00000080,	 /* DEPRECATED msg includes osd_peer_stat */
-	C_OSD_FLAG_BALANCE_READS  = 0x00000100,
-	C_OSD_FLAG_PARALLELEXEC	  = 0x00000200,	 /* execute op in parallel */
-	C_OSD_FLAG_PGOP		  = 0x00000400,	 /* pg op, no object */
-	C_OSD_FLAG_EXEC		  = 0x00000800,	 /* op may exec */
-	C_OSD_FLAG_EXEC_PUBLIC	  = 0x00001000,	 /* DEPRECATED op may exec (public) */
-	C_OSD_FLAG_LOCALIZE_READS = 0x00002000,	 /* read from nearby replica, if any */
-	C_OSD_FLAG_RWORDERED	  = 0x00004000,	 /* order wrt concurrent reads */
-	C_OSD_FLAG_IGNORE_CACHE	  = 0x00008000,	 /* ignore cache logic */
-	C_OSD_FLAG_SKIPRWLOCKS	  = 0x00010000,	 /* skip rw locks */
-	C_OSD_FLAG_IGNORE_OVERLAY = 0x00020000,	 /* ignore pool overlay */
-	C_OSD_FLAG_FLUSH	  = 0x00040000,	 /* this is part of flush */
-	C_OSD_FLAG_MAP_SNAP_CLONE = 0x00080000,	 /* map snap direct to clone id */
-	C_OSD_FLAG_ENFORCE_SNAPC  = 0x00100000	 /* use snapc provided even if pool uses pool snaps */
-};
+#define C_OSD_FLAG_ACK		    0x00000001   /* want (or is) "ack" ack */
+#define C_OSD_FLAG_ONNVRAM	    0x00000002   /* want (or is) "onnvram" ack */
+#define C_OSD_FLAG_ONDISK	    0x00000004   /* want (or is) "ondisk" ack */
+#define C_OSD_FLAG_RETRY	    0x00000008   /* resend attempt */
+#define C_OSD_FLAG_READ		    0x00000010   /* op may read */
+#define C_OSD_FLAG_WRITE	    0x00000020   /* op may write */
+#define C_OSD_FLAG_ORDERSNAP	    0x00000040   /* EOLDSNAP if snapc is out of order */
+#define C_OSD_FLAG_PEERSTAT_OLD	    0x00000080   /* DEPRECATED msg includes osd_peer_stat */
+#define C_OSD_FLAG_BALANCE_READS    0x00000100
+#define C_OSD_FLAG_PARALLELEXEC	    0x00000200   /* execute op in parallel */
+#define C_OSD_FLAG_PGOP		    0x00000400   /* pg op, no object */
+#define C_OSD_FLAG_EXEC		    0x00000800   /* op may exec */
+#define C_OSD_FLAG_EXEC_PUBLIC	    0x00001000   /* DEPRECATED op may exec (public) */
+#define C_OSD_FLAG_LOCALIZE_READS   0x00002000   /* read from nearby replica, if any */
+#define C_OSD_FLAG_RWORDERED	    0x00004000   /* order wrt concurrent reads */
+#define C_OSD_FLAG_IGNORE_CACHE	    0x00008000   /* ignore cache logic */
+#define C_OSD_FLAG_SKIPRWLOCKS	    0x00010000   /* skip rw locks */
+#define C_OSD_FLAG_IGNORE_OVERLAY   0x00020000   /* ignore pool overlay */
+#define C_OSD_FLAG_FLUSH	    0x00040000   /* this is part of flush */
+#define C_OSD_FLAG_MAP_SNAP_CLONE   0x00080000   /* map snap direct to clone id */
+#define C_OSD_FLAG_ENFORCE_SNAPC    0x00100000   /* use snapc provided even if pool uses pool snaps */
 
 /** Dissect OSD flags. */
 static
@@ -2302,7 +2288,7 @@ typedef struct _c_encoded {
 static
 guint c_dissect_encoded(proto_tree *tree, c_encoded *enc,
 			guint8 minver, guint8 maxver,
-			tvbuff_t *tvb, guint off, c_pkt_data *data _U_)
+			tvbuff_t *tvb, guint off, c_pkt_data *data)
 {
 	proto_item *ti;
 
@@ -2326,13 +2312,9 @@ guint c_dissect_encoded(proto_tree *tree, c_encoded *enc,
 	return off;
 }
 
-enum c_size_timespec {
-	C_SIZE_TIMESPEC = 4 + 4
-};
+#define C_SIZE_TIMESPEC  (4 + 4)
 
-enum c_size_eversion {
-	C_SIZE_EVERSION = 12
-};
+#define C_SIZE_EVERSION  12
 
 /** Dissect a eversion_t */
 static
@@ -2371,7 +2353,7 @@ guint c_dissect_eversion(proto_tree *root, gint hf,
 /** Dissect an object locator. */
 static
 guint c_dissect_object_locator(proto_tree *root, gint hf,
-			       tvbuff_t *tvb, guint off, c_pkt_data *data _U_)
+			       tvbuff_t *tvb, guint off, c_pkt_data *data)
 {
 	proto_item *ti;
 	proto_tree *tree;
@@ -2433,7 +2415,7 @@ guint c_dissect_object_locator(proto_tree *root, gint hf,
 /** Dissect a placement group. */
 static
 guint c_dissect_pg(proto_tree *root, gint hf,
-		   tvbuff_t *tvb, guint off, c_pkt_data *data _U_)
+		   tvbuff_t *tvb, guint off, c_pkt_data *data)
 {
 	proto_item *ti, *ti2;
 	proto_tree *tree;
@@ -2473,7 +2455,7 @@ guint c_dissect_pg(proto_tree *root, gint hf,
 /** Dissect a placement group creation. */
 static
 guint c_dissect_pg_create(proto_tree *root, gint hf,
-			  tvbuff_t *tvb, guint off, c_pkt_data *data _U_)
+			  tvbuff_t *tvb, guint off, c_pkt_data *data)
 {
 	proto_item *ti;
 	proto_tree *tree;
@@ -2506,7 +2488,7 @@ guint c_dissect_pg_create(proto_tree *root, gint hf,
 /** Dissect a filepath. */
 static
 guint c_dissect_path(proto_tree *root, gint hf,
-		     tvbuff_t *tvb, guint off, c_pkt_data *data _U_)
+		     tvbuff_t *tvb, guint off, c_pkt_data *data)
 {
 	proto_item *ti, *ti2;
 	proto_tree *tree;
@@ -2597,7 +2579,7 @@ guint c_dissect_mds_release(proto_tree *root, gint hf,
 /** Dissect a HitSet::Params */
 static
 guint c_dissect_hitset_params(proto_tree *root,
-			      tvbuff_t *tvb, guint off, c_pkt_data *data _U_)
+			      tvbuff_t *tvb, guint off, c_pkt_data *data)
 {
 	proto_item *ti, *ti2;
 	proto_tree *tree;
@@ -2656,7 +2638,7 @@ guint c_dissect_hitset_params(proto_tree *root,
 /** Dissect a pool_snap_info_t */
 static
 guint c_dissect_snapinfo(proto_tree *root,
-			 tvbuff_t *tvb, guint off, c_pkt_data *data _U_)
+			 tvbuff_t *tvb, guint off, c_pkt_data *data)
 {
 	proto_item *ti;
 	proto_tree *tree;
@@ -2699,7 +2681,7 @@ guint c_dissect_snapinfo(proto_tree *root,
 /** Dissect a pg pool. */
 static
 guint c_dissect_pgpool(proto_tree *root,
-		       tvbuff_t *tvb, guint off, c_pkt_data *data _U_)
+		       tvbuff_t *tvb, guint off, c_pkt_data *data)
 {
 	proto_item *ti, *ti2;
 	proto_tree *tree, *subtree;
@@ -2926,7 +2908,7 @@ guint c_dissect_pgpool(proto_tree *root,
 /** Dissect a MonMap. */
 static
 guint c_dissect_monmap(proto_tree *root,
-		       tvbuff_t *tvb, guint off, c_pkt_data *data _U_)
+		       tvbuff_t *tvb, guint off, c_pkt_data *data)
 {
 	proto_item *ti, *ti2;
 	proto_tree *tree, *subtree;
@@ -2992,7 +2974,7 @@ guint c_dissect_monmap(proto_tree *root,
 /** Dissect an osd_peer_stat_t */
 static
 guint c_dissect_osd_peerstat(proto_tree *root,
-			     tvbuff_t *tvb, guint off, c_pkt_data *data _U_)
+			     tvbuff_t *tvb, guint off, c_pkt_data *data)
 {
 	proto_item *ti;
 	proto_tree *tree;
@@ -3068,7 +3050,7 @@ guint c_dissect_featureset(proto_tree *root, int hf,
 /** Dissect a CompatSet */
 static
 guint c_dissect_compatset(proto_tree *root,
-			  tvbuff_t *tvb, guint off, c_pkt_data *data _U_)
+			  tvbuff_t *tvb, guint off, c_pkt_data *data)
 {
 	proto_item *ti;
 	proto_tree *tree;
@@ -3089,7 +3071,7 @@ guint c_dissect_compatset(proto_tree *root,
 /** Dissect an OSDSuperblock */
 static
 guint c_dissect_osd_superblock(proto_tree *root,
-			       tvbuff_t *tvb, guint off, c_pkt_data *data _U_)
+			       tvbuff_t *tvb, guint off, c_pkt_data *data)
 {
 	proto_item *ti;
 	proto_tree *tree;
@@ -3170,7 +3152,7 @@ guint c_dissect_osd_superblock(proto_tree *root,
 /** Dissect an osd_info_t. */
 static
 guint c_dissect_osdinfo(proto_tree *root, int hf,
-			tvbuff_t *tvb, guint off, c_pkt_data *data _U_)
+			tvbuff_t *tvb, guint off, c_pkt_data *data)
 {
 	proto_item *ti, *ti2;
 	proto_tree *tree;
@@ -3217,7 +3199,7 @@ guint c_dissect_osdinfo(proto_tree *root, int hf,
 /** Dissect an osd_xinfo_t. */
 static
 guint c_dissect_osd_xinfo(proto_tree *root, int hf,
-			  tvbuff_t *tvb, guint off, c_pkt_data *data _U_)
+			  tvbuff_t *tvb, guint off, c_pkt_data *data)
 {
 	proto_item *ti;
 	proto_tree *tree;
@@ -3263,7 +3245,7 @@ guint c_dissect_osd_xinfo(proto_tree *root, int hf,
 /** Dissect an objectstore_perfstat_t. */
 static
 guint c_dissect_perfstat(proto_tree *root, int hf,
-			 tvbuff_t *tvb, guint off, c_pkt_data *data _U_)
+			 tvbuff_t *tvb, guint off, c_pkt_data *data)
 {
 	proto_item *ti;
 	proto_tree *tree;
@@ -3294,7 +3276,7 @@ guint c_dissect_perfstat(proto_tree *root, int hf,
 /** Dissect an osd_stat_t. */
 static
 guint c_dissect_osd_stat(proto_tree *root,
-			 tvbuff_t *tvb, guint off, c_pkt_data *data _U_)
+			 tvbuff_t *tvb, guint off, c_pkt_data *data)
 {
 	proto_item *ti;
 	proto_tree *tree;
@@ -3382,7 +3364,7 @@ guint c_dissect_crush(proto_tree *root,
 /** Dissect an OSDMap. */
 static
 guint c_dissect_osdmap(proto_tree *root,
-		       tvbuff_t *tvb, guint off, c_pkt_data *data _U_)
+		       tvbuff_t *tvb, guint off, c_pkt_data *data)
 {
 	proto_item *ti, *ti2;
 	proto_tree *tree, *subtree;
@@ -3717,7 +3699,7 @@ guint c_dissect_osdmap(proto_tree *root,
 /** Dissect an incremental OSDMap. */
 static
 guint c_dissect_osdmap_inc(proto_tree *root,
-			   tvbuff_t *tvb, guint off, c_pkt_data *data _U_)
+			   tvbuff_t *tvb, guint off, c_pkt_data *data)
 {
 	proto_item *ti, *ti2;
 	proto_tree *tree, *subtree;
@@ -3778,14 +3760,12 @@ typedef struct _c_osd_op {
 	guint32 payload_size; /** The size of the operation payload. */
 } c_osd_op;
 
-enum c_osd_op_const {
-	C_SIZE_OSD_OP_MIN = 34
-};
+#define C_SIZE_OSD_OP_MIN 34
 
 /** Dissect OSD Operation. */
 static
 guint c_dissect_osd_op(proto_tree *root, gint hf, c_osd_op *out,
-		       tvbuff_t *tvb, guint off, c_pkt_data *data _U_)
+		       tvbuff_t *tvb, guint off, c_pkt_data *data)
 {
 	proto_item *ti, *ti2;
 	proto_tree *tree;
@@ -3928,7 +3908,7 @@ guint c_dissect_osd_op(proto_tree *root, gint hf, c_osd_op *out,
 /** Dissect a redirect. */
 static
 guint c_dissect_redirect(proto_tree *root, gint hf,
-			 tvbuff_t *tvb, guint off, c_pkt_data *data _U_)
+			 tvbuff_t *tvb, guint off, c_pkt_data *data)
 {
 	proto_item *ti;
 	proto_tree *tree;
@@ -4093,7 +4073,7 @@ guint c_dissect_statcollection(proto_tree *root, int key,
 /** Dissect an pg_stat_t. */
 static
 guint c_dissect_pg_stats(proto_tree *root, int hf,
-			 tvbuff_t *tvb, guint off, c_pkt_data *data _U_)
+			 tvbuff_t *tvb, guint off, c_pkt_data *data)
 {
 	proto_item *ti;
 	proto_tree *tree;
@@ -4260,9 +4240,7 @@ guint c_dissect_pg_stats(proto_tree *root, int hf,
 	return off;
 }
 
-enum c_size_paxos {
-	C_SIZE_PAXOS = 18
-};
+#define C_SIZE_PAXOS 18
 
 /** Dissect a Paxos Service Message */
 static
@@ -4345,10 +4323,10 @@ guint c_dissect_msg_ping(proto_tree *root _U_,
 
 /** Dissect monmap message 0x0004 */
 static
-guint c_dissect_msg_mon_map(proto_tree *root _U_,
-			    tvbuff_t *tvb _U_,
+guint c_dissect_msg_mon_map(proto_tree *root,
+			    tvbuff_t *tvb,
 			    guint front_len, guint middle_len _U_, guint data_len _U_,
-			    c_pkt_data *data _U_)
+			    c_pkt_data *data)
 {
 	proto_item *ti;
 	proto_tree *tree;
@@ -6387,20 +6365,18 @@ guint c_dissect_msg_timecheck(proto_tree *root,
 
 /*** MSGR Dissectors ***/
 
-enum c_size_msg {
-	C_OFF_HEAD0  = 0,
-	C_SIZE_HEAD0 = (64+64+16+16+16)/8,
+#define C_OFF_HEAD0  0
+#define C_SIZE_HEAD0 ((64+64+16+16+16)/8)
 
-	C_OFF_HEAD1  = C_SIZE_HEAD0,
-	C_SIZE_HEAD1 = (32+32+32+16)/8,
+#define C_OFF_HEAD1  C_SIZE_HEAD0
+#define C_SIZE_HEAD1 ((32+32+32+16)/8)
 
-	C_OFF_HEAD2  = C_OFF_HEAD1 + C_SIZE_HEAD1 + C_SIZE_ENTITY_NAME,
-	C_SIZE_HEAD2 = (16+16+32)/8,
+#define C_OFF_HEAD2  (C_OFF_HEAD1 + C_SIZE_HEAD1 + C_SIZE_ENTITY_NAME)
+#define C_SIZE_HEAD2 ((16+16+32)/8)
 
-	C_SIZE_HEAD  = C_OFF_HEAD2 + C_SIZE_HEAD2,
+#define C_SIZE_HEAD  (C_OFF_HEAD2 + C_SIZE_HEAD2)
 
-	C_SIZE_FOOT  = (32+32+32+64+8)/8
-};
+#define C_SIZE_FOOT  ((32+32+32+64+8)/8)
 
 /** Dissect a MSG message.
  *
@@ -6610,14 +6586,12 @@ guint c_dissect_msg(proto_tree *tree,
 	return off;
 }
 
-enum c_sizes_connect {
-	C_SIZE_CONNECT = 33,
-	C_SIZE_CONNECT_REPLY = 25,
-	C_CONNECT_REPLY_OFF_OFFLEN = 20,
-	C_SIZE_HELLO_S = 2*C_SIZE_ENTITY_ADDR,
-	C_SIZE_HELLO_C = C_SIZE_ENTITY_ADDR + C_SIZE_CONNECT,
-	C_HELLO_OFF_AUTHLEN = C_SIZE_ENTITY_ADDR + 28
-};
+#define C_SIZE_CONNECT          33
+#define C_SIZE_CONNECT_REPLY    25
+#define C_CONNECT_REPLY_OFF_OFFLEN 20
+#define C_SIZE_HELLO_S          (2*C_SIZE_ENTITY_ADDR)
+#define C_SIZE_HELLO_C          (C_SIZE_ENTITY_ADDR + C_SIZE_CONNECT)
+#define C_HELLO_OFF_AUTHLEN     (C_SIZE_ENTITY_ADDR + 28)
 
 /** Dissect a connection request. */
 static
@@ -7079,14 +7053,15 @@ int dissect_ceph(tvbuff_t *tvb, packet_info *pinfo,
  * Proxies the old style dissector interface to the new style.
  */
 static
-void dissect_ceph_old(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
+int dissect_ceph_old(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data)
 {
-	dissect_ceph(tvb, pinfo, tree, NULL);
+	dissect_ceph(tvb, pinfo, tree, data);
+	return tvb_captured_length(tvb);
 }
 
 static
 gboolean dissect_ceph_heur(tvbuff_t *tvb, packet_info *pinfo,
-			   proto_tree *tree, void *data _U_)
+			   proto_tree *tree, void *data)
 {
 	conversation_t *conv;
 
@@ -7533,7 +7508,7 @@ proto_register_ceph(void)
 			NULL, HFILL
 		} },
 		{ &hf_pgpool_tier, {
-			"Tier", "ceph.msg.",
+			"Tier", "ceph.msg.tier",
 			FT_UINT64, BASE_HEX, NULL, 0,
 			"A pool that is a tier of this tier.", HFILL
 		} },
@@ -7603,7 +7578,7 @@ proto_register_ceph(void)
 			"Fraction of cache to leave dirty.", HFILL
 		} },
 		{ &hf_pgpool_cache_targetfullratio, {
-			"Cache Target Full Ratio", "ceph.msg.",
+			"Cache Target Full Ratio", "ceph.msg.targetfullratio",
 			FT_UINT32, BASE_DEC, NULL, 0,
 			"Fraction of target to fill before evicting in earnest.", HFILL
 		} },
@@ -8914,7 +8889,7 @@ proto_register_ceph(void)
 			"The priority of this message, higher the more urgent.", HFILL
 		} },
 		{ &hf_head_version, {
-			"Version", "ceph.version",
+			"Version", "ceph.head_version",
 			FT_UINT16, BASE_DEC, NULL, 0,
 			NULL, HFILL
 		} },

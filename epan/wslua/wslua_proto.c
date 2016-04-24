@@ -30,6 +30,7 @@
 
 #include "wslua.h"
 #include <epan/dissectors/packet-tcp.h>
+#include <epan/exceptions.h>
 
 /* WSLUA_MODULE Proto Functions for new protocols and dissectors
 
@@ -92,7 +93,6 @@ WSLUA_CONSTRUCTOR Proto_new(lua_State* L) {
     const gchar* desc = luaL_checkstring(L,WSLUA_ARG_Proto_new_DESC);
     Proto proto;
     gchar *loname, *hiname;
-    int proto_id;
 
     /* TODO: should really make a common function for all of wslua that does checkstring and non-empty at same time */
     if (!name[0]) {
@@ -105,17 +105,29 @@ WSLUA_CONSTRUCTOR Proto_new(lua_State* L) {
         return 0;
     }
 
-    loname = g_ascii_strdown(name, -1);
-    proto_id = proto_get_id_by_filter_name(loname);
+    if (proto_name_already_registered(desc)) {
+        WSLUA_ARG_ERROR(Proto_new,DESC,"there cannot be two protocols with the same description");
+        return 0;
+    }
 
-    if (proto_id > 0) {
-        WSLUA_ARG_ERROR(Proto_new,NAME,"there cannot be two protocols with the same name");
+    loname = g_ascii_strdown(name, -1);
+    if (proto_check_field_name(loname)) {
         g_free(loname);
+        WSLUA_ARG_ERROR(Proto_new,NAME,"invalid character in name");
+        return 0;
+    }
+
+    hiname = g_ascii_strup(name, -1);
+    if ((proto_get_id_by_short_name(hiname) != -1) ||
+        (proto_get_id_by_filter_name(loname) != -1))
+    {
+        g_free(loname);
+        g_free(hiname);
+        WSLUA_ARG_ERROR(Proto_new,NAME,"there cannot be two protocols with the same name");
         return 0;
     }
 
     proto = (wslua_proto_t *)g_malloc(sizeof(wslua_proto_t));
-    hiname = g_ascii_strup(name, -1);
 
     proto->name = hiname;
     proto->loname = loname;
@@ -181,7 +193,7 @@ WSLUA_FUNCTION wslua_register_postdissector(lua_State* L) {
 
     if(!proto->is_postdissector) {
         if (! proto->handle) {
-            proto->handle = new_register_dissector(proto->loname, dissect_lua, proto->hfid);
+            proto->handle = register_dissector(proto->loname, dissect_lua, proto->hfid);
         }
 
         register_postdissector(proto->handle);
@@ -241,6 +253,11 @@ WSLUA_METHOD Proto_register_heuristic(lua_State* L) {
     if (!has_heur_dissector_list(listname)) {
         luaL_error(L, "there is no heuristic list for '%s'", listname);
         return 0;
+    }
+
+    /* verify that this is not already registered */
+    if (find_heur_dissector_by_unique_short_name(proto->loname)) {
+        luaL_error(L, "'%s' is already registered as heuristic", proto->loname);
     }
 
     /* we'll check if the second form of this function was called: when the second arg is
@@ -342,7 +359,7 @@ static int Proto_set_dissector(lua_State* L) {
         lua_settable(L,1);
 
         if (! proto->handle) {
-            proto->handle = new_register_dissector(proto->loname, dissect_lua, proto->hfid);
+            proto->handle = register_dissector(proto->loname, dissect_lua, proto->hfid);
         }
     } else {
         luaL_argerror(L,2,"The dissector of a protocol must be a function");
@@ -480,7 +497,7 @@ static int Proto_set_experts(lua_State* L) {
 }
 
 /* Gets registered as metamethod automatically by WSLUA_REGISTER_CLASS/META */
-static int Proto__gc(lua_State* L _U_) {
+static int Proto__gc(lua_State* L) {
     /* Proto is registered twice, once in protocols_table_ref and once returned from Proto_new.
      * It will not be freed unless deregistered.
      */
@@ -564,6 +581,22 @@ ProtoField wslua_is_field_available(lua_State* L, const char* field_abbr) {
     lua_pop(L, 1); /* protocols_table_ref */
 
     return NULL;
+}
+
+int wslua_deregister_heur_dissectors(lua_State* L) {
+    /* for each registered heur dissector do... */
+    lua_rawgeti(L, LUA_REGISTRYINDEX, lua_heur_dissectors_table_ref);
+    for (lua_pushnil(L); lua_next(L, -2); lua_pop(L, 1)) {
+        const gchar *listname = luaL_checkstring(L, -2);
+        for (lua_pushnil(L); lua_next(L, -2); lua_pop(L, 1)) {
+            const gchar *proto_name = luaL_checkstring(L, -2);
+            int proto_id = proto_get_id_by_short_name(proto_name);
+            heur_dissector_delete(listname, heur_dissect_lua, proto_id);
+        }
+    }
+    lua_pop(L, 1); /* lua_heur_dissectors_table_ref */
+
+    return 0;
 }
 
 int wslua_deregister_protocols(lua_State* L) {
@@ -703,6 +736,9 @@ int Proto_commit(lua_State* L) {
             eiri.eiinfo.severity = e->severity;
             eiri.eiinfo.summary  = e->text;
 
+            /* Copy this because it will be free'd when deregistering fields */
+            eiri.eiinfo.hf_info.hfinfo.name = g_strdup(eiri.eiinfo.hf_info.hfinfo.name);
+
             if (e->ids.ei != EI_INIT_EI || e->ids.hf != EI_INIT_HF) {
                 return luaL_error(L,"expert fields can be registered only once");
             }
@@ -722,8 +758,9 @@ int Proto_commit(lua_State* L) {
 
 static guint
 wslua_dissect_tcp_get_pdu_len(packet_info *pinfo, tvbuff_t *tvb,
-                              int offset, void *data _U_)
+                              int offset, void *data)
 {
+    /* WARNING: called from a TRY block, do not call luaL_error! */
     func_saver_t* fs = (func_saver_t*)data;
     lua_State* L = fs->state;
     int pdu_len = 0;
@@ -738,7 +775,7 @@ wslua_dissect_tcp_get_pdu_len(packet_info *pinfo, tvbuff_t *tvb,
         lua_pushinteger(L,offset);
 
         if  ( lua_pcall(L,3,1,0) ) {
-            luaL_error(L, "Lua Error in dissect_tcp_pdus get_len_func: %s", lua_tostring(L,-1));
+            THROW_LUA_ERROR("Lua Error in dissect_tcp_pdus get_len_func: %s", lua_tostring(L,-1));
         } else {
             /* if the Lua dissector reported the consumed bytes, pass it to our caller */
             if (lua_isnumber(L, -1)) {
@@ -746,12 +783,12 @@ wslua_dissect_tcp_get_pdu_len(packet_info *pinfo, tvbuff_t *tvb,
                 pdu_len = wslua_togint(L, -1);
                 lua_pop(L, 1);
             } else {
-                luaL_error(L,"Lua Error dissect_tcp_pdus: get_len_func did not return a Lua number of the PDU length");
+                THROW_LUA_ERROR("Lua Error dissect_tcp_pdus: get_len_func did not return a Lua number of the PDU length");
             }
         }
 
     } else {
-        luaL_error(L,"Lua Error in dissect_tcp_pdus: did not find the get_len_func dissector");
+        REPORT_DISSECTOR_BUG("Lua Error in dissect_tcp_pdus: did not find the get_len_func dissector");
     }
 
     return pdu_len;
@@ -761,6 +798,7 @@ static int
 wslua_dissect_tcp_dissector(tvbuff_t *tvb, packet_info *pinfo,
                             proto_tree *tree, void *data)
 {
+    /* WARNING: called from a TRY block, do not call luaL_error! */
     func_saver_t* fs = (func_saver_t*)data;
     lua_State* L = fs->state;
     int consumed_bytes = 0;
@@ -776,7 +814,7 @@ wslua_dissect_tcp_dissector(tvbuff_t *tvb, packet_info *pinfo,
         push_TreeItem(L, tree, (proto_item*)tree);
 
         if  ( lua_pcall(L,3,1,0) ) {
-            luaL_error(L, "Lua Error dissect_tcp_pdus dissect_func: %s", lua_tostring(L,-1));
+            THROW_LUA_ERROR("dissect_tcp_pdus dissect_func: %s", lua_tostring(L, -1));
         } else {
             /* if the Lua dissector reported the consumed bytes, pass it to our caller */
             if (lua_isnumber(L, -1)) {
@@ -787,7 +825,7 @@ wslua_dissect_tcp_dissector(tvbuff_t *tvb, packet_info *pinfo,
         }
 
     } else {
-        luaL_error(L,"Lua Error dissect_tcp_pdus: did not find the dissect_func dissector");
+        REPORT_DISSECTOR_BUG("dissect_tcp_pdus: did not find the dissect_func dissector");
     }
 
     return consumed_bytes;
@@ -857,9 +895,11 @@ WSLUA_FUNCTION wslua_dissect_tcp_pdus(lua_State* L) {
            destroy them before they get invoked */
         g_ptr_array_add(outstanding_FuncSavers, fs);
 
-        tcp_dissect_pdus(tvb->ws_tvb, lua_pinfo, ti->tree, proto_desegment,
-                         fixed_len, wslua_dissect_tcp_get_pdu_len,
-                         wslua_dissect_tcp_dissector, (void*)fs);
+        WRAP_NON_LUA_EXCEPTIONS(
+            tcp_dissect_pdus(tvb->ws_tvb, lua_pinfo, ti->tree, proto_desegment,
+                             fixed_len, wslua_dissect_tcp_get_pdu_len,
+                             wslua_dissect_tcp_dissector, (void*)fs);
+        )
     } else {
         luaL_error(L,"The third and fourth arguments need to be Lua functions");
     }

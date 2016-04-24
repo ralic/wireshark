@@ -34,14 +34,14 @@
 #include "file.h"
 
 #include "wsutil/file_util.h"
+#include "wsutil/str_util.h"
 #include "wsutil/unicode-utils.h"
-
 
 #include "wsutil/filesystem.h"
 #include "epan/addr_resolv.h"
 #include "epan/prefs.h"
 
-#include "color_filters.h"
+#include "epan/color_filters.h"
 
 #include "ui/alert_box.h"
 #include "ui/help_url.h"
@@ -49,6 +49,8 @@
 #include "ui/simple_dialog.h"
 #include "ui/ssl_key_export.h"
 #include "ui/util.h"
+#include "ui/ui_util.h"
+#include "ui/all_files_wildcard.h"
 
 #include "file_dlg_win32.h"
 
@@ -66,19 +68,19 @@
 
 #define FILE_TYPES_RAW \
     _T("Raw data (*.bin, *.dat, *.raw)\0")               _T("*.bin;*.dat;*.raw\0") \
-    _T("All Files (*.*)\0")                              _T("*.*\0")
+    _T("All Files (") _T(ALL_FILES_WILDCARD) _T(")\0")   _T(ALL_FILES_WILDCARD) _T("\0")
 
 #define FILE_RAW_DEFAULT 1
 
 #define FILE_TYPES_SSLKEYS \
     _T("SSL Session Keys (*.keys)\0")                    _T("*.keys\0") \
-    _T("All Files (*.*)\0")                              _T("*.*\0")
+    _T("All Files (") _T(ALL_FILES_WILDCARD) _T(")\0")   _T(ALL_FILES_WILDCARD) _T("\0")
 
 #define FILE_SSLKEYS_DEFAULT 1
 
 #define FILE_TYPES_COLOR \
     _T("Text Files (*.txt)\0")                           _T("*.txt\0")   \
-    _T("All Files (*.*)\0")                              _T("*.*\0")
+    _T("All Files (") _T(ALL_FILES_WILDCARD) _T(")\0")   _T(ALL_FILES_WILDCARD) _T("\0")
 
 #define FILE_DEFAULT_COLOR 2
 
@@ -695,7 +697,7 @@ win32_export_file(HWND h_wnd, capture_file *cf, export_type_e export_type) {
                     g_free( (void *) ofn);
                     return;
                 }
-                status = cf_print_packets(cf, &print_args);
+                status = cf_print_packets(cf, &print_args, TRUE);
                 break;
             case export_type_ps:        /* PostScript (r) */
                 print_args.stream = print_stream_ps_new(TRUE, print_args.file);
@@ -704,7 +706,7 @@ win32_export_file(HWND h_wnd, capture_file *cf, export_type_e export_type) {
                     g_free( (void *) ofn);
                     return;
                 }
-                status = cf_print_packets(cf, &print_args);
+                status = cf_print_packets(cf, &print_args, TRUE);
                 break;
             case export_type_csv:       /* CSV */
                 status = cf_write_csv_packets(cf, &print_args);
@@ -797,12 +799,12 @@ win32_export_raw_file(HWND h_wnd, capture_file *cf) {
             open_failure_alert_box(file_name8, errno, TRUE);
             return;
         }
-        if (write(fd, data_p, cf->finfo_selected->length) < 0) {
+        if (ws_write(fd, data_p, cf->finfo_selected->length) < 0) {
             write_failure_alert_box(file_name8, errno);
-            close(fd);
+            ws_close(fd);
             return;
         }
-        if (close(fd) < 0) {
+        if (ws_close(fd) < 0) {
             write_failure_alert_box(file_name8, errno);
             return;
         }
@@ -898,6 +900,7 @@ win32_export_color_file(HWND h_wnd, capture_file *cf, gpointer filter_list) {
     TCHAR  file_name[MAX_PATH] = _T("");
     gchar *dirname;
     int    ofnsize;
+    gchar *err_msg = NULL;
 
     ofnsize = win32_get_ofnsize();
     ofn = g_malloc0(ofnsize);
@@ -927,8 +930,12 @@ win32_export_color_file(HWND h_wnd, capture_file *cf, gpointer filter_list) {
     /* XXX - Support marked filters */
     if (GetSaveFileName(ofn)) {
         g_free( (void *) ofn);
-        if (!color_filters_export(utf_16to8(file_name), filter_list, FALSE /* all filters */))
+        if (!color_filters_export(utf_16to8(file_name), filter_list, FALSE /* all filters */, &err_msg))
+        {
+            simple_dialog(ESD_TYPE_ERROR, ESD_BTN_OK, "%s", err_msg);
+            g_free(err_msg);
             return;
+        }
 
         /* Save the directory name for future file dialogs. */
         dirname = get_dirname(utf_16to8(file_name));  /* Overwrites cf_name */
@@ -944,6 +951,7 @@ win32_import_color_file(HWND h_wnd, gpointer color_filters) {
     TCHAR  file_name[MAX_PATH] = _T("");
     gchar *dirname;
     int    ofnsize;
+    gchar *err_msg = NULL;
 
     ofnsize = win32_get_ofnsize();
     ofn = g_malloc0(ofnsize);
@@ -971,8 +979,11 @@ win32_import_color_file(HWND h_wnd, gpointer color_filters) {
     /* XXX - Support export limited to selected filters */
     if (GetOpenFileName(ofn)) {
         g_free( (void *) ofn);
-        if (!color_filters_import(utf_16to8(file_name), color_filters))
+        if (!color_filters_import(utf_16to8(file_name), color_filters, &err_msg, color_filter_add_cb)) {
+            simple_dialog(ESD_TYPE_ERROR, ESD_BTN_OK, "%s", err_msg);
+            g_free(err_msg);
             return;
+        }
 
         /* Save the directory name for future file dialogs. */
         dirname = get_dirname(utf_16to8(file_name));  /* Overwrites cf_name */
@@ -1491,8 +1502,8 @@ build_file_open_type_list(void) {
     str16 = utf_8to16("All Files");
     sa = g_array_append_vals(sa, str16, (guint) strlen("All Files"));
     sa = g_array_append_val(sa, zero);
-    str16 = utf_8to16("*.*");
-    sa = g_array_append_vals(sa, str16, (guint) strlen("*.*"));
+    str16 = utf_8to16(ALL_FILES_WILDCARD);
+    sa = g_array_append_vals(sa, str16, (guint) strlen(ALL_FILES_WILDCARD));
     sa = g_array_append_val(sa, zero);
 
     /*
@@ -1560,13 +1571,11 @@ append_file_type(GArray *sa, int ft)
     extensions_list = wtap_get_file_extensions_list(ft, TRUE);
     if (extensions_list == NULL) {
         /* This file type doesn't have any particular extension
-           conventionally used for it, so we'll just use "*.*"
-           as the pattern; on Windows, that matches all file names
-           - even those with no extension -  so we don't need to
-           worry about compressed file extensions.  (It does not
-           do so on UN*X; the right pattern on UN*X would just
-           be "*".) */
-           g_string_printf(pattern_str, "*.*");
+           conventionally used for it, so we'll just use a
+           wildcard that matches all file names - even those with
+           no extension, so we don't need to worry about compressed
+           file extensions. */
+           g_string_printf(pattern_str, ALL_FILES_WILDCARD);
     } else {
         /* Construct the list of patterns. */
         g_string_printf(pattern_str, "");
@@ -1620,7 +1629,7 @@ static void
 build_file_format_list(HWND sf_hwnd) {
     HWND  format_cb;
     int   ft;
-    guint index;
+    guint file_index;
     guint item_to_select;
     gchar *s;
 
@@ -1632,7 +1641,7 @@ build_file_format_list(HWND sf_hwnd) {
     SendMessage(format_cb, CB_RESETCONTENT, 0, 0);
 
     /* Check all file types. */
-    index = 0;
+    file_index = 0;
     for (ft = 0; ft < WTAP_NUM_FILE_TYPES; ft++) {
         if (ft == WTAP_FILE_UNKNOWN)
             continue;  /* not a real file type */
@@ -1647,16 +1656,16 @@ build_file_format_list(HWND sf_hwnd) {
         if(wtap_file_extensions_string(ft) != NULL) {
             s = g_strdup_printf("%s (%s)", wtap_file_type_string(ft), wtap_file_extensions_string(ft));
         } else {
-            s = g_strdup_printf("%s (*.*)", wtap_file_type_string(ft));
+            s = g_strdup_printf("%s (" ALL_FILES_WILDCARD ")", wtap_file_type_string(ft));
         }
         SendMessage(format_cb, CB_ADDSTRING, 0, (LPARAM) utf_8to16(s));
         g_free(s);
-        SendMessage(format_cb, CB_SETITEMDATA, (LPARAM) index, (WPARAM) ft);
+        SendMessage(format_cb, CB_SETITEMDATA, (LPARAM) file_index, (WPARAM) ft);
         if (ft == g_filetype) {
             /* Default to the same format as the file, if it's supported. */
-            item_to_select = index;
+            item_to_select = file_index;
         }
-        index++;
+        file_index++;
     }
 
     SendMessage(format_cb, CB_SETCURSEL, (WPARAM) item_to_select, 0);
@@ -1667,7 +1676,7 @@ static UINT_PTR CALLBACK
 save_as_file_hook_proc(HWND sf_hwnd, UINT msg, WPARAM w_param, LPARAM l_param) {
     HWND           cur_ctrl;
     OFNOTIFY      *notify = (OFNOTIFY *) l_param;
-    /*int            new_filetype, index;*/
+    /*int            new_filetype, file_index;*/
 
     switch(msg) {
         case WM_INITDIALOG: {
@@ -1692,9 +1701,9 @@ save_as_file_hook_proc(HWND sf_hwnd, UINT msg, WPARAM w_param, LPARAM l_param) {
             switch (w_param) {
 #if 0
                 case (CBN_SELCHANGE << 16) | EWFD_FILE_TYPE_COMBO:
-                    index = SendMessage(cur_ctrl, CB_GETCURSEL, 0, 0);
-                    if (index != CB_ERR) {
-                        new_filetype = SendMessage(cur_ctrl, CB_GETITEMDATA, (WPARAM) index, 0);
+                    file_index = SendMessage(cur_ctrl, CB_GETCURSEL, 0, 0);
+                    if (file_index != CB_ERR) {
+                        new_filetype = SendMessage(cur_ctrl, CB_GETITEMDATA, (WPARAM) file_index, 0);
                         if (new_filetype != CB_ERR) {
                             if (g_filetype != new_filetype) {
                                 if (wtap_can_save_with_wiretap(new_filetype, cfile.linktypes)) {
@@ -1797,7 +1806,7 @@ static UINT_PTR CALLBACK
 export_specified_packets_file_hook_proc(HWND sf_hwnd, UINT msg, WPARAM w_param, LPARAM l_param) {
     HWND           cur_ctrl;
     OFNOTIFY      *notify = (OFNOTIFY *) l_param;
-    /*int            new_filetype, index;*/
+    /*int            new_filetype, file_index;*/
 
     switch(msg) {
         case WM_INITDIALOG: {
@@ -1823,9 +1832,9 @@ export_specified_packets_file_hook_proc(HWND sf_hwnd, UINT msg, WPARAM w_param, 
             switch (w_param) {
 #if 0
                 case (CBN_SELCHANGE << 16) | EWFD_FILE_TYPE_COMBO:
-                    index = SendMessage(cur_ctrl, CB_GETCURSEL, 0, 0);
-                    if (index != CB_ERR) {
-                        new_filetype = SendMessage(cur_ctrl, CB_GETITEMDATA, (WPARAM) index, 0);
+                    file_index = SendMessage(cur_ctrl, CB_GETCURSEL, 0, 0);
+                    if (file_index != CB_ERR) {
+                        new_filetype = SendMessage(cur_ctrl, CB_GETITEMDATA, (WPARAM) file_index, 0);
                         if (new_filetype != CB_ERR) {
                             if (g_filetype != new_filetype) {
                                 if (wtap_can_save_with_wiretap(new_filetype, cfile.linktypes)) {
@@ -2281,7 +2290,7 @@ export_file_hook_proc(HWND ef_hwnd, UINT msg, WPARAM w_param, LPARAM l_param) {
     HWND           cur_ctrl;
     OFNOTIFY      *notify = (OFNOTIFY *) l_param;
     gboolean       pkt_fmt_enable;
-    int            i, index;
+    int            i, filter_index;
 
     switch(msg) {
         case WM_INITDIALOG: {
@@ -2312,13 +2321,13 @@ export_file_hook_proc(HWND ef_hwnd, UINT msg, WPARAM w_param, LPARAM l_param) {
                 case CDN_FILEOK:
                     break;
                 case CDN_TYPECHANGE:
-                    index = notify->lpOFN->nFilterIndex;
+                    filter_index = notify->lpOFN->nFilterIndex;
 
-                    if (index == 2)     /* PostScript */
+                    if (filter_index == 2)     /* PostScript */
                         print_args.format = PR_FMT_TEXT;
                     else
                         print_args.format = PR_FMT_PS;
-                    if (index == 3 || index == 4 || index == 5 || index == 6)
+                    if (filter_index == 3 || filter_index == 4 || filter_index == 5 || filter_index == 6)
                         pkt_fmt_enable = FALSE;
                     else
                         pkt_fmt_enable = TRUE;

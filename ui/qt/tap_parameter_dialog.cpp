@@ -41,7 +41,7 @@
 #include "epan/stat_tap_ui.h"
 
 #include "ui/last_open_dir.h"
-#include "ui/utf8_entities.h"
+#include <wsutil/utf8_entities.h>
 
 #include "wsutil/file_util.h"
 
@@ -79,9 +79,6 @@ TapParameterDialog::TapParameterDialog(QWidget &parent, CaptureFile &cf, int hel
     help_topic_(help_topic)
 {
     ui->setupUi(this);
-
-    // XXX Use recent settings instead
-    resize(parent.width() * 2 / 3, parent.height() * 3 / 4);
 
     // Only show a hint label if a subclass provides a hint.
     ui->hintLabel->hide();
@@ -512,6 +509,8 @@ void TapParameterDialog::updateWidgets()
     }
     ui->displayFilterLineEdit->setEnabled(edit_enable);
     ui->applyFilterButton->setEnabled(apply_enable);
+
+    WiresharkDialog::updateWidgets();
 }
 
 void TapParameterDialog::on_applyFilterButton_clicked()

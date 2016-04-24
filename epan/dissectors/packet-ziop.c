@@ -70,7 +70,6 @@ static gint ett_ziop = -1;
 
 static expert_field ei_ziop_version = EI_INIT;
 
-static dissector_handle_t data_handle;
 static dissector_handle_t ziop_tcp_handle;
 
 
@@ -148,7 +147,7 @@ dissect_ziop (tvbuff_t * tvb, packet_info * pinfo, proto_tree * tree, void* data
                                giop_version_major,
                                giop_version_minor);
 
-      call_dissector(data_handle, tvb, pinfo, tree);
+      call_data_dissector(tvb, pinfo, tree);
       return tvb_reported_length(tvb);
   }
 
@@ -322,19 +321,17 @@ proto_register_ziop (void)
   expert_ziop = expert_register_protocol(proto_ziop);
   expert_register_field_array(expert_ziop, ei, array_length(ei));
 
-  new_register_dissector("ziop", dissect_ziop, proto_ziop);
+  register_dissector("ziop", dissect_ziop, proto_ziop);
 }
 
 
 void
 proto_reg_handoff_ziop (void)
 {
-  ziop_tcp_handle = new_create_dissector_handle(dissect_ziop_tcp, proto_ziop);
+  ziop_tcp_handle = create_dissector_handle(dissect_ziop_tcp, proto_ziop);
   dissector_add_for_decode_as("udp.port", ziop_tcp_handle);
 
   heur_dissector_add("tcp", dissect_ziop_heur, "ZIOP over TCP", "ziop_tcp", proto_ziop, HEURISTIC_ENABLE);
-
-  data_handle = find_dissector("data");
 }
 
 /*

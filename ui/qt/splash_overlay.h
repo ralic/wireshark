@@ -29,7 +29,7 @@
 #include "register.h"
 
 #include <QWidget>
-#include <QTime>
+#include <QElapsedTimer>
 
 void splash_update(register_action_e action, const char *message, void *dummy);
 
@@ -45,15 +45,12 @@ public:
     explicit SplashOverlay(QWidget *parent = 0);
     ~SplashOverlay();
 
-protected:
-    void paintEvent(QPaintEvent *event);
-
 private:
     Ui::SplashOverlay *so_ui_;
     bool blurred_;
     register_action_e last_action_;
     int register_cur_;
-    QTime time_;
+    QElapsedTimer elapsed_timer_;
 
 private slots:
     void splashUpdate(register_action_e action, const char *message);

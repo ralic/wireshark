@@ -79,7 +79,6 @@ static expert_field ei_user_encap_not_handled = EI_INIT;
 static user_encap_t* encaps = NULL;
 static guint num_encaps = 0;
 static uat_t* encaps_uat;
-static dissector_handle_t data_handle;
 
 static gint exported_pdu_tap = -1;
 
@@ -103,7 +102,7 @@ static void export_pdu(tvbuff_t *tvb, packet_info* pinfo, char *proto_name)
     }
 }
 
-static void dissect_user(tvbuff_t* tvb, packet_info* pinfo, proto_tree* tree) {
+static int dissect_user(tvbuff_t* tvb, packet_info* pinfo, proto_tree* tree, void* data _U_) {
     user_encap_t* encap = NULL;
     tvbuff_t* payload_tvb;
     proto_item* item;
@@ -134,8 +133,8 @@ static void dissect_user(tvbuff_t* tvb, packet_info* pinfo, proto_tree* tree) {
         proto_item_set_text(item,"%s",msg);
         expert_add_info_format(pinfo, item, &ei_user_encap_not_handled, "%s", msg);
 
-        call_dissector(data_handle, tvb, pinfo, tree);
-        return;
+        call_data_dissector(tvb, pinfo, tree);
+        return tvb_captured_length(tvb);
     }
     if (encap->payload_proto == NULL) {
         char* msg = wmem_strdup_printf(wmem_packet_scope(),
@@ -146,8 +145,8 @@ static void dissect_user(tvbuff_t* tvb, packet_info* pinfo, proto_tree* tree) {
         proto_item_set_text(item,"%s",msg);
         expert_add_info_format(pinfo, item, &ei_user_encap_not_handled, "%s", msg);
 
-        call_dissector(data_handle, tvb, pinfo, tree);
-        return;
+        call_data_dissector(tvb, pinfo, tree);
+        return tvb_captured_length(tvb);
     }
 
     proto_item_set_text(item,"DLT: %d",pinfo->match_uint + 147 - WTAP_ENCAP_USER0);
@@ -188,6 +187,7 @@ static void dissect_user(tvbuff_t* tvb, packet_info* pinfo, proto_tree* tree) {
             }
         }
     }
+    return tvb_captured_length(tvb);
 }
 
 static void* user_copy_cb(void* dest, const void* orig, size_t len _U_)
@@ -224,7 +224,6 @@ void proto_reg_handoff_user_encap(void)
     guint i;
 
     user_encap_handle = find_dissector("user_dlt");
-    data_handle = find_dissector("data");
 
     user2_encap.encap = WTAP_ENCAP_USER2;
     user2_encap.payload_proto_name = g_strdup("pktap");

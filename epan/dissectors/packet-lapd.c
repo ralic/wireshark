@@ -45,6 +45,7 @@
 #include <wiretap/wtap.h>
 #include <epan/lapd_sapi.h>
 #include <epan/expert.h>
+#include <epan/proto_data.h>
 #include "packet-l2tp.h"
 
 void proto_register_lapd(void);
@@ -90,8 +91,6 @@ static dissector_table_t lapd_gsm_sapi_dissector_table;
 
 /* Whether to use GSM SAPI vals or not */
 static gboolean global_lapd_gsm_sapis = FALSE;
-
-static dissector_handle_t data_handle;
 
 /*
  * Bits in the address field.
@@ -169,7 +168,7 @@ typedef struct lapd_byte_state {
 
 typedef struct lapd_ppi {
 	gboolean		has_crc; 		/* CRC is captured with LAPD the frames */
-	lapd_byte_state_t	start_byte_state; 	/* LAPD bitstream byte state at the beginnigng of processing the packet */
+	lapd_byte_state_t	start_byte_state; 	/* LAPD bitstream byte state at the beginning of processing the packet */
 } lapd_ppi_t;
 
 /* Fill values in lapd_byte_state struct */
@@ -196,8 +195,6 @@ typedef struct lapd_convo_data {
 
 
 static void
-dissect_lapd(tvbuff_t*, packet_info*, proto_tree*);
-static void
 dissect_lapd_full(tvbuff_t*, packet_info*, proto_tree*, gboolean);
 
 /* got new LAPD frame byte */
@@ -219,8 +216,8 @@ lapd_log_abort(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, guint offset
 	expert_add_info_format(pinfo, ti, &ei_lapd_abort, "%s", msg);
 }
 
-static void
-dissect_lapd_bitstream(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
+static int
+dissect_lapd_bitstream(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* dissector_data _U_)
 {
 	guint8		byte, full_byte = 0x00, bit_offset = 0;
 	gboolean	bit;
@@ -254,15 +251,15 @@ dissect_lapd_bitstream(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
 	} else if (conversation) {
 		convo_data = (lapd_convo_data_t*)conversation_get_proto_data(conversation, proto_lapd);
 		if (NULL != convo_data) {
-			if (ADDRESSES_EQUAL(&convo_data->addr_a, &pinfo->src)
-					&& ADDRESSES_EQUAL(&convo_data->addr_b, &pinfo->dst)
+			if (addresses_equal(&convo_data->addr_a, &pinfo->src)
+					&& addresses_equal(&convo_data->addr_b, &pinfo->dst)
 					&& convo_data-> port_a == pinfo->srcport
 					&& convo_data-> port_b == pinfo->destport) {
 				/* "forward" direction */
 				forward_stream = TRUE;
 				prev_byte_state = convo_data->byte_state_a;
-			} else if (ADDRESSES_EQUAL(&convo_data-> addr_b, &pinfo->src)
-					&& ADDRESSES_EQUAL(&convo_data->addr_a, &pinfo->dst)
+			} else if (addresses_equal(&convo_data-> addr_b, &pinfo->src)
+					&& addresses_equal(&convo_data->addr_a, &pinfo->dst)
 					&& convo_data-> port_b == pinfo->srcport
 					&& convo_data-> port_a == pinfo->destport) {
 				/* "backward" direction */
@@ -391,8 +388,8 @@ dissect_lapd_bitstream(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
 					lapd_byte_state = wmem_new(wmem_file_scope(), lapd_byte_state_t);
 					fill_lapd_byte_state(lapd_byte_state, state, full_byte, bit_offset, ones, data, data_len);
 					convo_data = wmem_new(wmem_file_scope(), lapd_convo_data_t);
-					COPY_ADDRESS(&convo_data->addr_a, &pinfo->src);
-					COPY_ADDRESS(&convo_data->addr_b, &pinfo->dst);
+					copy_address(&convo_data->addr_a, &pinfo->src);
+					copy_address(&convo_data->addr_b, &pinfo->dst);
 					convo_data->port_a = pinfo->srcport;
 					convo_data->port_b = pinfo->destport;
 					convo_data->byte_state_a = lapd_byte_state;
@@ -402,12 +399,14 @@ dissect_lapd_bitstream(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
 			}
 		}
 	}
+	return tvb_captured_length(tvb);
 }
 
-static void
-dissect_lapd(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
+static int
+dissect_lapd(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data _U_)
 {
 	dissect_lapd_full(tvb, pinfo, tree, FALSE);
+	return tvb_captured_length(tvb);
 }
 
 static void
@@ -439,7 +438,7 @@ dissect_lapd_full(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, gboolean 
 	col_append_fstr(pinfo->cinfo, COL_INFO, "TEI:%02u ", tei);
 	col_set_fence(pinfo->cinfo, COL_INFO);
 
-	if (pinfo->fd->lnk_t == WTAP_ENCAP_LINUX_LAPD) {
+	if (pinfo->pkt_encap == WTAP_ENCAP_LINUX_LAPD) {
 		/* frame is captured via libpcap */
 		if (pinfo->pseudo_header->lapd.pkttype == 4 /*PACKET_OUTGOING*/) {
 			if (pinfo->pseudo_header->lapd.we_network) {
@@ -573,14 +572,14 @@ dissect_lapd_full(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, gboolean 
 		if(global_lapd_gsm_sapis){
 			if (!dissector_try_uint(lapd_gsm_sapi_dissector_table, sapi,
 				next_tvb, pinfo, tree))
-				call_dissector(data_handle,next_tvb, pinfo, tree);
+				call_data_dissector(next_tvb, pinfo, tree);
 		}else{
 			if (!dissector_try_uint(lapd_sapi_dissector_table, sapi,
 				next_tvb, pinfo, tree))
-				call_dissector(data_handle,next_tvb, pinfo, tree);
+				call_data_dissector(next_tvb, pinfo, tree);
 		}
 	} else
-		call_dissector(data_handle,next_tvb, pinfo, tree);
+		call_data_dissector(next_tvb, pinfo, tree);
 }
 
 static gboolean
@@ -601,7 +600,7 @@ dissect_udp_lapd(tvbuff_t *tvb, packet_info *pinfo _U_ , proto_tree *tree, void 
 	if (!check_xdlc_control(tvb, 2, NULL, NULL, FALSE, FALSE))
 		return FALSE;
 
-    dissect_lapd(tvb, pinfo, tree);
+    dissect_lapd(tvb, pinfo, tree, data);
 	return TRUE;
 }
 
@@ -731,10 +730,10 @@ proto_register_lapd(void)
 	register_dissector("lapd", dissect_lapd, proto_lapd);
 
 	lapd_sapi_dissector_table = register_dissector_table("lapd.sapi",
-							     "LAPD SAPI", FT_UINT16, BASE_DEC);
+							     "LAPD SAPI", proto_lapd, FT_UINT16, BASE_DEC, DISSECTOR_TABLE_NOT_ALLOW_DUPLICATE);
 
 	lapd_gsm_sapi_dissector_table = register_dissector_table("lapd.gsm.sapi",
-								 "LAPD GSM SAPI", FT_UINT16, BASE_DEC);
+								 "LAPD GSM SAPI", proto_lapd, FT_UINT16, BASE_DEC, DISSECTOR_TABLE_NOT_ALLOW_DUPLICATE);
 
 	lapd_module = prefs_register_protocol(proto_lapd, proto_reg_handoff_lapd);
 
@@ -767,8 +766,6 @@ proto_reg_handoff_lapd(void)
 
 		register_dissector("lapd-bitstream", dissect_lapd_bitstream, proto_lapd);
 		lapd_bitstream_handle = find_dissector("lapd-bitstream");
-		data_handle = find_dissector("data");
-
 
 		init = TRUE;
 	} else {

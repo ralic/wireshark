@@ -47,7 +47,15 @@ my %APIs = (
         'prohibited' => { 'count_errors' => 1, 'functions' => [
                 # Memory-unsafe APIs
                 # Use something that won't overwrite the end of your buffer instead
-                # of these:
+                # of these.
+                #
+                # Microsoft provides lists of unsafe functions and their
+                # recommended replacements in "Security Development Lifecycle
+                # (SDL) Banned Function Calls"
+                # https://msdn.microsoft.com/en-us/library/bb288454.aspx
+                # and "Deprecated CRT Functions"
+                # https://msdn.microsoft.com/en-us/library/ms235384.aspx
+                #
                 'gets',
                 'sprintf',
                 'g_sprintf',
@@ -145,10 +153,6 @@ my %APIs = (
         # once they've been removed from all existing code.
         'soft-deprecated' => { 'count_errors' => 0, 'functions' => [
                 'tvb_length_remaining', # replaced with tvb_captured_length_remaining
-                'tvb_get_string', # replaced with tvb_get_string_enc
-                'tvb_get_stringz', # replaced with tvb_get_stringz_enc
-                'proto_tree_add_text', # replaced with proto_tree_add_subtree[_format], expert_add_info[_format], or proto_tree_add_expert[_format]
-                'proto_tree_add_text_valist', # replaced with proto_tree_add_subtree_format, expert_add_info_format, or proto_tree_add_expert_format
 
                 # Locale-unsafe APIs
                 # These may have unexpected behaviors in some locales (e.g.,
@@ -1343,64 +1347,6 @@ sub findAPIinFile($$$)
         }
 }
 
-sub checkAddTextCalls($$)
-{
-        my ($fileContentsRef, $filename) = @_;
-        my $add_text_count = 0;
-        my $okay_add_text_count = 0;
-        my $add_xxx_count = 0;
-        my $total_count = 0;
-        my $aggressive = 1;
-        my $percentage = 100;
-
-        # The 3 loops here are slow, but trying a single loop with capturing
-        # parenthesis is even slower!
-
-        # First count how many proto_tree_add_text() calls there are in total
-        while (${$fileContentsRef} =~ m/ \W* proto_tree_add_text \W* \( /gox) {
-                $add_text_count++;
-        }
-        # Then count how many of them are "okay" by virtue of their generate proto_item
-        # being used (e.g., to hang a subtree off of)
-        while (${$fileContentsRef} =~ m/ \W* [a-zA-Z0-9]+ \W* = \W* proto_tree_add_text \W* \( /gox) {
-                $okay_add_text_count++;
-        }
-        # Then count how many proto_tree_add_*() calls there are
-        while (${$fileContentsRef} =~ m/ \W proto_tree_add_[a-z0-9_]+ \W* \( /gox) {
-                $add_xxx_count++;
-        }
-
-        #printf "add_text_count %d, okay_add_text_count %d\n", $add_text_count, $okay_add_text_count;
-        $add_xxx_count -= $add_text_count;
-        $add_text_count -= $okay_add_text_count;
-
-        $total_count = $add_text_count+$add_xxx_count;
-
-        # Don't bother with files with small counts
-        if (($add_xxx_count < 10 || $add_text_count < 10) && ($total_count < 20)) {
-                return;
-        }
-
-        if ($add_xxx_count > 0) {
-            $percentage = 100*$add_text_count/$add_xxx_count;
-        }
-
-        if ($aggressive > 0) {
-            if ((($total_count <= 50) && ($percentage > 50)) ||
-                (($total_count > 50) && ($total_count <= 100) && ($percentage > 40)) ||
-                (($total_count > 100) && ($total_count <= 200) && ($percentage > 30)) ||
-                (($total_count > 200) && ($percentage > 20))) {
-                    printf STDERR "%s: found %d useless add_text() vs. %d add_<something else>() calls (%.2f%%)\n",
-                        $filename, $add_text_count, $add_xxx_count, $percentage;
-            }
-        } else {
-            if ($percentage > 50) {
-                printf STDERR "%s: found %d useless add_text() vs. %d add_<something else>() calls (%.2f%%)\n",
-                        $filename, $add_text_count, $add_xxx_count, $percentage;
-            }
-        }
-}
-
 # APIs which (generally) should not be called with an argument of tvb_get_ptr()
 my @TvbPtrAPIs = (
         # Use NULL for the value_ptr instead of tvb_get_ptr() (only if the
@@ -1444,6 +1390,7 @@ my @ShadowVariable = (
         'index',
         'time',
         'strlen',
+        'system'
 );
 
 sub checkShadowVariable($$$)
@@ -1453,7 +1400,7 @@ sub checkShadowVariable($$$)
         for my $api ( @{$groupHashRef} )
         {
                 my $cnt = 0;
-                while (${$fileContentsRef} =~ m/ \s $api \s* [^\(\w] /gx)
+                while (${$fileContentsRef} =~ m/ \s $api \s*+ [^\(\w] /gx)
                 {
                         $cnt += 1;
                 }
@@ -1798,27 +1745,27 @@ sub check_hf_entries($$)
                         $errorCount++;
                 }
                 if ($name eq $abbrev) {
-                        print STDERR "Error: the abbreviation for $hf matches the field name in $filename\n";
+                        print STDERR "Error: the abbreviation for $hf ($abbrev) matches the field name ($name) in $filename\n";
                         $errorCount++;
                 }
                 if (lc($name) eq lc($blurb)) {
-                        print STDERR "Error: the blurb for $hf ($abbrev) matches the field name in $filename\n";
+                        print STDERR "Error: the blurb for $hf ($blurb) matches the field name ($name) in $filename\n";
                         $errorCount++;
                 }
                 if ($name =~ m/"\s+/) {
-                        print STDERR "Error: the name for $hf ($abbrev) has leading space in $filename\n";
+                        print STDERR "Error: the name for $hf ($name) has leading space in $filename\n";
                         $errorCount++;
                 }
                 if ($name =~ m/\s+"/) {
-                        print STDERR "Error: the name for $hf ($abbrev) has trailing space in $filename\n";
+                        print STDERR "Error: the name for $hf ($name) has trailing space in $filename\n";
                         $errorCount++;
                 }
                 if ($blurb =~ m/"\s+/) {
-                        print STDERR "Error: the blurb for $hf ($abbrev) has leading space in $filename\n";
+                        print STDERR "Error: the blurb for $hf ($blurb) has leading space in $filename\n";
                         $errorCount++;
                 }
                 if ($blurb =~ m/\s+"/) {
-                        print STDERR "Error: the blurb for $hf ($abbrev) has trailing space in $filename\n";
+                        print STDERR "Error: the blurb for $hf ($blurb) has trailing space in $filename\n";
                         $errorCount++;
                 }
                 if ($abbrev =~ m/\s+/) {
@@ -2117,6 +2064,21 @@ while ($_ = $ARGV[0])
                 print STDERR "Warning: ".$filename." has an SVN Id tag. Please remove it!\n";
         }
 
+        if (($fileContents =~ m{ tab-width:\s*[0-7|9]+ | tabstop=[0-7|9]+ | tabSize=[0-7|9]+ }xo))
+        {
+                # To quote Icf0831717de10fc615971fa1cf75af2f1ea2d03d :
+                # HT tab stops are set every 8 spaces on UN*X; UN*X tools that treat an HT character
+                # as tabbing to 4-space tab stops, or that even are configurable but *default* to
+                # 4-space tab stops (I'm looking at *you*, Xcode!) are broken. tab-width: 4,
+                # tabstop=4, and tabSize=4 are errors if you ever expect anybody to look at your file
+                # with a UN*X tool, and every text file will probably be looked at by a UN*X tool at
+                # some point, so Don't Do That.
+                #
+                # Can I get an "amen!"?
+                print STDERR "Error: Found modelines with tabstops set to something other than 8 in " .$filename."\n";
+                $errorCount++;
+        }
+
         # Remove all the C-comments
         $fileContents =~ s{ $CComment } []xog;
 
@@ -2184,10 +2146,6 @@ while ($_ = $ARGV[0])
 
 
         check_snprintf_plus_strlen(\$fileContents, $filename);
-
-        if ($check_addtext && ! $buildbot_flag) {
-                checkAddTextCalls(\$fileContents, $filename);
-        }
 
         $errorCount += check_proto_tree_add_XXX_encoding(\$fileContents, $filename);
 

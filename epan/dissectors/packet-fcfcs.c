@@ -99,8 +99,6 @@ typedef struct _fcfcs_conv_data {
 
 static GHashTable *fcfcs_req_hash = NULL;
 
-static dissector_handle_t data_handle;
-
 /*
  * Hash Functions
  */
@@ -729,11 +727,11 @@ dissect_fcfcs (tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data)
     cthdr.maxres_size = g_ntohs (cthdr.maxres_size);
 
     if ((opcode != FCCT_MSG_ACC) && (opcode != FCCT_MSG_RJT)) {
-        conversation = find_conversation (pinfo->fd->num, &pinfo->src, &pinfo->dst,
+        conversation = find_conversation (pinfo->num, &pinfo->src, &pinfo->dst,
                                           pinfo->ptype, fchdr->oxid,
                                           fchdr->rxid, NO_PORT2);
         if (!conversation) {
-            conversation = conversation_new (pinfo->fd->num, &pinfo->src, &pinfo->dst,
+            conversation = conversation_new (pinfo->num, &pinfo->src, &pinfo->dst,
                                              pinfo->ptype, fchdr->oxid,
                                              fchdr->rxid, NO_PORT2);
         }
@@ -763,7 +761,7 @@ dissect_fcfcs (tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data)
     }
     else {
         /* Opcode is ACC or RJT */
-        conversation = find_conversation (pinfo->fd->num, &pinfo->src, &pinfo->dst,
+        conversation = find_conversation (pinfo->num, &pinfo->src, &pinfo->dst,
                                           pinfo->ptype, fchdr->oxid,
                                           fchdr->rxid, NO_PORT2);
         isreq = 0;
@@ -903,7 +901,7 @@ dissect_fcfcs (tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data)
         dissect_fcfcs_gcap (tvb, fcfcs_tree, isreq);
         break;
     default:
-        call_dissector (data_handle, tvb, pinfo, fcfcs_tree);
+        call_data_dissector(tvb, pinfo, fcfcs_tree);
         break;
     }
 
@@ -1053,11 +1051,9 @@ proto_reg_handoff_fcfcs (void)
 {
     dissector_handle_t fcs_handle;
 
-    fcs_handle = new_create_dissector_handle (dissect_fcfcs, proto_fcfcs);
+    fcs_handle = create_dissector_handle (dissect_fcfcs, proto_fcfcs);
 
     dissector_add_uint("fcct.server", FCCT_GSRVR_FCS, fcs_handle);
-
-    data_handle = find_dissector ("data");
 }
 
 /*

@@ -168,7 +168,6 @@ static gint ett_netlink_msg = -1;
 static gint ett_netlink_hdr_flags = -1;
 
 static dissector_table_t netlink_dissector_table;
-static dissector_handle_t data_handle;
 
 
 static const int *netlink_header_get_flags[] = {
@@ -254,7 +253,7 @@ dissect_netlink(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *_data
 	guint16     protocol, hatype;
 	proto_item *ti;
 	tvbuff_t   *next_tvb;
-	proto_tree *fh_tree = NULL;
+	proto_tree *fh_tree;
 
 	int offset;
 
@@ -265,11 +264,9 @@ dissect_netlink(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *_data
 	col_set_str(pinfo->cinfo, COL_PROTOCOL, "Netlink");
 	col_clear(pinfo->cinfo, COL_INFO);
 
-	if (tree) {
-		ti = proto_tree_add_protocol_format(tree, hfi_netlink->id, tvb, 0,
-				SLL_HEADER_SIZE, "Linux netlink (cooked header)");
-		fh_tree = proto_item_add_subtree(ti, ett_netlink_cooked);
-	}
+	ti = proto_tree_add_protocol_format(tree, hfi_netlink->id, tvb, 0,
+			SLL_HEADER_SIZE, "Linux netlink (cooked header)");
+	fh_tree = proto_item_add_subtree(ti, ett_netlink_cooked);
 
 	/* Unused 2B */
 	offset = 2;
@@ -347,7 +344,7 @@ dissect_netlink(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *_data
 			next_tvb = tvb_new_subset_length(tvb, offset, pkt_len-16);
 
 			if (!dissector_try_uint_new(netlink_dissector_table, protocol, next_tvb, pinfo, fh_msg, TRUE, &data))
-				call_dissector(data_handle, next_tvb, pinfo, fh_msg);
+				call_data_dissector(next_tvb, pinfo, fh_msg);
 
 		} else if (pkt_len != 16) {
 			/* XXX, expert info */
@@ -410,21 +407,20 @@ proto_register_netlink(void)
 	proto_register_fields(proto_netlink, hfi, array_length(hfi));
 	proto_register_subtree_array(ett, array_length(ett));
 
-	netlink_handle = new_create_dissector_handle(dissect_netlink, proto_netlink);
+	netlink_handle = create_dissector_handle(dissect_netlink, proto_netlink);
 
 	netlink_dissector_table = register_dissector_table(
 		"netlink.protocol",
 		"Linux netlink protocol type",
-		FT_UINT16,
-		BASE_HEX
+		proto_netlink, FT_UINT16,
+		BASE_HEX, DISSECTOR_TABLE_NOT_ALLOW_DUPLICATE
 	);
+	register_dissector("netlink", dissect_netlink, proto_netlink);
 }
 
 void
 proto_reg_handoff_netlink(void)
 {
-	data_handle = find_dissector("data");
-
 	dissector_add_uint("wtap_encap", WTAP_ENCAP_NETLINK, netlink_handle);
 }
 

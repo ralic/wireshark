@@ -24,6 +24,7 @@
 #include "config.h"
 
 #include <epan/packet.h>
+#include <epan/capture_dissectors.h>
 #include <epan/etypes.h>
 #include <epan/in_cksum.h>
 #include <epan/expert.h>
@@ -98,7 +99,6 @@ static gint ett_3gpp2_attr = -1;
 static expert_field ei_gre_checksum_incorrect = EI_INIT;
 
 static dissector_table_t gre_dissector_table;
-static dissector_handle_t data_handle;
 
 /* bit positions for flags in header */
 #define GRE_CHECKSUM            0x8000
@@ -127,11 +127,13 @@ const value_string gre_typevals[] = {
     { GRE_NHRP,            "NHRP"},
     { GRE_ERSPAN_88BE,     "ERSPAN"},
     { GRE_ERSPAN_22EB,     "ERSPAN"},
+    { GRE_MIKROTIK_EOIP,   "MIKROTIK EoIP"},
     { ETHERTYPE_IPX,       "IPX"},
     { ETHERTYPE_ETHBRIDGE, "Transparent Ethernet bridging" },
     { ETHERTYPE_RAW_FR,    "Frame Relay"},
     { ETHERTYPE_IPv6,      "IPv6" },
     { ETHERTYPE_MPLS,      "MPLS label switched packet" },
+    { ETHERTYPE_NSH,       "Network Service Header" },
     { ETHERTYPE_CDMA2000_A10_UBS,"CDMA2000 A10 Unstructured byte stream" },
     { ETHERTYPE_3GPP2,     "CDMA2000 A10 3GPP2 Packet" },
     { GRE_ARUBA_8200,      "ARUBA WLAN" },
@@ -310,8 +312,15 @@ dissect_gre_wccp2_redirect_header(tvbuff_t *tvb, int offset, proto_tree *tree)
     proto_tree_add_item(rh_tree, hf_gre_wccp_primary_bucket, tvb, offset +3, 1, ENC_BIG_ENDIAN);
 }
 
-static void
-dissect_gre(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
+static gboolean
+capture_gre(const guchar *pd _U_, int offset _U_, int len _U_, capture_packet_info_t *cpinfo, const union wtap_pseudo_header *pseudo_header _U_)
+{
+    capture_dissector_increment_count(cpinfo, proto_gre);
+    return TRUE;
+}
+
+static int
+dissect_gre(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data _U_)
 {
 
     int         offset             = 0;
@@ -335,7 +344,7 @@ dissect_gre(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
     switch (type) {
 
     case ETHERTYPE_PPP:
-        if (flags_and_ver & GRE_ACK)
+        if (flags_and_ver & GRE_VERSION)
             is_ppp = TRUE;
         break;
     case ETHERTYPE_3GPP2:
@@ -500,13 +509,14 @@ dissect_gre(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
            S bit doesn't necessarily mean there's no payload.  */
         if (!(flags_and_ver & GRE_SEQUENCE)) {
             if (tvb_reported_length_remaining(tvb, offset) <= 0)
-                return; /* no payload */
+                return offset; /* no payload */
         }
         next_tvb = tvb_new_subset_remaining(tvb, offset);
         pinfo->flags.in_gre_pkt = TRUE;
         if (!dissector_try_uint(gre_dissector_table, type, next_tvb, pinfo, tree))
-            call_dissector(data_handle,next_tvb, pinfo, gre_tree);
+            call_data_dissector(next_tvb, pinfo, gre_tree);
     }
+    return tvb_captured_length(tvb);
 }
 
 
@@ -736,7 +746,7 @@ proto_register_gre(void)
 
     /* subdissector code */
     gre_dissector_table = register_dissector_table("gre.proto",
-                                                   "GRE protocol type", FT_UINT16, BASE_HEX);
+                                                   "GRE protocol type", proto_gre, FT_UINT16, BASE_HEX, DISSECTOR_TABLE_ALLOW_DUPLICATE);
 }
 
 void
@@ -746,7 +756,8 @@ proto_reg_handoff_gre(void)
 
     gre_handle = create_dissector_handle(dissect_gre, proto_gre);
     dissector_add_uint("ip.proto", IP_PROTO_GRE, gre_handle);
-    data_handle = find_dissector("data");
+    register_capture_dissector("ip.proto", IP_PROTO_GRE, capture_gre, proto_gre);
+    register_capture_dissector("ipv6.nxt", IP_PROTO_GRE, capture_gre, proto_gre);
 }
 
 /*

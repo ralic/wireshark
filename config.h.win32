@@ -41,8 +41,6 @@
 #define HAVE_PLUGINS		1
 #define HAVE_EXTCAP		1
 
-/* #undef HAVE_SA_LEN */
-
 /* #undef HAVE_MKSTEMP */
 /* #undef HAVE_MKDTEMP */
 
@@ -65,6 +63,7 @@
 @HAVE_REMOTE@
 @HAVE_PCAP_REMOTE@
 @HAVE_PCAP_OPEN@
+@HAVE_PCAP_CREATE@
 @HAVE_PCAP_OPEN_DEAD@
 @HAVE_BPF_IMAGE@
 @HAVE_PCAP_SETSAMPLING@
@@ -79,17 +78,6 @@
 
 @PCAP_NG_DEFAULT@
 @WANT_PACKET_EDITOR@
-
-/*
- * Define WS_MSVC_NORETURN appropriately for declarations of routines that
- * never return (just like Charlie on the MTA).
- *
- * Note that MSVC++ expects __declspec(noreturn) to precede the function
- * name and GCC, as far as I know, expects __attribute__((noreturn)) to
- * follow the function name, so we need two different flavors of
- * noreturn tag.
- */
-#define WS_MSVC_NORETURN	__declspec(noreturn)
 
 /* Define if you have the floorl function. */
 #define HAVE_FLOORL 1
@@ -145,12 +133,6 @@
 /* Define if you have the <sys/wait.h> header file.  */
 /* #undef HAVE_SYS_WAIT_H */
 
-/* Define if tm_zone field exists in struct tm */
-/* #undef HAVE_TM_ZONE 1 */
-
-/* Define if tzname array exists */
-/* #undef HAVE_TZNAME */
-
 /* Define if you have the <unistd.h> header file.  */
 /* #define HAVE_UNISTD_H 1 */
 
@@ -164,19 +146,13 @@
 /* #define INTTYPES_H_DEFINES_FORMATS */
 
 /* Define if you have the z library (-lz).  */
-@HAVE_LIBZ@
-#ifdef HAVE_LIBZ
+@HAVE_ZLIB@
+#ifdef HAVE_ZLIB
 #define HAVE_INFLATEPRIME 1
 #endif
 
-/* Define to use GNU ADNS library */
+/* Define to use c-ares library */
 @HAVE_C_ARES@
-
-/* Define to use GNU ADNS library */
-#ifndef HAVE_C_ARES
-@HAVE_GNU_ADNS@
-#define ADNS_JGAA_WIN32 1
-#endif
 
 /* Define to use the gnutls library */
 @HAVE_LIBGNUTLS@
@@ -210,16 +186,11 @@
 /* Define to enable WinSparkle software updates */
 @HAVE_SOFTWARE_UPDATE@
 
-/* Define for IPv6 */
-@INET6@
-
 /* Define to have ntddndis.h */
 @HAVE_NTDDNDIS_H@
 
 /* Define if you have the strptime function. */
 /* #undef HAVE_STRPTIME 1 */
-
-#define NEED_INET_V6DEFS_H  1
 
 #ifndef WIN32
 #define WIN32			1
@@ -229,6 +200,9 @@
  * warnings on compilers that support such hints.
  */
 #define _U_
+
+/* Hint to the compiler that a function never returns */
+#define WS_NORETURN	__declspec(noreturn)
 
 /* Visual C 9 (2008), Visual C 10 (2010) and Visual C 11 (2012) and Visual C 12 (2013) need these prototypes */
 #if _MSC_VER >= 1500
@@ -255,9 +229,6 @@
 
 #define VERSION_FLAVOR "@VERSION_FLAVOR@"
 
-/* We shouldn't need this under Windows but we'll define it anyway. */
-#define HTML_VIEWER "mozilla"
-
 /* Check for the required _MSC_VER */
 #if MSC_VER_REQUIRED != _MSC_VER
 #define WS_TO_STRING2(x) #x
@@ -278,3 +249,5 @@ typedef int ssize_t;
 
 /* to use define _ws_mempbrk_sse42 if available (checked with cpuinfo)  */
 #define HAVE_SSE4_2 1
+
+#include <ws_diag_control.h>

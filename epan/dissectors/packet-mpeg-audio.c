@@ -1,11 +1,11 @@
 /* Do not modify this file. Changes will be overwritten.                      */
 /* Generated automatically by the ASN.1 to Wireshark dissector compiler       */
 /* packet-mpeg-audio.c                                                        */
-/* ../../tools/asn2wrs.py -p mpeg-audio -c ./mpeg-audio.cnf -s ./packet-mpeg-audio-template -D . -O ../../epan/dissectors mpeg-audio.asn */
+/* asn2wrs.py -p mpeg-audio -c ./mpeg-audio.cnf -s ./packet-mpeg-audio-template -D . -O ../.. mpeg-audio.asn */
 
 /* Input file: packet-mpeg-audio-template.c */
 
-#line 1 "../../asn1/mpeg-audio/packet-mpeg-audio-template.c"
+#line 1 "./asn1/mpeg-audio/packet-mpeg-audio-template.c"
 /* MPEG audio packet decoder.
  * Written by Shaun Jackman <sjackman@gmail.com>.
  * Copyright 2007 Shaun Jackman
@@ -39,7 +39,7 @@
 
 
 /*--- Included file: packet-mpeg-audio-hf.c ---*/
-#line 1 "../../asn1/mpeg-audio/packet-mpeg-audio-hf.c"
+#line 1 "./asn1/mpeg-audio/packet-mpeg-audio-hf.c"
 static int hf_mpeg_audio_sync = -1;               /* BIT_STRING_SIZE_11 */
 static int hf_mpeg_audio_version = -1;            /* T_version */
 static int hf_mpeg_audio_layer = -1;              /* T_layer */
@@ -64,18 +64,18 @@ static int hf_mpeg_audio_track = -1;              /* INTEGER_0_255 */
 static int hf_mpeg_audio_genre = -1;              /* T_genre */
 
 /*--- End of included file: packet-mpeg-audio-hf.c ---*/
-#line 33 "../../asn1/mpeg-audio/packet-mpeg-audio-template.c"
+#line 33 "./asn1/mpeg-audio/packet-mpeg-audio-template.c"
 
 /*--- Included file: packet-mpeg-audio-ett.c ---*/
-#line 1 "../../asn1/mpeg-audio/packet-mpeg-audio-ett.c"
+#line 1 "./asn1/mpeg-audio/packet-mpeg-audio-ett.c"
 static gint ett_mpeg_audio_Audio = -1;
 static gint ett_mpeg_audio_ID3v1 = -1;
 
 /*--- End of included file: packet-mpeg-audio-ett.c ---*/
-#line 34 "../../asn1/mpeg-audio/packet-mpeg-audio-template.c"
+#line 34 "./asn1/mpeg-audio/packet-mpeg-audio-template.c"
 
 /*--- Included file: packet-mpeg-audio-fn.c ---*/
-#line 1 "../../asn1/mpeg-audio/packet-mpeg-audio-fn.c"
+#line 1 "./asn1/mpeg-audio/packet-mpeg-audio-fn.c"
 
 
 static int
@@ -443,7 +443,7 @@ dissect_mpeg_audio_ID3v1(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_
 
 
 /*--- End of included file: packet-mpeg-audio-fn.c ---*/
-#line 35 "../../asn1/mpeg-audio/packet-mpeg-audio-template.c"
+#line 35 "./asn1/mpeg-audio/packet-mpeg-audio-template.c"
 
 void proto_register_mpeg_audio(void);
 void proto_reg_handoff_mpeg_audio(void);
@@ -483,12 +483,10 @@ dissect_mpeg_audio_frame(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
 				"Audio Layer %d", mpa_layer(&mpa) + 1);
 	if (MPA_BITRATE_VALID(&mpa) && MPA_FREQUENCY_VALID(&mpa)) {
 		data_size = (int)(MPA_DATA_BYTES(&mpa) - sizeof mpa);
-		SET_ADDRESS(&pinfo->src, AT_NONE, 0, NULL);
-		col_add_fstr(pinfo->cinfo, COL_DEF_SRC,
-					"%d kb/s", mpa_bitrate(&mpa) / 1000);
-		SET_ADDRESS(&pinfo->dst, AT_NONE, 0, NULL);
-		col_add_fstr(pinfo->cinfo, COL_DEF_DST,
-					"%g kHz", mpa_frequency(&mpa) / (float)1000);
+		col_append_fstr(pinfo->cinfo, COL_INFO,
+						", %d kb/s, %g kHz",
+						mpa_bitrate(&mpa) / 1000,
+						mpa_frequency(&mpa) / (float)1000);
 	}
 
 	if (tree == NULL)
@@ -561,7 +559,7 @@ proto_register_mpeg_audio(void)
 	static hf_register_info hf[] = {
 
 /*--- Included file: packet-mpeg-audio-hfarr.c ---*/
-#line 1 "../../asn1/mpeg-audio/packet-mpeg-audio-hfarr.c"
+#line 1 "./asn1/mpeg-audio/packet-mpeg-audio-hfarr.c"
     { &hf_mpeg_audio_sync,
       { "sync", "mpeg-audio.sync",
         FT_BYTES, BASE_NONE, NULL, 0,
@@ -652,7 +650,7 @@ proto_register_mpeg_audio(void)
         NULL, HFILL }},
 
 /*--- End of included file: packet-mpeg-audio-hfarr.c ---*/
-#line 151 "../../asn1/mpeg-audio/packet-mpeg-audio-template.c"
+#line 149 "./asn1/mpeg-audio/packet-mpeg-audio-template.c"
 		{ &hf_mpeg_audio_data,
 			{ "Data", "mpeg-audio.data",
 				FT_BYTES, BASE_NONE, NULL, 0, NULL, HFILL }},
@@ -671,12 +669,12 @@ proto_register_mpeg_audio(void)
 	static gint *ett[] = {
 
 /*--- Included file: packet-mpeg-audio-ettarr.c ---*/
-#line 1 "../../asn1/mpeg-audio/packet-mpeg-audio-ettarr.c"
+#line 1 "./asn1/mpeg-audio/packet-mpeg-audio-ettarr.c"
     &ett_mpeg_audio_Audio,
     &ett_mpeg_audio_ID3v1,
 
 /*--- End of included file: packet-mpeg-audio-ettarr.c ---*/
-#line 168 "../../asn1/mpeg-audio/packet-mpeg-audio-template.c"
+#line 166 "./asn1/mpeg-audio/packet-mpeg-audio-template.c"
 	};
 
 	proto_mpeg_audio = proto_register_protocol(

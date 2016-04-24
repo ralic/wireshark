@@ -25,10 +25,12 @@
 #include <epan/packet.h>
 #include "ws_symbol_export.h"
 
+extern const value_string vals_http_status_code[];
+
 WS_DLL_PUBLIC
-void http_dissector_add(guint32 port, dissector_handle_t handle);
+void http_tcp_dissector_add(guint32 port, dissector_handle_t handle);
 WS_DLL_PUBLIC
-void http_port_add(guint32 port);
+void http_tcp_port_add(guint32 port);
 
 /* Used for HTTP statistics */
 typedef struct _http_info_value_t {
@@ -75,6 +77,7 @@ typedef struct _http_conv_t {
 	/** the number of requests on the conversation. */
 	guint32  req_res_num;
 	guint8   upgrade;
+	gchar   *websocket_protocol;	/* Negotiated WebSocket protocol */
 	/* Server address and port, known after first server response */
 	guint16 server_port;
 	address server_addr;

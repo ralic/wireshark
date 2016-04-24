@@ -1031,7 +1031,7 @@ void proto_register_dvb_s2_modeadapt(void)
                 "Protocol Type", HFILL}
         },
         {&hf_dvb_s2_gse_label6, {
-                "Label", "dvb-s2_gse.label",
+                "Label", "dvb-s2_gse.label_ether",
                 FT_ETHER, BASE_NONE, NULL, 0x0,
                 "Label Field", HFILL}
         },
@@ -1103,8 +1103,8 @@ void proto_reg_handoff_dvb_s2_modeadapt(void)
 
     if (!prefs_initialized) {
         heur_dissector_add("udp", dissect_dvb_s2_modeadapt, "DVB-S2 over UDP", "dvb_s2_udp", proto_dvb_s2_modeadapt, HEURISTIC_DISABLE);
-        ip_handle   = find_dissector("ip");
-        ipv6_handle = find_dissector("ipv6");
+        ip_handle   = find_dissector_add_dependency("ip", proto_dvb_s2_bb);
+        ipv6_handle = find_dissector_add_dependency("ipv6", proto_dvb_s2_bb);
         prefs_initialized = TRUE;
     }
 }

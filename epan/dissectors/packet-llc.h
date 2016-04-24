@@ -24,11 +24,11 @@
 
 #include "ws_symbol_export.h"
 
-void capture_llc(const guchar *, int, int, packet_counts *);
+gboolean capture_llc(const guchar *, int, int, capture_packet_info_t *cpinfo, const union wtap_pseudo_header *pseudo_header);
 
 extern const value_string sap_vals[];
 
-void capture_snap(const guchar *, int, int, packet_counts *);
+gboolean capture_snap(const guchar *, int, int, capture_packet_info_t *cpinfo, const union wtap_pseudo_header *pseudo_header);
 
 void dissect_snap(tvbuff_t *, int, packet_info *, proto_tree *,
     proto_tree *, int, int, int, int, int);
@@ -37,7 +37,7 @@ void dissect_snap(tvbuff_t *, int, packet_info *, proto_tree *,
  * Add an entry for a new OUI.
  */
 WS_DLL_PUBLIC
-void llc_add_oui(guint32, const char *, const char *, hf_register_info *);
+void llc_add_oui(guint32, const char *, const char *, hf_register_info *, const int);
 
 /*
  * SNAP information about the PID for a particular OUI:

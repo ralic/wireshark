@@ -46,11 +46,11 @@ static int hf_nettl_uid = -1;
 
 static dissector_handle_t eth_withoutfcs_handle;
 static dissector_handle_t tr_handle;
+static dissector_handle_t fddi_bitswapped_handle;
 static dissector_handle_t lapb_handle;
 static dissector_handle_t x25_handle;
 static dissector_handle_t sctp_handle;
-static dissector_handle_t data_handle;
-static dissector_table_t wtap_dissector_table;
+static dissector_handle_t raw_ip_handle;
 static dissector_table_t ip_proto_dissector_table;
 static dissector_table_t tcp_subdissector_table;
 
@@ -203,11 +203,9 @@ static value_string_ext subsystem_ext = VALUE_STRING_EXT_INIT(subsystem);
 
 /* Code to actually dissect the nettl record headers */
 
-static void
-dissect_nettl(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
+static int
+dissect_nettl(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data _U_)
 {
-    pinfo->current_proto = "nettl";
-
     if (tree) {
         proto_tree *nettl_tree;
         proto_item *nettl_item;
@@ -231,7 +229,7 @@ dissect_nettl(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
                            0, 0, pinfo->pseudo_header->nettl.uid);
     }
 
-    switch (pinfo->fd->lnk_t) {
+    switch (pinfo->pkt_encap) {
         case WTAP_ENCAP_NETTL_ETHERNET:
             call_dissector(eth_withoutfcs_handle, tvb, pinfo, tree);
             break;
@@ -239,29 +237,26 @@ dissect_nettl(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
             call_dissector(tr_handle, tvb, pinfo, tree);
             break;
         case WTAP_ENCAP_NETTL_FDDI:
-            if (!dissector_try_uint(wtap_dissector_table,
-                                    WTAP_ENCAP_FDDI_BITSWAPPED, tvb, pinfo, tree))
-                call_dissector(data_handle, tvb, pinfo, tree);
+            call_dissector(fddi_bitswapped_handle, tvb, pinfo, tree);
             break;
         case WTAP_ENCAP_NETTL_RAW_IP:
             if ( (pinfo->pseudo_header->nettl.kind & NETTL_HDR_PDU_MASK) == 0 )
                 /* not actually a data packet (PDU) trace record */
-                call_dissector(data_handle, tvb, pinfo, tree);
+                call_data_dissector(tvb, pinfo, tree);
             else if (pinfo->pseudo_header->nettl.subsys == NETTL_SUBSYS_NS_LS_SCTP )
                 call_dissector(sctp_handle, tvb, pinfo, tree);
-            else if (!dissector_try_uint(wtap_dissector_table,
-                                         WTAP_ENCAP_RAW_IP, tvb, pinfo, tree))
-                call_dissector(data_handle, tvb, pinfo, tree);
+            else
+                call_dissector(raw_ip_handle, tvb, pinfo, tree);
             break;
         case WTAP_ENCAP_NETTL_RAW_ICMP:
             if (!dissector_try_uint(ip_proto_dissector_table,
                                     IP_PROTO_ICMP, tvb, pinfo, tree))
-                call_dissector(data_handle, tvb, pinfo, tree);
+                call_data_dissector(tvb, pinfo, tree);
             break;
         case WTAP_ENCAP_NETTL_RAW_ICMPV6:
             if (!dissector_try_uint(ip_proto_dissector_table,
                                     IP_PROTO_ICMPV6, tvb, pinfo, tree))
-                call_dissector(data_handle, tvb, pinfo, tree);
+                call_data_dissector(tvb, pinfo, tree);
             break;
         case WTAP_ENCAP_NETTL_X25:
             if (pinfo->pseudo_header->nettl.kind == NETTL_HDR_PDUIN)
@@ -276,15 +271,16 @@ dissect_nettl(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
         case WTAP_ENCAP_NETTL_RAW_TELNET:
             if (!dissector_try_uint(tcp_subdissector_table,
                                     TCP_PORT_TELNET, tvb, pinfo, tree))
-                call_dissector(data_handle, tvb, pinfo, tree);
+                call_data_dissector(tvb, pinfo, tree);
             break;
         default:
             col_set_str(pinfo->cinfo, COL_PROTOCOL, "UNKNOWN");
             col_add_fstr(pinfo->cinfo, COL_INFO, "Unsupported nettl subsytem: %d (%s)",
                          pinfo->pseudo_header->nettl.subsys,
                          val_to_str_ext_const(pinfo->pseudo_header->nettl.subsys, &subsystem_ext, "Unknown"));
-            call_dissector(data_handle, tvb, pinfo, tree);
+            call_data_dissector(tvb, pinfo, tree);
     }
+    return tvb_captured_length(tvb);
 }
 
 
@@ -343,15 +339,15 @@ proto_reg_handoff_nettl(void)
     dissector_handle_t nettl_handle;
 
     /*
-     * Get handles for the Ethernet, Token Ring, FDDI, and RAW dissectors.
+     * Get handles for various dissectors and dissector tables.
      */
-    eth_withoutfcs_handle    = find_dissector("eth_withoutfcs");
-    tr_handle                = find_dissector("tr");
-    lapb_handle              = find_dissector("lapb");
-    x25_handle               = find_dissector("x.25");
-    sctp_handle              = find_dissector("sctp");
-    data_handle              = find_dissector("data");
-    wtap_dissector_table     = find_dissector_table("wtap_encap");
+    eth_withoutfcs_handle    = find_dissector_add_dependency("eth_withoutfcs", proto_nettl);
+    tr_handle                = find_dissector_add_dependency("tr", proto_nettl);
+    fddi_bitswapped_handle   = find_dissector_add_dependency("fddi_bitswapped", proto_nettl);
+    lapb_handle              = find_dissector_add_dependency("lapb", proto_nettl);
+    x25_handle               = find_dissector_add_dependency("x.25", proto_nettl);
+    sctp_handle              = find_dissector_add_dependency("sctp", proto_nettl);
+    raw_ip_handle            = find_dissector_add_dependency("raw_ip", proto_nettl);
     ip_proto_dissector_table = find_dissector_table("ip.proto");
     tcp_subdissector_table   = find_dissector_table("tcp.port");
 

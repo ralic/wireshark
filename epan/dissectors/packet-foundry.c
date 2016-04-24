@@ -33,7 +33,6 @@
 
 void proto_register_fdp(void);
 void proto_reg_handoff_fdp(void);
-void proto_register_foundry_oui(void);
 
 static int hf_llc_foundry_pid = -1;
 
@@ -263,8 +262,8 @@ dissect_unknown_tlv(tvbuff_t *tvb, packet_info *pinfo, int offset, int length, p
 	proto_tree_add_item(unknown_tree, hf_fdp_unknown_data, tvb, offset, length, ENC_NA);
 }
 
-static void
-dissect_fdp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
+static int
+dissect_fdp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data _U_)
 {
 	proto_item *ti;
 	proto_tree *fdp_tree = NULL;
@@ -333,6 +332,7 @@ dissect_fdp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
 		}
 
 	}
+	return tvb_captured_length(tvb);
 }
 
 void
@@ -428,6 +428,14 @@ proto_register_fdp(void)
 			0x0, NULL, HFILL }},
 
 	};
+
+	static hf_register_info oui_hf[] = {
+	  { &hf_llc_foundry_pid,
+		{ "PID",	"llc.foundry_pid",  FT_UINT16, BASE_HEX,
+		  VALS(foundry_pid_vals), 0x0, NULL, HFILL }
+	  }
+	};
+
 	static gint *ett[] = {
 		&ett_fdp,
 		&ett_fdp_tlv_header,
@@ -450,6 +458,8 @@ proto_register_fdp(void)
 	proto_register_subtree_array(ett, array_length(ett));
 	expert_fdp = expert_register_protocol(proto_fdp);
 	expert_register_field_array(expert_fdp, ei, array_length(ei));
+
+	llc_add_oui(OUI_FOUNDRY, "llc.foundry_pid", "LLC Foundry OUI PID", oui_hf, proto_fdp);
 }
 
 void
@@ -459,19 +469,6 @@ proto_reg_handoff_fdp(void)
 
 	fdp_handle = create_dissector_handle(dissect_fdp, proto_fdp);
 	dissector_add_uint("llc.foundry_pid", 0x2000, fdp_handle);
-}
-
-void
-proto_register_foundry_oui(void)
-{
-	static hf_register_info hf[] = {
-	  { &hf_llc_foundry_pid,
-		{ "PID",	"llc.foundry_pid",  FT_UINT16, BASE_HEX,
-		  VALS(foundry_pid_vals), 0x0, NULL, HFILL }
-	  }
-	};
-
-	llc_add_oui(OUI_FOUNDRY, "llc.foundry_pid", "LLC Foundry OUI PID", hf);
 }
 
 /*

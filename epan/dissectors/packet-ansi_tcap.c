@@ -1,11 +1,11 @@
 /* Do not modify this file. Changes will be overwritten.                      */
 /* Generated automatically by the ASN.1 to Wireshark dissector compiler       */
 /* packet-ansi_tcap.c                                                         */
-/* ../../tools/asn2wrs.py -b -p ansi_tcap -c ./ansi_tcap.cnf -s ./packet-ansi_tcap-template -D . -O ../../epan/dissectors TCAP-Remote-Operations-Information-Objects.asn TCAPPackage.asn */
+/* asn2wrs.py -b -p ansi_tcap -c ./ansi_tcap.cnf -s ./packet-ansi_tcap-template -D . -O ../.. TCAP-Remote-Operations-Information-Objects.asn TCAPPackage.asn */
 
 /* Input file: packet-ansi_tcap-template.c */
 
-#line 1 "../../asn1/ansi_tcap/packet-ansi_tcap-template.c"
+#line 1 "./asn1/ansi_tcap/packet-ansi_tcap-template.c"
 /* packet-ansi_tcap-template.c
  * Routines for ANSI TCAP
  * Copyright 2007 Anders Broman <anders.broman@ericsson.com>
@@ -51,8 +51,11 @@
 void proto_register_ansi_tcap(void);
 void proto_reg_handoff_ansi_tcap(void);
 
-/* Preferences defaults */
-gint ansi_tcap_response_matching_type = 0;
+/* Preference settings */
+#define ANSI_TCAP_TID_ONLY            0
+#define ANSI_TCAP_TID_AND_SOURCE      1
+#define ANSI_TCAP_TID_SOURCE_AND_DEST 2
+static gint ansi_tcap_response_matching_type = ANSI_TCAP_TID_ONLY;
 
 /* Initialize the protocol and registered fields */
 static int proto_ansi_tcap = -1;
@@ -68,7 +71,7 @@ static int hf_ansi_tcap_op_specifier = -1;
 
 
 /*--- Included file: packet-ansi_tcap-hf.c ---*/
-#line 1 "../../asn1/ansi_tcap/packet-ansi_tcap-hf.c"
+#line 1 "./asn1/ansi_tcap/packet-ansi_tcap-hf.c"
 static int hf_ansi_tcap_national = -1;            /* T_national */
 static int hf_ansi_tcap_private = -1;             /* T_private */
 static int hf_ansi_tcap_national_01 = -1;         /* INTEGER_M128_127 */
@@ -122,7 +125,7 @@ static int hf_ansi_tcap_paramSequence = -1;       /* T_paramSequence */
 static int hf_ansi_tcap_paramSet = -1;            /* T_paramSet */
 
 /*--- End of included file: packet-ansi_tcap-hf.c ---*/
-#line 62 "../../asn1/ansi_tcap/packet-ansi_tcap-template.c"
+#line 65 "./asn1/ansi_tcap/packet-ansi_tcap-template.c"
 
 /* Initialize the subtree pointers */
 static gint ett_tcap = -1;
@@ -145,7 +148,7 @@ static dissector_table_t  ansi_tcap_national_opcode_table; /* National Operation
 
 
 /*--- Included file: packet-ansi_tcap-ett.c ---*/
-#line 1 "../../asn1/ansi_tcap/packet-ansi_tcap-ett.c"
+#line 1 "./asn1/ansi_tcap/packet-ansi_tcap-ett.c"
 static gint ett_ansi_tcap_OperationCode = -1;
 static gint ett_ansi_tcap_ErrorCode = -1;
 static gint ett_ansi_tcap_PackageType = -1;
@@ -170,7 +173,7 @@ static gint ett_ansi_tcap_T_paramSequence = -1;
 static gint ett_ansi_tcap_T_paramSet = -1;
 
 /*--- End of included file: packet-ansi_tcap-ett.c ---*/
-#line 83 "../../asn1/ansi_tcap/packet-ansi_tcap-template.c"
+#line 86 "./asn1/ansi_tcap/packet-ansi_tcap-template.c"
 
 #define MAX_SSN 254
 
@@ -222,8 +225,6 @@ static const value_string ansi_tcap_national_op_code_family_vals[] = {
   { 0, NULL }
 };
 
-static void dissect_ansi_tcap(tvbuff_t *tvb, packet_info *pinfo, proto_tree *parent_tree);
-
 /*
 static dissector_handle_t tcap_handle = NULL;
 static dissector_table_t sccp_ssn_table;
@@ -271,7 +272,6 @@ ansi_tcap_cleanup(void)
 {
         /* Destroy any existing memory chunks / hashes. */
         g_hash_table_destroy(TransactionId_table);
-        TransactionId_table = NULL;
 }
 
 /* Store Invoke information needed for the corresponding reply */
@@ -289,12 +289,13 @@ save_invoke_data(packet_info *pinfo, proto_tree *tree _U_, tvbuff_t *tvb _U_){
           /* Only do this once XXX I hope it's the right thing to do */
           /* The hash string needs to contain src and dest to distiguish differnt flows */
           switch(ansi_tcap_response_matching_type){
-                        case 0:
+                        case ANSI_TCAP_TID_ONLY:
                                 buf = wmem_strdup(wmem_packet_scope(), ansi_tcap_private.TransactionID_str);
                                 break;
-                        case 1:
+                        case ANSI_TCAP_TID_AND_SOURCE:
                                 buf = wmem_strdup_printf(wmem_packet_scope(), "%s%s",ansi_tcap_private.TransactionID_str,src);
                                 break;
+                        case ANSI_TCAP_TID_SOURCE_AND_DEST:
                         default:
                                 buf = wmem_strdup_printf(wmem_packet_scope(), "%s%s%s",ansi_tcap_private.TransactionID_str,src,dst);
                                 break;
@@ -337,12 +338,13 @@ find_saved_invokedata(packet_info *pinfo, proto_tree *tree _U_, tvbuff_t *tvb _U
   buf[0] = '\0';
   /* Reverse order to invoke */
   switch(ansi_tcap_response_matching_type){
-        case 0:
+        case ANSI_TCAP_TID_ONLY:
                 g_snprintf(buf,MAX_TID_STR_LEN,"%s",ansi_tcap_private.TransactionID_str);
                 break;
-        case 1:
+        case ANSI_TCAP_TID_AND_SOURCE:
                 g_snprintf(buf,MAX_TID_STR_LEN,"%s%s",ansi_tcap_private.TransactionID_str,dst);
                 break;
+        case ANSI_TCAP_TID_SOURCE_AND_DEST:
         default:
                 g_snprintf(buf,MAX_TID_STR_LEN,"%s%s%s",ansi_tcap_private.TransactionID_str,dst,src);
                 break;
@@ -440,12 +442,12 @@ find_tcap_subdissector(tvbuff_t *tvb, asn1_ctx_t *actx, proto_tree *tree){
 
 
 /*--- Included file: packet-ansi_tcap-fn.c ---*/
-#line 1 "../../asn1/ansi_tcap/packet-ansi_tcap-fn.c"
+#line 1 "./asn1/ansi_tcap/packet-ansi_tcap-fn.c"
 
 
 static int
 dissect_ansi_tcap_T_national(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 22 "../../asn1/ansi_tcap/ansi_tcap.cnf"
+#line 22 "./asn1/ansi_tcap/ansi_tcap.cnf"
  proto_tree *subtree;
  proto_item *spcifier_item;
  int start_offset = offset;
@@ -545,7 +547,7 @@ dissect_ansi_tcap_OperationCode(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, in
                                  OperationCode_choice, hf_index, ett_ansi_tcap_OperationCode,
                                  &ansi_tcap_private.d.OperationCode);
 
-#line 18 "../../asn1/ansi_tcap/ansi_tcap.cnf"
+#line 18 "./asn1/ansi_tcap/ansi_tcap.cnf"
   ansi_tcap_private.d.OperationCode_item = actx->created_item;
 
   return offset;
@@ -613,7 +615,7 @@ dissect_ansi_tcap_ErrorCode(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int of
 
 static int
 dissect_ansi_tcap_TransactionID_U(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 154 "../../asn1/ansi_tcap/ansi_tcap.cnf"
+#line 154 "./asn1/ansi_tcap/ansi_tcap.cnf"
 
 tvbuff_t *next_tvb;
 guint8 len;
@@ -722,7 +724,7 @@ dissect_ansi_tcap_OBJECT_IDENTIFIER(gboolean implicit_tag _U_, tvbuff_t *tvb _U_
 
 static int
 dissect_ansi_tcap_ObjectIDApplicationContext(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 118 "../../asn1/ansi_tcap/ansi_tcap.cnf"
+#line 118 "./asn1/ansi_tcap/ansi_tcap.cnf"
 
  static const char * oid_str;
 
@@ -891,7 +893,7 @@ dissect_ansi_tcap_T_componentIDs(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, i
 
 static int
 dissect_ansi_tcap_T_parameter(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 87 "../../asn1/ansi_tcap/ansi_tcap.cnf"
+#line 87 "./asn1/ansi_tcap/ansi_tcap.cnf"
 
   if(find_tcap_subdissector(tvb, actx, tree))
     offset = tvb_reported_length(tvb);
@@ -912,7 +914,7 @@ static const ber_sequence_t Invoke_sequence[] = {
 
 static int
 dissect_ansi_tcap_Invoke(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 93 "../../asn1/ansi_tcap/ansi_tcap.cnf"
+#line 93 "./asn1/ansi_tcap/ansi_tcap.cnf"
   ansi_tcap_private.d.pdu = 1;
 
 
@@ -937,7 +939,7 @@ dissect_ansi_tcap_T_componentID(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, in
 
 static int
 dissect_ansi_tcap_T_parameter_01(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 100 "../../asn1/ansi_tcap/ansi_tcap.cnf"
+#line 100 "./asn1/ansi_tcap/ansi_tcap.cnf"
   if(find_tcap_subdissector(tvb, actx, tree))
     offset = tvb_reported_length(tvb);
 
@@ -955,7 +957,7 @@ static const ber_sequence_t ReturnResult_sequence[] = {
 
 static int
 dissect_ansi_tcap_ReturnResult(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 104 "../../asn1/ansi_tcap/ansi_tcap.cnf"
+#line 104 "./asn1/ansi_tcap/ansi_tcap.cnf"
   ansi_tcap_private.d.pdu = 2;
 
 
@@ -981,7 +983,7 @@ dissect_ansi_tcap_T_componentID_01(gboolean implicit_tag _U_, tvbuff_t *tvb _U_,
 
 static int
 dissect_ansi_tcap_T_parameter_02(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 110 "../../asn1/ansi_tcap/ansi_tcap.cnf"
+#line 110 "./asn1/ansi_tcap/ansi_tcap.cnf"
   if(find_tcap_subdissector(tvb, actx, tree))
     offset = tvb_reported_length(tvb);
 
@@ -1000,7 +1002,7 @@ static const ber_sequence_t ReturnError_sequence[] = {
 
 static int
 dissect_ansi_tcap_ReturnError(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 114 "../../asn1/ansi_tcap/ansi_tcap.cnf"
+#line 114 "./asn1/ansi_tcap/ansi_tcap.cnf"
   ansi_tcap_private.d.pdu = 3;
 
 
@@ -1193,7 +1195,7 @@ dissect_ansi_tcap_UniTransactionPDU(gboolean implicit_tag _U_, tvbuff_t *tvb _U_
 
 static int
 dissect_ansi_tcap_T_unidirectional(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 126 "../../asn1/ansi_tcap/ansi_tcap.cnf"
+#line 126 "./asn1/ansi_tcap/ansi_tcap.cnf"
 gp_tcapsrt_info->ope=TC_ANSI_ALL;
 col_set_str(actx->pinfo->cinfo, COL_INFO, "unidirectional ");
 
@@ -1223,7 +1225,7 @@ dissect_ansi_tcap_TransactionPDU(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, i
 
 static int
 dissect_ansi_tcap_T_queryWithPerm(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 130 "../../asn1/ansi_tcap/ansi_tcap.cnf"
+#line 130 "./asn1/ansi_tcap/ansi_tcap.cnf"
 gp_tcapsrt_info->ope=TC_ANSI_ALL;
 col_set_str(actx->pinfo->cinfo, COL_INFO, "queryWithPerm ");
 
@@ -1237,7 +1239,7 @@ col_set_str(actx->pinfo->cinfo, COL_INFO, "queryWithPerm ");
 
 static int
 dissect_ansi_tcap_T_queryWithoutPerm(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 134 "../../asn1/ansi_tcap/ansi_tcap.cnf"
+#line 134 "./asn1/ansi_tcap/ansi_tcap.cnf"
 gp_tcapsrt_info->ope=TC_ANSI_ALL;
 col_set_str(actx->pinfo->cinfo, COL_INFO, "queryWithoutPerm ");
 
@@ -1251,7 +1253,7 @@ col_set_str(actx->pinfo->cinfo, COL_INFO, "queryWithoutPerm ");
 
 static int
 dissect_ansi_tcap_T_response(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 138 "../../asn1/ansi_tcap/ansi_tcap.cnf"
+#line 138 "./asn1/ansi_tcap/ansi_tcap.cnf"
 gp_tcapsrt_info->ope=TC_ANSI_ALL;
 col_set_str(actx->pinfo->cinfo, COL_INFO, "response ");
 
@@ -1265,7 +1267,7 @@ col_set_str(actx->pinfo->cinfo, COL_INFO, "response ");
 
 static int
 dissect_ansi_tcap_T_conversationWithPerm(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 142 "../../asn1/ansi_tcap/ansi_tcap.cnf"
+#line 142 "./asn1/ansi_tcap/ansi_tcap.cnf"
 gp_tcapsrt_info->ope=TC_ANSI_ALL;
 col_set_str(actx->pinfo->cinfo, COL_INFO, "conversationWithPerm ");
 
@@ -1279,7 +1281,7 @@ col_set_str(actx->pinfo->cinfo, COL_INFO, "conversationWithPerm ");
 
 static int
 dissect_ansi_tcap_T_conversationWithoutPerm(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 146 "../../asn1/ansi_tcap/ansi_tcap.cnf"
+#line 146 "./asn1/ansi_tcap/ansi_tcap.cnf"
 gp_tcapsrt_info->ope=TC_ANSI_ALL;
 col_set_str(actx->pinfo->cinfo, COL_INFO, "conversationWithoutPerm ");
 
@@ -1375,7 +1377,7 @@ dissect_ansi_tcap_Abort(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset
 
 static int
 dissect_ansi_tcap_T_abort(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 150 "../../asn1/ansi_tcap/ansi_tcap.cnf"
+#line 150 "./asn1/ansi_tcap/ansi_tcap.cnf"
 gp_tcapsrt_info->ope=TC_ANSI_ABORT;
 col_set_str(actx->pinfo->cinfo, COL_INFO, "Abort ");
 
@@ -1408,13 +1410,13 @@ dissect_ansi_tcap_PackageType(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int 
 
 
 /*--- End of included file: packet-ansi_tcap-fn.c ---*/
-#line 351 "../../asn1/ansi_tcap/packet-ansi_tcap-template.c"
+#line 353 "./asn1/ansi_tcap/packet-ansi_tcap-template.c"
 
 
 
 
-static void
-dissect_ansi_tcap(tvbuff_t *tvb, packet_info *pinfo, proto_tree *parent_tree)
+static int
+dissect_ansi_tcap(tvbuff_t *tvb, packet_info *pinfo, proto_tree *parent_tree, void* data _U_)
 {
     proto_item          *item=NULL;
     proto_tree          *tree=NULL;
@@ -1474,15 +1476,15 @@ dissect_ansi_tcap(tvbuff_t *tvb, packet_info *pinfo, proto_tree *parent_tree)
                 }
         }
 #endif
+    return tvb_captured_length(tvb);
 }
 
 
 void
 proto_reg_handoff_ansi_tcap(void)
 {
-
-        ansi_map_handle = find_dissector("ansi_map");
-        ber_oid_dissector_table = find_dissector_table("ber.oid");
+    ansi_map_handle = find_dissector_add_dependency("ansi_map", proto_ansi_tcap);
+    ber_oid_dissector_table = find_dissector_table("ber.oid");
 }
 
 
@@ -1545,7 +1547,7 @@ proto_register_ansi_tcap(void)
         },
 
 /*--- Included file: packet-ansi_tcap-hfarr.c ---*/
-#line 1 "../../asn1/ansi_tcap/packet-ansi_tcap-hfarr.c"
+#line 1 "./asn1/ansi_tcap/packet-ansi_tcap-hfarr.c"
     { &hf_ansi_tcap_national,
       { "national", "ansi_tcap.national",
         FT_INT32, BASE_DEC, NULL, 0,
@@ -1752,7 +1754,7 @@ proto_register_ansi_tcap(void)
         NULL, HFILL }},
 
 /*--- End of included file: packet-ansi_tcap-hfarr.c ---*/
-#line 486 "../../asn1/ansi_tcap/packet-ansi_tcap-template.c"
+#line 488 "./asn1/ansi_tcap/packet-ansi_tcap-template.c"
     };
 
 /* Setup protocol subtree array */
@@ -1765,7 +1767,7 @@ proto_register_ansi_tcap(void)
         &ett_ansi_tcap_op_code_nat,
 
 /*--- Included file: packet-ansi_tcap-ettarr.c ---*/
-#line 1 "../../asn1/ansi_tcap/packet-ansi_tcap-ettarr.c"
+#line 1 "./asn1/ansi_tcap/packet-ansi_tcap-ettarr.c"
     &ett_ansi_tcap_OperationCode,
     &ett_ansi_tcap_ErrorCode,
     &ett_ansi_tcap_PackageType,
@@ -1790,7 +1792,7 @@ proto_register_ansi_tcap(void)
     &ett_ansi_tcap_T_paramSet,
 
 /*--- End of included file: packet-ansi_tcap-ettarr.c ---*/
-#line 497 "../../asn1/ansi_tcap/packet-ansi_tcap-template.c"
+#line 499 "./asn1/ansi_tcap/packet-ansi_tcap-template.c"
     };
 
     static ei_register_info ei[] = {
@@ -1800,18 +1802,18 @@ proto_register_ansi_tcap(void)
     expert_module_t* expert_ansi_tcap;
 
     static const enum_val_t ansi_tcap_response_matching_type_values[] = {
-        {"Only Transaction ID will be used in Invoke/response matching",                        "Transaction ID only", 0},
-        {"Transaction ID and Source will be used in Invoke/response matching",                  "Transaction ID and Source", 1},
-        {"Transaction ID Source and Destination will be used in Invoke/response matching",      "Transaction ID Source and Destination", 2},
+        {"Only Transaction ID will be used in Invoke/response matching",                        "Transaction ID only", ANSI_TCAP_TID_ONLY},
+        {"Transaction ID and Source will be used in Invoke/response matching",                  "Transaction ID and Source", ANSI_TCAP_TID_AND_SOURCE},
+        {"Transaction ID Source and Destination will be used in Invoke/response matching",      "Transaction ID Source and Destination", ANSI_TCAP_TID_SOURCE_AND_DEST},
         {NULL, NULL, -1}
     };
 
 /* Register the protocol name and description */
     proto_ansi_tcap = proto_register_protocol(PNAME, PSNAME, PFNAME);
-        register_dissector("ansi_tcap", dissect_ansi_tcap, proto_ansi_tcap);
+    register_dissector("ansi_tcap", dissect_ansi_tcap, proto_ansi_tcap);
 
    /* Note the high bit should be masked off when registering in this table (0x7fff)*/
-   ansi_tcap_national_opcode_table = register_dissector_table("ansi_tcap.nat.opcode", "ANSI TCAP National Opcodes", FT_UINT16, BASE_DEC);
+   ansi_tcap_national_opcode_table = register_dissector_table("ansi_tcap.nat.opcode", "ANSI TCAP National Opcodes", proto_ansi_tcap, FT_UINT16, BASE_DEC, DISSECTOR_TABLE_ALLOW_DUPLICATE);
 /* Required function calls to register the header fields and subtrees used */
     proto_register_field_array(proto_ansi_tcap, hf, array_length(hf));
     proto_register_subtree_array(ett, array_length(ett));
@@ -1822,7 +1824,7 @@ proto_register_ansi_tcap(void)
 
     prefs_register_enum_preference(ansi_tcap_module, "transaction.matchtype",
                                    "Type of matching invoke/response",
-                                   "Type of matching invoke/response, risk of missmatch if loose matching choosen",
+                                   "Type of matching invoke/response, risk of mismatch if loose matching chosen",
                                    &ansi_tcap_response_matching_type, ansi_tcap_response_matching_type_values, FALSE);
 
     register_init_routine(&ansi_tcap_init);

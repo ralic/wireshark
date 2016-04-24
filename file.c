@@ -22,10 +22,6 @@
 
 #include <config.h>
 
-#ifdef HAVE_UNISTD_H
-#include <unistd.h>
-#endif
-
 #include <time.h>
 
 #include <stdlib.h>
@@ -34,14 +30,10 @@
 #include <ctype.h>
 #include <errno.h>
 
-#ifdef HAVE_FCNTL_H
-#include <fcntl.h>
-#endif
-
 #include <wsutil/tempfile.h>
 #include <wsutil/file_util.h>
 #include <wsutil/filesystem.h>
-#include <wsutil/ws_version_info.h>
+#include <ws_version_info.h>
 
 #include <wiretap/merge.h>
 
@@ -61,9 +53,8 @@
 #include <epan/dfilter/dfilter-macro.h>
 #include <epan/strutil.h>
 #include <epan/addr_resolv.h>
+#include <epan/color_filters.h>
 
-#include "color.h"
-#include "color_filters.h"
 #include "cfile.h"
 #include "file.h"
 #include "fileset.h"
@@ -96,7 +87,7 @@
 # include <winsock2.h>
 #endif
 
-#if defined(_WIN32) && defined(INET6)
+#ifdef _WIN32
 # include <ws2tcpip.h>
 #endif
 
@@ -126,6 +117,8 @@ static match_result match_narrow(capture_file *cf, frame_data *fdata,
 static match_result match_wide(capture_file *cf, frame_data *fdata,
     void *criterion);
 static match_result match_binary(capture_file *cf, frame_data *fdata,
+    void *criterion);
+static match_result match_regex(capture_file *cf, frame_data *fdata,
     void *criterion);
 static match_result match_dfilter(capture_file *cf, frame_data *fdata,
     void *criterion);
@@ -367,9 +360,6 @@ cf_open(capture_file *cf, const char *fname, unsigned int type, gboolean is_temp
   cf->prev_cap = NULL;
   cf->cum_bytes = 0;
 
-  /* Adjust timestamp precision if auto is selected, col width will be adjusted */
-  cf_timestamp_auto_precision(cf);
-  /* XXX needed ? */
   packet_list_queue_draw();
   cf_callback_invoke(cf_cb_file_opened, cf);
 
@@ -530,10 +520,10 @@ calc_progbar_val(capture_file *cf, gint64 size, gint64 file_pos, gchar *status_s
 cf_read_status_t
 cf_read(capture_file *cf, gboolean reloading)
 {
-  int                  err;
-  gchar               *err_info;
+  int                  err = 0;
+  gchar               *err_info = NULL;
   gchar               *name_ptr;
-  progdlg_t           *progbar        = NULL;
+  progdlg_t           *volatile progbar = NULL;
   GTimeVal             start_time;
   epan_dissect_t       edt;
   dfilter_t           *dfcode;
@@ -575,9 +565,6 @@ cf_read(capture_file *cf, gboolean reloading)
   epan_dissect_init(&edt, cf->epan, create_proto_tree, FALSE);
 
   TRY {
-#ifdef HAVE_LIBPCAP
-    int     displayed_once    = 0;
-#endif
     int     count             = 0;
 
     gint64  size;
@@ -634,15 +621,8 @@ cf_read(capture_file *cf, gboolean reloading)
           if (progbar != NULL) {
             progbar_val = calc_progbar_val(cf, size, file_pos, status_str, sizeof(status_str));
             /* update the packet bar content on the first run or frequently on very large files */
-#ifdef HAVE_LIBPCAP
-            if (progbar_quantum > 500000 || displayed_once == 0) {
-              if ((auto_scroll_live || displayed_once == 0 || cf->displayed_count < 1000) && cf->count != 0) {
-                displayed_once = 1;
-                packets_bar_update();
-              }
-            }
-#endif /* HAVE_LIBPCAP */
             update_progress_dlg(progbar, progbar_val, status_str);
+            packets_bar_update();
           }
           progbar_nextstep += progbar_quantum;
         }
@@ -1118,6 +1098,15 @@ add_packet_to_packet_list(frame_data *fdata, capture_file *cf,
   if (dfcode != NULL) {
       epan_dissect_prime_dfilter(edt, dfcode);
   }
+#if 0
+  /* Prepare coloring rules, this ensures that display filter rules containing
+   * frame.color_rule references are still processed.
+   * TODO: actually detect that situation or maybe apply other optimizations? */
+  if (edt->tree && color_filters_used()) {
+    color_filters_prime_edt(edt);
+    fdata->flags.need_colorize = 1;
+  }
+#endif
 
   /* Dissect the frame. */
   epan_dissect_run_with_taps(edt, cf->cd_t, phdr, frame_tvbuff_new(fdata, buf), fdata, cinfo);
@@ -1345,7 +1334,7 @@ cf_merge_files(char **out_filenamep, int in_file_count,
   int                        out_fd;
   int                        err      = 0;
   gchar                     *err_info = NULL;
-  int                        err_fileno;
+  guint                      err_fileno;
   merge_result               status;
   merge_progress_callback_t  cb;
 
@@ -1390,6 +1379,7 @@ cf_merge_files(char **out_filenamep, int in_file_count,
     case MERGE_ERR_CANT_OPEN_INFILE:
       cf_open_failure_alert_box(in_filenames[err_fileno], err, err_info,
                                 FALSE, 0);
+      ws_close(out_fd);
       break;
 
     case MERGE_ERR_CANT_OPEN_OUTFILE:
@@ -1408,6 +1398,8 @@ cf_merge_files(char **out_filenamep, int in_file_count,
   }
 
   g_free(err_info);
+  /* for general case, no need to close out_fd: file handle associated to this file
+     descriptor was already closed by the call to wtap_dump_close() in merge_files() */
 
   if (status != MERGE_OK) {
     /* Callers aren't expected to treat an error or an explicit abort
@@ -1471,10 +1463,12 @@ cf_filter_packets(capture_file *cf, gchar *dftext, gboolean force)
 
   /* Now rescan the packet list, applying the new filter, but not
      throwing away information constructed on a previous pass. */
-  if (dftext == NULL) {
-    rescan_packets(cf, "Resetting", "Filter", FALSE);
-  } else {
-    rescan_packets(cf, "Filtering", dftext, FALSE);
+  if (cf->state != FILE_CLOSED) {
+    if (dftext == NULL) {
+      rescan_packets(cf, "Resetting", "Filter", FALSE);
+    } else {
+      rescan_packets(cf, "Filtering", dftext, FALSE);
+    }
   }
 
   /* Cleanup and release all dfilter resources */
@@ -1627,8 +1621,20 @@ rescan_packets(capture_file *cf, const char *action, const char *action_item, gb
 
     /* 'reset' dissection session */
     epan_free(cf->epan);
+    if (cf->edt && cf->edt->pi.fd) {
+      /* All pointers in "per frame proto data" for the currently selected
+         packet are allocated in wmem_file_scope() and deallocated in epan_free().
+         Free them here to avoid unintended usage in packet_list_clear(). */
+      frame_data_destroy(cf->edt->pi.fd);
+    }
     cf->epan = ws_epan_new(cf);
     cf->cinfo.epan = cf->epan;
+
+    /* A new Lua tap listener may be registered in lua_prime_all_fields()
+       called via epan_new() / init_dissection() when reloading Lua plugins. */
+    if (!create_proto_tree && have_filtering_tap_listeners()) {
+      create_proto_tree = TRUE;
+    }
 
     /* We need to redissect the packets so we have to discard our old
      * packet list store. */
@@ -1650,6 +1656,8 @@ rescan_packets(capture_file *cf, const char *action, const char *action_item, gb
   cf->prev_dis = NULL;
   cf->prev_cap = NULL;
   cf->cum_bytes = 0;
+
+  cf_callback_invoke(cf_cb_file_rescan_started, cf);
 
   /* Update the progress bar when it gets to this value. */
   progbar_nextstep = 0;
@@ -1816,6 +1824,8 @@ rescan_packets(capture_file *cf, const char *action, const char *action_item, gb
 
   packet_list_thaw();
 
+  cf_callback_invoke(cf_cb_file_rescan_finished, cf);
+
   if (selected_frame_num == -1) {
     /* The selected frame didn't pass the filter. */
     if (selected_frame == NULL) {
@@ -1881,7 +1891,7 @@ rescan_packets(capture_file *cf, const char *action, const char *action_item, gb
 
 
 /*
- * Scan trough all frame data and recalculate the ref time
+ * Scan through all frame data and recalculate the ref time
  * without rereading the file.
  * XXX - do we need a progres bar or is this fast enough?
  */
@@ -1973,7 +1983,8 @@ process_specified_records(capture_file *cf, packet_range_t *range,
     const char *string1, const char *string2, gboolean terminate_is_stop,
     gboolean (*callback)(capture_file *, frame_data *,
                          struct wtap_pkthdr *, const guint8 *, void *),
-    void *callback_args)
+    void *callback_args,
+    gboolean show_progress_bar)
 {
   guint32          framenum;
   frame_data      *fdata;
@@ -2019,7 +2030,7 @@ process_specified_records(capture_file *cf, packet_range_t *range,
        longer than the standard time to create it (otherwise, for a
        large file, we might take considerably longer than that standard
        time in order to get to the next progress bar step). */
-    if (progbar == NULL)
+    if (show_progress_bar && progbar == NULL)
       progbar = delayed_create_progress_dlg(cf->window, string1, string2,
                                             terminate_is_stop,
                                             &cf->stop_flag,
@@ -2154,7 +2165,7 @@ cf_retap_packets(capture_file *cf)
 
   ret = process_specified_records(cf, &range, "Recalculating statistics on",
                                   "all packets", TRUE, retap_packet,
-                                  &callback_args);
+                                  &callback_args, TRUE);
 
   epan_dissect_cleanup(&callback_args.edt);
 
@@ -2343,7 +2354,8 @@ fail:
 }
 
 cf_print_status_t
-cf_print_packets(capture_file *cf, print_args_t *print_args)
+cf_print_packets(capture_file *cf, print_args_t *print_args,
+                 gboolean show_progress_bar)
 {
   print_callback_args_t callback_args;
   gint          data_width;
@@ -2464,14 +2476,14 @@ cf_print_packets(capture_file *cf, print_args_t *print_args)
   proto_tree_needed =
       callback_args.print_args->print_dissections != print_dissections_none ||
       callback_args.print_args->print_hex ||
-      have_custom_cols(&cf->cinfo);
+      have_custom_cols(&cf->cinfo) || have_field_extractors();
   epan_dissect_init(&callback_args.edt, cf->epan, proto_tree_needed, proto_tree_needed);
 
   /* Iterate through the list of packets, printing the packets we were
      told to print. */
   ret = process_specified_records(cf, &print_args->range, "Printing",
                                   "selected packets", TRUE, print_packet,
-                                  &callback_args);
+                                  &callback_args, show_progress_bar);
   epan_dissect_cleanup(&callback_args.edt);
   g_free(callback_args.header_line_buf);
   g_free(callback_args.line_buf);
@@ -2562,7 +2574,7 @@ cf_write_pdml_packets(capture_file *cf, print_args_t *print_args)
      told to print. */
   ret = process_specified_records(cf, &print_args->range, "Writing PDML",
                                   "selected packets", TRUE,
-                                  write_pdml_packet, &callback_args);
+                                  write_pdml_packet, &callback_args, TRUE);
 
   epan_dissect_cleanup(&callback_args.edt);
 
@@ -2636,15 +2648,15 @@ cf_write_psml_packets(capture_file *cf, print_args_t *print_args)
   callback_args.fh = fh;
 
   /* Fill in the column information, only create the protocol tree
-     if having custom columns. */
-  proto_tree_needed = have_custom_cols(&cf->cinfo);
+     if having custom columns or field extractors. */
+  proto_tree_needed = have_custom_cols(&cf->cinfo) || have_field_extractors();
   epan_dissect_init(&callback_args.edt, cf->epan, proto_tree_needed, proto_tree_needed);
 
   /* Iterate through the list of packets, printing the packets we were
      told to print. */
   ret = process_specified_records(cf, &print_args->range, "Writing PSML",
                                   "selected packets", TRUE,
-                                  write_psml_packet, &callback_args);
+                                  write_psml_packet, &callback_args, TRUE);
 
   epan_dissect_cleanup(&callback_args.edt);
 
@@ -2716,15 +2728,15 @@ cf_write_csv_packets(capture_file *cf, print_args_t *print_args)
 
   callback_args.fh = fh;
 
-  /* only create the protocol tree if having custom columns. */
-  proto_tree_needed = have_custom_cols(&cf->cinfo);
+  /* only create the protocol tree if having custom columns or field extractors. */
+  proto_tree_needed = have_custom_cols(&cf->cinfo) || have_field_extractors();
   epan_dissect_init(&callback_args.edt, cf->epan, proto_tree_needed, proto_tree_needed);
 
   /* Iterate through the list of packets, printing the packets we were
      told to print. */
   ret = process_specified_records(cf, &print_args->range, "Writing CSV",
                                   "selected packets", TRUE,
-                                  write_csv_packet, &callback_args);
+                                  write_csv_packet, &callback_args, TRUE);
 
   epan_dissect_cleanup(&callback_args.edt);
 
@@ -2787,9 +2799,9 @@ cf_write_carrays_packets(capture_file *cf, print_args_t *print_args)
   /* Iterate through the list of packets, printing the packets we were
      told to print. */
   ret = process_specified_records(cf, &print_args->range,
-                  "Writing C Arrays",
-                  "selected packets", TRUE,
-                                  carrays_write_packet, &callback_args);
+                                  "Writing C Arrays",
+                                  "selected packets", TRUE,
+                                  carrays_write_packet, &callback_args, TRUE);
 
   epan_dissect_cleanup(&callback_args.edt);
 
@@ -2894,22 +2906,30 @@ match_subtree_text(proto_node *node, gpointer data)
     proto_item_fill_label(fi, label_str);
   }
 
-  /* Does that label match? */
-  label_len = strlen(label_ptr);
-  for (i = 0; i < label_len; i++) {
-    c_char = label_ptr[i];
-    if (cf->case_type)
-      c_char = g_ascii_toupper(c_char);
-    if (c_char == string[c_match]) {
-      c_match++;
-      if (c_match == string_len) {
-        /* No need to look further; we have a match */
-        mdata->frame_matched = TRUE;
-        mdata->finfo = fi;
-        return;
-      }
-    } else
-      c_match = 0;
+  if (cf->regex) {
+    if (g_regex_match(cf->regex, label_ptr, (GRegexMatchFlags) 0, NULL)) {
+      mdata->frame_matched = TRUE;
+      mdata->finfo = fi;
+      return;
+    }
+  } else {
+    /* Does that label match? */
+    label_len = strlen(label_ptr);
+    for (i = 0; i < label_len; i++) {
+      c_char = label_ptr[i];
+      if (cf->case_type)
+        c_char = g_ascii_toupper(c_char);
+      if (c_char == string[c_match]) {
+        c_match++;
+        if (c_match == string_len) {
+          /* No need to look further; we have a match */
+          mdata->frame_matched = TRUE;
+          mdata->finfo = fi;
+          return;
+        }
+      } else
+        c_match = 0;
+    }
   }
 
   /* Recurse into the subtree, if it exists */
@@ -2961,18 +2981,25 @@ match_summary_line(capture_file *cf, frame_data *fdata, void *criterion)
       /* Found it.  See if we match. */
       info_column = edt.pi.cinfo->columns[colx].col_data;
       info_column_len = strlen(info_column);
-      for (i = 0; i < info_column_len; i++) {
-        c_char = info_column[i];
-        if (cf->case_type)
-          c_char = g_ascii_toupper(c_char);
-        if (c_char == string[c_match]) {
-          c_match++;
-          if (c_match == string_len) {
-            result = MR_MATCHED;
-            break;
-          }
-        } else
-          c_match = 0;
+      if (cf->regex) {
+        if (g_regex_match(cf->regex, info_column, (GRegexMatchFlags) 0, NULL)) {
+          result = MR_MATCHED;
+          break;
+        }
+      } else {
+        for (i = 0; i < info_column_len; i++) {
+          c_char = info_column[i];
+          if (cf->case_type)
+            c_char = g_ascii_toupper(c_char);
+          if (c_char == string[c_match]) {
+            c_match++;
+            if (c_match == string_len) {
+              result = MR_MATCHED;
+              break;
+            }
+          } else
+            c_match = 0;
+        }
       }
       break;
     }
@@ -3006,8 +3033,11 @@ cf_find_packet_data(capture_file *cf, const guint8 *string, size_t string_size,
   info.data = string;
   info.data_len = string_size;
 
-  /* String or hex search? */
-  if (cf->string) {
+  /* Regex, String or hex search? */
+  if (cf->regex) {
+    /* Regular Expression search */
+    return find_packet(cf, match_regex, NULL, dir);
+  } else if (cf->string) {
     /* String search - what type of string? */
     switch (cf->scs_type) {
 
@@ -3062,6 +3092,7 @@ match_narrow_and_wide(capture_file *cf, frame_data *fdata, void *criterion)
           result = MR_MATCHED;
           cf->search_pos = i; /* Save the position of the last character
                                  for highlighting the field. */
+          cf->search_len = (guint32)textlen;
           break;
         }
       }
@@ -3109,6 +3140,7 @@ match_narrow(capture_file *cf, frame_data *fdata, void *criterion)
         result = MR_MATCHED;
         cf->search_pos = i; /* Save the position of the last character
                                for highlighting the field. */
+        cf->search_len = (guint32)textlen;
         break;
       }
     }
@@ -3156,6 +3188,7 @@ match_wide(capture_file *cf, frame_data *fdata, void *criterion)
         result = MR_MATCHED;
         cf->search_pos = i; /* Save the position of the last character
                                for highlighting the field. */
+        cf->search_len = (guint32)textlen;
         break;
       }
       i += 1;
@@ -3199,6 +3232,7 @@ match_binary(capture_file *cf, frame_data *fdata, void *criterion)
         result = MR_MATCHED;
         cf->search_pos = i; /* Save the position of the last character
                                for highlighting the field. */
+        cf->search_len = (guint32)datalen;
         break;
       }
     }
@@ -3210,6 +3244,30 @@ match_binary(capture_file *cf, frame_data *fdata, void *criterion)
     i += 1;
   }
   return result;
+}
+
+static match_result
+match_regex(capture_file *cf, frame_data *fdata, void *criterion _U_)
+{
+    match_result  result = MR_NOTMATCHED;
+    GMatchInfo   *match_info = NULL;
+
+    /* Load the frame's data. */
+    if (!cf_read_record(cf, fdata)) {
+        /* Attempt to get the packet failed. */
+        return MR_ERROR;
+    }
+
+    if (g_regex_match_full(cf->regex, ws_buffer_start_ptr(&cf->buf), fdata->cap_len,
+                           0, (GRegexMatchFlags) 0, &match_info, NULL))
+    {
+        gint start_pos = 0, end_pos = 0;
+        g_match_info_fetch_pos (match_info, 0, &start_pos, &end_pos);
+        cf->search_pos = end_pos - 1;
+        cf->search_len = end_pos - start_pos;
+        result = MR_MATCHED;
+    }
+    return result;
 }
 
 gboolean
@@ -3448,6 +3506,7 @@ find_packet(capture_file *cf,
     found = packet_list_select_row_from_data(new_fd);
     cf->search_in_progress = FALSE;
     cf->search_pos = 0; /* Reset the position */
+    cf->search_len = 0; /* Reset length */
     if (!found) {
       /* We didn't find a row corresponding to this frame.
          This means that the frame isn't being displayed currently,
@@ -3466,6 +3525,12 @@ gboolean
 cf_goto_frame(capture_file *cf, guint fnumber)
 {
   frame_data *fdata;
+
+  if (cf == NULL || cf->frames == NULL) {
+    /* we don't have a loaded capture file - fix for bugs 11810 & 11989 */
+    statusbar_push_temporary_msg("There is no file loaded");
+    return FALSE;   /* we failed to go to that packet */
+  }
 
   fdata = frame_data_sequence_find(cf->frames, fnumber);
 
@@ -3912,11 +3977,10 @@ save_record(capture_file *cf, frame_data *fdata,
     hdr.presence_flags |= WTAP_HAS_INTERFACE_ID;
   if (phdr->presence_flags & WTAP_HAS_PACK_FLAGS)
     hdr.presence_flags |= WTAP_HAS_PACK_FLAGS;
-  hdr.ts.secs      = fdata->abs_ts.secs;
-  hdr.ts.nsecs     = fdata->abs_ts.nsecs;
+  hdr.ts           = phdr->ts;
   hdr.caplen       = phdr->caplen;
   hdr.len          = phdr->len;
-  hdr.pkt_encap    = fdata->lnk_t;
+  hdr.pkt_encap    = phdr->pkt_encap;
   /* pcapng */
   hdr.interface_id = phdr->interface_id;   /* identifier of the interface. */
   /* options */
@@ -4125,9 +4189,6 @@ rescan_file(capture_file *cf, const char *fname, gboolean is_tempfile, int *err)
   guint32              framenum;
   frame_data          *fdata;
   int                  count          = 0;
-#ifdef HAVE_LIBPCAP
-  int                  displayed_once = 0;
-#endif
 
   /* Close the old handle. */
   wtap_close(cf->wth);
@@ -4223,15 +4284,8 @@ rescan_file(capture_file *cf, const char *fname, gboolean is_tempfile, int *err)
         if (progbar != NULL) {
           progbar_val = calc_progbar_val(cf, size, cf->f_datalen, status_str, sizeof(status_str));
           /* update the packet bar content on the first run or frequently on very large files */
-#ifdef HAVE_LIBPCAP
-          if (progbar_quantum > 500000 || displayed_once == 0) {
-            if ((auto_scroll_live || displayed_once == 0 || cf->displayed_count < 1000) && cf->count != 0) {
-              displayed_once = 1;
-              packets_bar_update();
-            }
-          }
-#endif /* HAVE_LIBPCAP */
           update_progress_dlg(progbar, progbar_val, status_str);
+          packets_bar_update();
         }
         progbar_nextstep += progbar_quantum;
       }
@@ -4435,9 +4489,9 @@ cf_save_records(capture_file *cf, const char *fname, guint save_format,
        or moving the capture file, we have to do it by writing the packets
        out in Wiretap. */
 
-    wtapng_section_t            *shb_hdr = NULL;
+    wtap_optionblock_t           shb_hdr = NULL;
     wtapng_iface_descriptions_t *idb_inf = NULL;
-    wtapng_name_res_t           *nrb_hdr = NULL;
+    wtap_optionblock_t           nrb_hdr = NULL;
     int encap;
 
     /* XXX: what free's this shb_hdr? */
@@ -4479,7 +4533,7 @@ cf_save_records(capture_file *cf, const char *fname, guint save_format,
     callback_args.fname = fname;
     callback_args.file_type = save_format;
     switch (process_specified_records(cf, NULL, "Saving", "packets",
-                                      TRUE, save_record, &callback_args)) {
+                                      TRUE, save_record, &callback_args, TRUE)) {
 
     case PSP_FINISHED:
       /* Completed successfully. */
@@ -4658,9 +4712,9 @@ cf_export_specified_packets(capture_file *cf, const char *fname,
   int                          err;
   wtap_dumper                 *pdh;
   save_callback_args_t         callback_args;
-  wtapng_section_t            *shb_hdr = NULL;
+  wtap_optionblock_t           shb_hdr = NULL;
   wtapng_iface_descriptions_t *idb_inf = NULL;
-  wtapng_name_res_t           *nrb_hdr = NULL;
+  wtap_optionblock_t           nrb_hdr = NULL;
   int                          encap;
 
   cf_callback_invoke(cf_cb_file_export_specified_packets_started, (gpointer)fname);
@@ -4717,7 +4771,7 @@ cf_export_specified_packets(capture_file *cf, const char *fname,
   callback_args.fname = fname;
   callback_args.file_type = save_format;
   switch (process_specified_records(cf, range, "Writing", "specified records",
-                                    TRUE, save_record, &callback_args)) {
+                                    TRUE, save_record, &callback_args, TRUE)) {
 
   case PSP_FINISHED:
     /* Completed successfully. */

@@ -29,12 +29,13 @@ check_include_file("dlfcn.h"             HAVE_DLFCN_H)
 check_include_file("fcntl.h"             HAVE_FCNTL_H)
 check_include_file("getopt.h"            HAVE_GETOPT_H)
 check_include_file("grp.h"               HAVE_GRP_H)
+check_include_file("ifaddrs.h"           HAVE_IFADDRS_H)
 check_include_file("inttypes.h"          HAVE_INTTYPES_H)
 check_include_file("netinet/in.h"        HAVE_NETINET_IN_H)
 check_include_file("netdb.h"             HAVE_NETDB_H)
 # We need to set the path to Wpdpack in order to find Ntddndis.h
 #cmake_push_check_state()
-#set(CMAKE_REQUIRED_INCLUDES %{PCAP_INCLUDE_DIRS})
+#set(CMAKE_REQUIRED_INCLUDES ${PCAP_INCLUDE_DIRS})
 #check_include_file("Ntddndis.h"          HAVE_NTDDNDIS_H)
 #cmake_pop_check_state()
 check_include_file("portaudio.h"         HAVE_PORTAUDIO_H)
@@ -96,21 +97,28 @@ cmake_pop_check_state()
 # Use check_symbol_exists just in case math.h does something magic
 # and there's not actually a function named floorl()
 #
+cmake_push_check_state()
+set(CMAKE_REQUIRED_INCLUDES ${M_INCLUDE_DIRS})
+set(CMAKE_REQUIRED_LIBRARIES ${M_LIBRARIES})
 check_symbol_exists("floorl" "math.h"    HAVE_FLOORL)
+check_symbol_exists("lrint"  "math.h"    HAVE_LRINT)
+cmake_pop_check_state()
+
 check_function_exists("getaddrinfo"      HAVE_GETADDRINFO)
-check_function_exists("gethostbyname"    HAVE_GETHOSTBYNAME)
-check_function_exists("gethostbyname2"   HAVE_GETHOSTBYNAME2)
+
 check_function_exists("getopt_long"      HAVE_GETOPT_LONG)
 if(HAVE_GETOPT_LONG)
-    if(HAVE_GETOPT_H)
-        check_symbol_exists("optreset" "getopt.h" HAVE_OPTRESET)
-    else()
-        check_symbol_exists("optreset"           HAVE_OPTRESET)
-    endif()
+	if(HAVE_GETOPT_H)
+		check_symbol_exists("optreset" "getopt.h" HAVE_OPTRESET)
+	else()
+		check_symbol_exists("optreset"           HAVE_OPTRESET)
+	endif()
 endif()
 check_function_exists("getprotobynumber" HAVE_GETPROTOBYNUMBER)
+check_function_exists("getifaddrs"       HAVE_GETIFADDRS)
 check_function_exists("inet_aton"        HAVE_INET_ATON)
-check_function_exists("inet_ntop"        HAVE_INET_NTOP_PROTO)
+check_function_exists("inet_ntop"        HAVE_INET_NTOP)
+check_function_exists("inet_pton"        HAVE_INET_PTON)
 check_function_exists("issetugid"        HAVE_ISSETUGID)
 check_function_exists("mkdtemp"          HAVE_MKDTEMP)
 check_function_exists("mkstemp"          HAVE_MKSTEMP)
@@ -128,9 +136,9 @@ endif()
 
 #Struct members
 include(CheckStructHasMember)
-check_struct_has_member("struct sockaddr" sa_len   sys/socket.h HAVE_SA_LEN)
-check_struct_has_member("struct stat"     st_flags sys/stat.h   HAVE_ST_FLAGS)
-check_struct_has_member("struct tm"       tm_zone  time.h       HAVE_TM_ZONE)
+check_struct_has_member("struct sockaddr" sa_len   sys/socket.h HAVE_SOCKADDR_SA_LEN)
+check_struct_has_member("struct stat"     st_flags sys/stat.h   HAVE_STAT_ST_FLAGS)
+check_struct_has_member("struct tm"       tm_zone  time.h       HAVE_STRUCT_TM_TM_ZONE)
 
 #Symbols but NOT enums or types
 check_symbol_exists(tzname "time.h" HAVE_TZNAME)
@@ -166,6 +174,13 @@ if (NL_FOUND)
 			enum nl80211_protocol_features x = NL80211_PROTOCOL_FEATURE_SPLIT_WIPHY_DUMP;
 		}"
 		HAVE_NL80211_SPLIT_WIPHY_DUMP
+	)
+	check_c_source_compiles(
+		"#include <linux/nl80211.h>
+		int main() {
+			enum nl80211_attrs x = NL80211_ATTR_VHT_CAPABILITY;
+		}"
+		HAVE_NL80211_VHT_CAPABILITY
 	)
 endif()
 
@@ -203,3 +218,16 @@ else()
 		}" HAVE_GLIB_PRINTF_GROUPING)
 	cmake_pop_check_state()
 endif()
+
+#
+# Editor modelines  -  http://www.wireshark.org/tools/modelines.html
+#
+# Local variables:
+# c-basic-offset: 8
+# tab-width: 8
+# indent-tabs-mode: t
+# End:
+#
+# vi: set shiftwidth=8 tabstop=8 noexpandtab:
+# :indentSize=8:tabSize=8:noTabs=false:
+#

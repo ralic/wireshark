@@ -31,35 +31,43 @@ enum ws80211_channel_type {
 	WS80211_CHAN_NO_HT,
 	WS80211_CHAN_HT20,
 	WS80211_CHAN_HT40MINUS,
-	WS80211_CHAN_HT40PLUS
+	WS80211_CHAN_HT40PLUS,
+	WS80211_CHAN_VHT80,
+	WS80211_CHAN_VHT80P80,
+	WS80211_CHAN_VHT160
 };
 
 #define CHAN_NO_HT	"NOHT"
 #define CHAN_HT20	"HT20"
 #define CHAN_HT40MINUS	"HT40-"
 #define CHAN_HT40PLUS	"HT40+"
+#define CHAN_VHT80	"VHT80"
+#define CHAN_VHT80P80	"VHT80+80"
+#define CHAN_VHT160	"VHT160"
 
 /* XXX This doesn't match AirpcapValidationType. Should it? */
 enum ws80211_fcs_validation {
-        WS80211_FCS_ALL,
-        WS80211_FCS_VALID,
-        WS80211_FCS_INVALID
+	WS80211_FCS_ALL,
+	WS80211_FCS_VALID,
+	WS80211_FCS_INVALID
 };
 
 struct ws80211_interface
 {
 	char *ifname;
 	gboolean can_set_freq;
-        gboolean can_check_fcs;
-        GArray *frequencies; /* Array of guint32? */
+	gboolean can_check_fcs;
+	GArray *frequencies; /* Array of guint32? */
 	int channel_types; /* Union for all bands */
-        int cap_monitor;
+	int cap_monitor;
 };
 
 struct ws80211_iface_info {
-        int current_freq;
+	int current_freq;
 	enum ws80211_channel_type current_chan_type;
-        enum ws80211_fcs_validation current_fcs_validation;
+	int current_center_freq1;
+	int current_center_freq2;
+	enum ws80211_fcs_validation current_fcs_validation;
 };
 
 /** Initialize the 802.11 environment.
@@ -87,21 +95,16 @@ int ws80211_get_iface_info(const char *name, struct ws80211_iface_info *iface_in
  */
 void ws80211_free_interfaces(GArray *interfaces);
 
-/** Convert a frequency to a channel number
- *
- * @param freq Frequency in MHz.
- * @return The 802.11 channel number matching the provided frequency.
- */
-int ws80211_frequency_to_channel(int freq);
-
 /** Set the frequency and channel width for an interface.
  *
  * @param name The interface name.
  * @param freq The frequency in MHz.
  * @param chan_type The HT channel type (no, 20Mhz, 40Mhz...).
+ * @param center_freq The center frequency in MHz (if 80MHz, 80+80MHz or 160MHz).
+ * @param center_freq2 The 2nd center frequency in MHz (if 80+80MHz).
  * @return Zero on success, nonzero on failure.
  */
-int ws80211_set_freq(const char *name, int freq, int chan_type);
+int ws80211_set_freq(const char *name, int freq, int chan_type, int _U_ center_freq, int _U_ center_freq2);
 
 int ws80211_str_to_chan_type(const gchar *s); /* GTK+ only? */
 const gchar *ws80211_chan_type_to_str(int type); /* GTK+ only? */

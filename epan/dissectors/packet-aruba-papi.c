@@ -24,13 +24,6 @@
 
 #include "config.h"
 
-#if 0
-/* Include only as needed */
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#endif
-
 #include <epan/packet.h>
 #include <epan/prefs.h>
 #include <epan/expert.h>
@@ -69,8 +62,6 @@ static expert_field ei_papi_debug_unknown = EI_INIT;
 
 /* Global PAPI Debug Preference */
 static gboolean g_papi_debug = FALSE;
-
-static dissector_handle_t data_handle;
 
 /* Initialize the subtree pointers */
 static gint ett_papi = -1;
@@ -201,7 +192,7 @@ dissect_papi(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data _U_
     }
 
     next_tvb = tvb_new_subset_remaining(tvb, offset);
-    call_dissector(data_handle,next_tvb, pinfo, tree);
+    call_data_dissector(next_tvb, pinfo, tree);
 
     return(TRUE);
 }
@@ -347,9 +338,8 @@ proto_reg_handoff_papi(void)
 {
     dissector_handle_t papi_handle;
 
-    papi_handle = new_create_dissector_handle(dissect_papi, proto_papi);
+    papi_handle = create_dissector_handle(dissect_papi, proto_papi);
     dissector_add_uint("udp.port", UDP_PORT_PAPI, papi_handle);
-    data_handle = find_dissector("data");
 }
 /*
  * Editor modelines  -  http://www.wireshark.org/tools/modelines.html

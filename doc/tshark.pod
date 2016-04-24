@@ -342,6 +342,10 @@ the interface specified by the last B<-i> option occurring before
 this option.  If the capture filter expression is not set specifically,
 the default capture filter expression is used if provided.
 
+Pre-defined capture filter names, as shown in the GUI menu item Capture->Capture Filters,
+can be used by prefixing the argument with "predef:".
+Example: B<-f "predef:MyPredefinedHostOnlyFilter">
+
 =item -F  E<lt>file formatE<gt>
 
 Set the file format of the output capture file written using the B<-w>
@@ -386,6 +390,8 @@ is one record per line.  The fields are tab-delimited.
  * Field 2 = name used for the dissector table in the GUI
  * Field 3 = type (textual representation of the ftenum type)
  * Field 4 = base for display (for integer types)
+
+B<fieldcount>  Dumps the number of header fields to stdout.
 
 B<fields>  Dumps the contents of the registration database to
 stdout.  An independent program can take this output and format it into nice
@@ -568,8 +574,6 @@ present.  If both B<-N> and B<-n> flags are not present, all name resolutions
 are turned on.
 
 The argument is a string that may contain the letters:
-
-B<C> to enable concurrent (asynchronous) DNS lookups
 
 B<d> to enable resolution from captured DNS packets
 

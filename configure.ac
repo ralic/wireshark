@@ -5,25 +5,26 @@
 #
 # Define variables for the components of the Wireshark version number.
 #
-m4_define([version_major], [1])
-m4_define([version_minor], [99])
-m4_define([version_micro], [10])
-m4_define([version_micro_extra], version_micro)
-m4_append([version_micro_extra], [])
+m4_define([version_major], [2])
+m4_define([version_minor], [1])
+m4_define([version_micro], [0])
+dnl Updated by make-version.pl
+m4_define([version_extra], [-git])
+m4_define([version_micro_extra], m4_join([], version_micro, version_extra))
 
 AC_INIT(wireshark, [version_major.version_minor.version_micro_extra], http://bugs.wireshark.org/, , http://www.wireshark.org/)
 CONFIG_ARGS="$*"
 AC_SUBST(CONFIG_ARGS)
 
 # Minimum autoconf version we require.
-AC_PREREQ(2.60)
+AC_PREREQ(2.64)
 # Variable expansion doesn't work in AC_PREREQ()
-AC_MIN_VERSION=2.60
+AC_MIN_VERSION=2.64
 AC_SUBST(AC_MIN_VERSION)
 
 dnl Make sure to keep ACLOCAL_AMFLAGS in Makefile.am and AC_CONFIG_MACRO_DIRS
 dnl in configure.ac in sync, otherwise there will be an error running autogen.sh.
-m4_ifdef([AC_CONFIG_MACRO_DIRS],AC_CONFIG_MACRO_DIRS([./aclocal-fallback]))
+m4_ifdef([AC_CONFIG_MACRO_DIRS],[AC_CONFIG_MACRO_DIRS([m4])])
 
 dnl Check for CPU / vendor / OS
 dnl The user is encouraged to use either `AC_CANONICAL_BUILD', or
@@ -52,23 +53,25 @@ AC_DEFINE(VERSION_MAJOR, version_major, [Wireshark's major version])
 AC_DEFINE(VERSION_MINOR, version_minor, [Wireshark's minor version])
 AC_DEFINE(VERSION_MICRO, version_micro, [Wireshark's micro version])
 
-AC_DEFINE(VERSION_FLAVOR, "Development Build", [Wireshark's package flavor])
+AC_DEFINE_UNQUOTED(VERSION_FLAVOR,
+	["${WIRESHARK_VERSION_FLAVOR:-"Development Build"}"], [Wireshark's package flavor])
 
-AM_DISABLE_STATIC
+LT_PREREQ([2.2.2])
+LT_INIT([disable-static dlopen])
+
+AC_CONFIG_LIBOBJ_DIR([wsutil])
 
 #
 # Checks for programs used in the main build process.
 #
-AC_PROG_CC
-AM_PROG_CC_C_O
-AC_PROG_CXX
+AC_PROG_CC_STDC
+if test "$ac_cv_prog_cc_stdc" = "no"
+then
+	AC_MSG_ERROR([The C compiler does not support standard C])
+fi
 AC_PROG_CPP
-AC_PROG_MKDIR_P
 
-dnl Work around libtool bug (fixed in the version 1.5a?)
-AC_DEFUN([AC_PROVIDE_AC_LIBTOOL_DLOPEN], )
-AC_LIBTOOL_DLOPEN
-AC_PROG_LIBTOOL
+AC_PROG_CXX
 if test ! -z "$CXX"; then
 	#
 	# OK, we found something AC_LANG_CXX thinks is a C++ compiler,
@@ -83,10 +86,6 @@ if test ! -z "$CXX"; then
 	#
 	# So we check by feeding the purported C++ compiler a
 	# program using C++ features (iostream).
-	#
-	# We do this after AC_PROG_LIBTOOL; if we did so before, and
-	# cleared CXX if what we had isn't a C++ compiler, that'd
-	# get undone by AC_PROG_LIBTOOL for some reason.
 	#
 	AC_MSG_CHECKING(whether $CXX is a C++ compiler)
 	AC_LANG_PUSH([C++])
@@ -105,10 +104,26 @@ if test ! -z "$CXX"; then
 		])
 	AC_LANG_POP([C++])
 fi
+
+# Set CC_FOR_BUILD (the *local* gcc to use for building e.g. lemon)
+if test "x$cross_compiling" = xno -a -z "$CC_FOR_BUILD"; then
+	CC_FOR_BUILD="$CC"
+fi
+AX_PROG_CC_FOR_BUILD
+
+#
+# Check for versions of "sed" inadequate to handle, in libtool, a list
+# of object files as large as the list in Wireshark.
+#
+AC_PROG_SED
+
+AC_PROG_LN_S
+AC_PROG_MKDIR_P
+
 AC_PATH_PROG(PERL, perl)
 
 # Check for Python.
-AC_PATH_PROGS(PYTHON, python, python3)
+AC_PATH_PROGS(PYTHON, python python3)
 if test ! -z "$PYTHON"; then
 	#
 	# OK, we found Python; is it Python 2.5 or later?
@@ -178,41 +193,6 @@ then
 fi
 
 #
-# Checks for programs used by Wireshark/TShark/etc.
-#
-
-#
-# XXX - this looks for various HTML viewers on the host, not the target;
-# we really want to know what's available on the target, for cross-builds.
-# That would probably require us to, at run time, look for xdg-open and,
-# if we don't find it, look for mozilla, htmlview, etc.
-#
-AC_PATH_PROG(HTML_VIEWER, xdg-open)
-if test "x$HTML_VIEWER" != x
-then
-	#
-	# XXX - the HTML_VIEWER shell variable is the full path of xdg-open.
-	# Define some variable to be that, so we just run that?
-	#
-	AC_DEFINE(HAVE_XDG_OPEN, 1, [Define if we have xdg-open])
-
-	#
-	# XXX - we have to define HTML_VIEWER for the prefs.c code that
-	# sets the default value of the Web browser preference, even
-	# though that preference won't be offered.
-	#
-	AC_DEFINE_UNQUOTED(HTML_VIEWER, "xdg-open", [HTML viewer, e.g. mozilla])
-else
-	AC_PATH_PROG(HTML_VIEWER, htmlview)
-	if test "x$HTML_VIEWER" = x
-	then
-		AC_DEFINE_UNQUOTED(HTML_VIEWER, "mozilla", [HTML viewer, e.g. mozilla])
-	else
-		AC_DEFINE_UNQUOTED(HTML_VIEWER, "htmlview", [HTML viewer, e.g. mozilla])
-	fi
-fi
-
-#
 # Set "ac_supports_gcc_flags" if the compiler is known to support GCC-style
 # flags such as -pedantic, -W warning flags and -f feature flags.  Currently,
 # we assume GCC and clang do; other compilers should be added here.
@@ -223,13 +203,6 @@ fi
 if test "x$GCC" = "xyes" -o "x$CC" = "xclang" ; then
 	ac_supports_gcc_flags=yes
 fi
-
-if test "x$CC_FOR_BUILD" = x
-then
-       CC_FOR_BUILD=$CC
-fi
-AC_SUBST(CC_FOR_BUILD)
-AC_SUBST(CFLAGS_FOR_BUILD)
 
 # Check for doxygen
 AC_PATH_PROG(DOXYGEN, doxygen)
@@ -358,7 +331,7 @@ then
 		# I'm not sure this would even work.
 		#
 		AC_MSG_RESULT(no)
-		AC_ERROR([We don't support building for OS X $deploy_target])
+		AC_MSG_ERROR([We don't support building for OS X $deploy_target])
 		;;
 
 	10.3)
@@ -457,9 +430,9 @@ then
 	#
 	# Add an -isysroot flag to use the SDK.
 	#
-	CFLAGS="-mmacosx-version-min=$deploy_target -isysroot $SDKPATH $CFLAGS"
-	CXXFLAGS="-mmacosx-version-min=$deploy_target -isysroot $SDKPATH $CXXFLAGS"
-	LDFLAGS="-mmacosx-version-min=$deploy_target -isysroot $SDKPATH $LDFLAGS"
+	WS_CFLAGS="-mmacosx-version-min=$deploy_target -isysroot $SDKPATH $WS_CFLAGS"
+	WS_CXXFLAGS="-mmacosx-version-min=$deploy_target -isysroot $SDKPATH $WS_CXXFLAGS"
+	WS_LDFLAGS="-mmacosx-version-min=$deploy_target -isysroot $SDKPATH $WS_LDFLAGS"
 
 	#
 	# Add a -sdkroot flag to use with osx-app.sh.
@@ -488,9 +461,9 @@ then
 		# functions not to work with 64-bit userland
 		# code, so capturing won't work.
 		#
-		CFLAGS="-m32 $CFLAGS"
-		CXXFLAGS="-m32 $CXXFLAGS"
-		LDFLAGS="-m32 $LDFLAGS"
+		WS_CFLAGS="-m32 $WS_CFLAGS"
+		WS_CXXFLAGS="-m32 $WS_CXXFLAGS"
+		WS_LDFLAGS="-m32 $WS_LDFLAGS"
 		;;
 	esac
 else
@@ -520,39 +493,38 @@ AC_SUBST(OSX_MIN_VERSION)
 AC_SYS_LARGEFILE
 
 #
-# Look for math functions; use libm if necessary.
+# Check if we need to link with libm
 #
-AC_SEARCH_LIBS(floor, m)
-AC_SEARCH_LIBS(ceil, m)
-AC_SEARCH_LIBS(exp, m)
-AC_SEARCH_LIBS(log, m)
-AC_SEARCH_LIBS(log10, m)
-AC_SEARCH_LIBS(floorl, m,
-  [
-    FLOORL_LO=""
-    AC_DEFINE(HAVE_FLOORL, 1, [Define if you have the floorl function.])
-  ],
-  FLOORL_LO="floorl.lo")
-AC_SUBST(FLOORL_LO)
+AC_SEARCH_LIBS([cos], [m])
 
+#
+# Check for C99 math functions.
+#
+AC_CHECK_FUNCS([floorl lrint])
+
+#
+# Check if we need to link with -lnsl and -lsocket
+#
+AX_LIB_SOCKET_NSL
 
 #
 # GUI toolkit options
 #
 AC_ARG_WITH([qt],
   AC_HELP_STRING( [--with-qt=@<:@yes/no/4/5@:>@],
-		  [use Qt @<:@default=yes@:>@]),
+		  [use Qt @<:@default=yes, if available@:>@]),
   with_qt="$withval", with_qt="unspecified")
 
-AC_ARG_WITH([gtk2],
-  AC_HELP_STRING( [--with-gtk2=@<:@yes/no@:>@],
-		  [use GTK+ 2.0 @<:@default=no@:>@]),
-  with_gtk2="$withval", with_gtk2="unspecified")
-
-AC_ARG_WITH([gtk3],
-  AC_HELP_STRING( [--with-gtk3=@<:@yes/no@:>@],
-		  [use GTK+ 3.0 instead of 2.0 @<:@default=yes@:>@]),
-  with_gtk3="$withval", with_gtk3="unspecified")
+AC_ARG_WITH([gtk],
+  AC_HELP_STRING( [--with-gtk=@<:@yes/no/2/3@:>@],
+	[use GTK+ @<:@default=yes, if available@:>@]),
+	AS_CASE([$withval],
+	  [yes], [with_gtk="3 2 fail"],
+	  [no],  [with_gtk="no"],
+	  [3],   [with_gtk="3 fail3"],
+	  [2],   [with_gtk="2 fail2"],
+	  [AC_MSG_ERROR([--with-gtk must be one of yes/no/2/3])]),
+	with_gtk="3 2")
 
 # GnuTLS
 # Version 3.0 switched from LGPLv2.1+ to LGPLv3+, then switched back to
@@ -574,23 +546,20 @@ if test "x$with_gnutls" = "xyes"; then
   )
 
   if test "x$have_license_compatible_gnutls" != "xyes"; then
-    PKG_CHECK_MODULES([LIBGNUTLS], [gnutls >= 1.2.0 gnutls < 3],
-      [ have_license_compatible_gnutls="yes" ] , [ echo "GnuTLS >= 1.2.0, < 3.0 not found " ]
+    PKG_CHECK_MODULES([LIBGNUTLS], [gnutls >= 2.12.0 gnutls < 3],
+      [ have_license_compatible_gnutls="yes" ] , [ echo "GnuTLS >= 2.12.0, < 3.0 not found " ]
     )
   fi
 
-  if test "x$have_license_compatible_gnutls" = "xyes"; then
-    echo "GnuTLS found, enabling SSL decryption"
+  if test "x$have_license_compatible_gnutls" != "xyes"; then
+    if test "x$want_gnutls" = "xyes"; then
+      AC_MSG_ERROR([GnuTLS crypto library was requested, but is not available])
+    else
+      AS_ECHO(["GnuTLS with compatible license not found, disabling SSL decryption"])
+    fi
+  else
     AC_DEFINE(HAVE_LIBGNUTLS, 1, [Define to use GnuTLS library])
     tls_message="yes"
-  else
-    echo "GnuTLS with compatible license not found, disabling SSL decryption"
-    tls_message="no"
-
-    # Error out if the user explicitly requested gnutls
-    if test "x$want_gnutls" = "xyes"; then
-	AC_MSG_ERROR([GnuTLS crypto library was requested, but is not available])
-    fi
   fi
 fi
 
@@ -603,9 +572,8 @@ AC_ARG_WITH([gcrypt],
   [ with_gcrypt="$withval"; want_gcrypt="yes" ], with_gcrypt="yes")
 
 if test "x$with_gcrypt" = "xyes"; then
-  AM_PATH_LIBGCRYPT(1.1.92,
+  AM_PATH_LIBGCRYPT(1.4.2,
 	[
-		echo "libgcrypt found, enabling ipsec decryption"
 		AC_DEFINE(HAVE_LIBGCRYPT, 1, [Define to use libgcrypt])
 		gcrypt_message="yes"
 	]
@@ -613,7 +581,7 @@ if test "x$with_gcrypt" = "xyes"; then
 		if test x$libgcrypt_config_prefix != x ; then
 			AC_MSG_ERROR([[libgcrypt not found; install libgcrypt-devel package for your system]])
 		else
-			echo "libgcrypt not found, disabling ipsec decryption"
+			AS_ECHO(["libgcrypt not found, disabling decryption for ipsec, ssl, etc."])
 			gcrypt_message="no"
 		fi
 
@@ -676,35 +644,29 @@ linux*)
 		# was requested by the user.
 		#
 		if test x$libnl_version = "xany" -o x$libnl_version = "x3"; then
-			PKG_CHECK_MODULES(LIBNL3, [libnl-route-3.0 >= 3.0 libnl-genl-3.0] >= 3.0, [have_libnl3=yes], [have_libnl3=no])
+			PKG_CHECK_EXISTS([libnl-3.0 libnl-route-3.0 libnl-genl-3.0], [have_libnl3=yes], [have_libnl3=no])
 		fi
 		if test x$libnl_version = "xany" -o x$libnl_version = "x2"; then
-			PKG_CHECK_MODULES(LIBNL2, libnl-2.0 >= 2.0, [have_libnl2=yes], [have_libnl2=no])
+			PKG_CHECK_EXISTS([libnl-2.0], [have_libnl2=yes], [have_libnl2=no])
 		fi
 		if test x$libnl_version = "xany" -o x$libnl_version = "x1"; then
-			PKG_CHECK_MODULES(LIBNL1, libnl-1 >= 1.0, [have_libnl1=yes], [have_libnl1=no])
+			PKG_CHECK_EXISTS([libnl-1], [have_libnl1=yes], [have_libnl1=no])
 		fi
 		if (test "${have_libnl3}" = "yes"); then
-			CFLAGS="$CFLAGS $LIBNL3_CFLAGS"
-			LIBS="$LIBS $LIBNL3_LIBS"
+			PKG_WIRESHARK_CHECK_SYSTEM_MODULES([LIBNL], [libnl-3.0 libnl-route-3.0 libnl-genl-3.0])
 			AC_DEFINE(HAVE_LIBNL, 1, [Enable libnl support])
 			AC_DEFINE(HAVE_LIBNL3, 1, [libnl version 3])
 			libnl_message="yes (v3)"
-			enable_airpcap=no
 		elif (test "${have_libnl2}" = "yes"); then
-			CFLAGS="$CFLAGS $LIBNL2_CFLAGS"
-			LIBS="$LIBS $LIBNL2_LIBS"
+			PKG_WIRESHARK_CHECK_SYSTEM_MODULES([LIBNL], [libnl-2.0])
 			AC_DEFINE(HAVE_LIBNL, 1, [Enable libnl support])
 			AC_DEFINE(HAVE_LIBNL2, 1, [libnl version 2])
 			libnl_message="yes (v2)"
-			enable_airpcap=no
 		elif (test "${have_libnl1}" = "yes"); then
-			CFLAGS="$CFLAGS $LIBNL1_CFLAGS"
-			LIBS="$LIBS $LIBNL1_LIBS"
+			PKG_WIRESHARK_CHECK_SYSTEM_MODULES([LIBNL], [libnl-1])
 			AC_DEFINE(HAVE_LIBNL, 1, [Enable libnl support])
 			AC_DEFINE(HAVE_LIBNL1, 1, [libnl version 1])
 			libnl_message="yes (v1)"
-			enable_airpcap=no
 		else
 			if test x$want_libnl = "xyes"; then
 				case "$libnl_version" in
@@ -742,6 +704,12 @@ linux*)
 	  AC_TRY_COMPILE([#include <linux/nl80211.h>],
 	    [enum nl80211_protocol_features x = NL80211_PROTOCOL_FEATURE_SPLIT_WIPHY_DUMP;],
 	    [AC_MSG_RESULT(yes) AC_DEFINE(HAVE_NL80211_SPLIT_WIPHY_DUMP, 1, [SPLIT_WIPHY_DUMP is supported])],
+	    [AC_MSG_RESULT(no)])
+
+	AC_MSG_CHECKING([for NL80211_VHT_CAPABILITY])
+	  AC_TRY_COMPILE([#include <linux/nl80211.h>],
+	    [enum nl80211_attrs x = NL80211_ATTR_VHT_CAPABILITY;],
+	    [AC_MSG_RESULT(yes) AC_DEFINE(HAVE_NL80211_VHT_CAPABILITY, 1, [VHT_CAPABILITY is supported])],
 	    [AC_MSG_RESULT(no)])
 	;;
 
@@ -781,11 +749,6 @@ AC_PATH_PROG(W3M, w3m)
 AC_CHECK_PROG(HAVE_W3M, w3m, "yes", "no")
 AM_CONDITIONAL(HAVE_W3M, test x$HAVE_W3M = xyes)
 
-# Check for xmllint
-AC_PATH_PROG(XMLLINT, xmllint)
-AC_CHECK_PROG(HAVE_XMLLINT, xmllint, "yes", "no")
-AM_CONDITIONAL(HAVE_XMLLINT, test x$HAVE_XMLLINT = xyes)
-
 # Check for xsltproc
 AC_PATH_PROG(XSLTPROC, xsltproc)
 AC_CHECK_PROG(HAVE_XSLTPROC, xsltproc, "yes", "no")
@@ -822,7 +785,7 @@ AC_SUBST(HAVE_RPM)
 # Debian
 AC_CHECK_PROG(HAVE_DPKG_BUILDPACKAGE, dpkg-buildpackage, "yes", "no")
 
-# Mac OS X
+# OS X
 AC_CHECK_PROG(HAVE_XCODEBUILD, xcodebuild, "yes", "no")
 AC_CHECK_PROG(HAVE_HDIUTIL, hdiutil, "yes", "no")
 AC_CHECK_PROG(HAVE_BLESS, bless, "yes", "no")
@@ -844,6 +807,16 @@ AC_CHECK_PROG(have_sw_vers, sw_vers, "yes", "no")
 AM_CONDITIONAL(NOT_OS_X, test "x$have_sw_vers" = "xno")
 
 #
+# Check compiler vendor. For GCC this will be 'gnu' and for Clang 'clang'.
+#
+AX_COMPILER_VENDOR
+if test "x$CXX" != "x" ; then
+	AC_LANG_PUSH(C++)
+	AX_COMPILER_VENDOR
+	AC_LANG_POP
+fi
+
+#
 # Some compilers have to be told to fail when passed an unknown -W flag;
 # make sure we do that.
 #
@@ -856,100 +829,12 @@ AC_WIRESHARK_CHECK_UNKNOWN_WARNING_OPTION_ERROR
 AC_WIRESHARK_CHECK_NON_CXX_WARNING_OPTION_ERROR
 
 #
-# Try to add some additional checks to CFLAGS.
-# These are not enabled by default, because the warnings they produce
-# are very hard or impossible to eliminate.
-#
-AC_ARG_ENABLE(extra-compiler-warnings,
-  AC_HELP_STRING( [--enable-extra-compiler-warnings],
-		  [do additional compiler warnings @<:@default=no@:>@]),
-[
-	wireshark_extra_flags=$enableval
-	if test $enableval != no
-	then
-		#
-		# The following are for C and C++
-		#
-		AC_WIRESHARK_COMPILER_FLAGS_CHECK(-Wpedantic)
-		#
-		# Various code blocks this one.
-		#
-		AC_WIRESHARK_COMPILER_FLAGS_CHECK(-Woverflow)
-		AC_WIRESHARK_COMPILER_FLAGS_CHECK(-fstrict-overflow -Wstrict-overflow=4)
-		#
-		# Due to various places where APIs we don't control
-		# require us to cast away constness, we can probably
-		# never enable this one with -Werror.
-		#
-		AC_WIRESHARK_COMPILER_FLAGS_CHECK(-Wcast-qual)
-		#
-		# Some generated ASN.1 dissectors block this one;
-		# multiple function declarations for the same
-		# function are being generated.
-		#
-		AC_WIRESHARK_COMPILER_FLAGS_CHECK(-Wredundant-decls)
-		#
-		# Some loops are safe, but it's hard to convince the
-		# compiler of that.
-		#
-		AC_WIRESHARK_COMPILER_FLAGS_CHECK(-Wunsafe-loop-optimizations)
-		#
-		# All the registration functions block these for now.
-		#
-		AC_WIRESHARK_COMPILER_FLAGS_CHECK(-Wmissing-prototypes)
-		AC_WIRESHARK_COMPILER_FLAGS_CHECK(-Wmissing-declarations)
-		#
-		# A bunch of "that might not work on SPARC" code blocks
-		# this one for now.
-		#
-		AC_WIRESHARK_COMPILER_FLAGS_CHECK(-Wcast-align)
-		#
-		# Works only with Clang
-		#
-		AC_WIRESHARK_COMPILER_FLAGS_CHECK(-Wunreachable-code)
-		#
-		# Works only with Clang but generates a lot of warnings
-		# (about glib library not using Doxygen)
-		#
-		AC_WIRESHARK_COMPILER_FLAGS_CHECK(-Wdocumentation)
-
-		#
-		# The following are C only, not C++
-		#
-		# Due to various places where APIs we don't control
-		# require us to cast away constness, we can probably
-		# never enable this one with -Werror.
-		#
-		AC_WIRESHARK_COMPILER_FLAGS_CHECK(-Wbad-function-cast, C)
-	fi
-],)
-
-# Try to add ASAN address analyze.
-# Only needed for analyse
-#
-AC_ARG_ENABLE(asan,
-  AC_HELP_STRING( [--enable-asan],
-		  [Enable AddressSanitizer (ASAN) for debugging (May be slow down)@<:@default=no@:>@]),
-[
-	#
-	# With Clang >= 3.5 Leak detection is enable by default
-	# and no yet all leak is fixed...
-	# use ASAN_OPTIONS=detect_leaks=0 to disable detect_leaks
-	#
-	AC_WIRESHARK_COMPILER_FLAGS_CHECK(-fsanitize=address)
-
-],)
-
-
-
-#
 # The following are for C and C++
 #
-AC_WIRESHARK_COMPILER_FLAGS_CHECK(-Wall -W) # -W is now known as -Wextra
-AC_WIRESHARK_COMPILER_FLAGS_CHECK(-Wextra) # -W is now known as -Wextra
+AC_WIRESHARK_COMPILER_FLAGS_CHECK(-Wall)
+AC_WIRESHARK_COMPILER_FLAGS_CHECK(-Wextra)
 AC_WIRESHARK_COMPILER_FLAGS_CHECK(-Wendif-labels)
 AC_WIRESHARK_COMPILER_FLAGS_CHECK(-Wpointer-arith)
-AC_WIRESHARK_COMPILER_FLAGS_CHECK(-Warray-bounds)
 AC_WIRESHARK_COMPILER_FLAGS_CHECK(-Wformat-security)
 AC_WIRESHARK_COMPILER_FLAGS_CHECK(-fwrapv)
 AC_WIRESHARK_COMPILER_FLAGS_CHECK(-fno-strict-overflow)
@@ -961,7 +846,6 @@ AC_WIRESHARK_COMPILER_FLAGS_CHECK(-Wdiv-by-zero)
 AC_WIRESHARK_COMPILER_FLAGS_CHECK(-Wignored-qualifiers)
 AC_WIRESHARK_COMPILER_FLAGS_CHECK(-Wpragmas)
 AC_WIRESHARK_COMPILER_FLAGS_CHECK(-Wno-overlength-strings)
-AC_WIRESHARK_COMPILER_FLAGS_CHECK(-Wwrite-strings)
 AC_WIRESHARK_COMPILER_FLAGS_CHECK(-Wno-long-long)
 AC_WIRESHARK_COMPILER_FLAGS_CHECK(-Wheader-guard)
 AC_WIRESHARK_COMPILER_FLAGS_CHECK(-Wunused-const-variable)
@@ -1031,6 +915,16 @@ AC_WIRESHARK_COMPILER_FLAGS_CHECK(-Wjump-misses-init, C)
 # so only enable this for C for now.
 AC_WIRESHARK_COMPILER_FLAGS_CHECK(-Wshorten-64-to-32, C)
 
+# Clang only. Avoid "argument unused during compilation" warnings
+# (for example, when getting the -gsplit-dwarf option or
+# when combining -fwrapv with -fno-strict-overflow)
+if test x"$ax_cv_c_compiler_vendor" = xclang; then
+	AC_WIRESHARK_COMPILER_FLAGS_CHECK(-Qunused-arguments, C)
+fi
+if test x"$ax_cv_cxx_compiler_vendor" = xclang; then
+	AC_WIRESHARK_COMPILER_FLAGS_CHECK(-Qunused-arguments, CXX)
+fi
+
 #
 # Use the faster pre gcc 4.5 floating point precision if available.
 #
@@ -1043,23 +937,121 @@ AC_WIRESHARK_COMPILER_FLAGS_CHECK(-fexcess-precision=fast)
 # failures to export symbols, rather than having that fail only on
 # Windows.
 #
-CFLAGS_before_fvhidden="$CFLAGS"
-#
 # GCC and GCC-compatible compilers
 #
 AC_WIRESHARK_COMPILER_FLAGS_CHECK(-fvisibility=hidden)
-if test "x$CFLAGS" = "x$CFLAGS_before_fvhidden"
+if test "x$can_add_to_cflags" = "xno"
 then
 	#
 	# Sun^WOracle C.
 	#
 	AC_WIRESHARK_COMPILER_FLAGS_CHECK(-xldscope=hidden)
-	if test "x$CFLAGS" = "x$CFLAGS_before_fvhidden"
+	if test "x$can_add_to_cflags" = "xno"
 	then
 		# TODO add other ways of hiding symbols
 		AC_MSG_WARN(Compiler will export all symbols from shared libraries)
 	fi
 fi
+
+#
+# Try to add some additional checks to CFLAGS.
+# These are not enabled by default, because the warnings they produce
+# are very hard or impossible to eliminate.
+#
+AC_ARG_ENABLE(extra-compiler-warnings,
+  AC_HELP_STRING( [--enable-extra-compiler-warnings],
+		  [do additional compiler warnings @<:@default=no@:>@]),
+[
+	wireshark_extra_flags=$enableval
+	if test $enableval != no
+	then
+		#
+		# The following are for C and C++
+		#
+		AC_WIRESHARK_COMPILER_FLAGS_CHECK(-Wpedantic)
+		#
+		# As we use variadic macros, we don't want warnings
+		# about them, even with -Wpedantic.
+		#
+		AC_WIRESHARK_COMPILER_FLAGS_CHECK(-Wno-variadic-macros)
+		#
+		# Various code blocks this one.
+		#
+		AC_WIRESHARK_COMPILER_FLAGS_CHECK(-Woverflow)
+		AC_WIRESHARK_COMPILER_FLAGS_CHECK(-fstrict-overflow -Wstrict-overflow=4)
+		#
+		# Due to various places where APIs we don't control
+		# require us to cast away constness, we can probably
+		# never enable this one with -Werror.
+		#
+		AC_WIRESHARK_COMPILER_FLAGS_CHECK(-Wcast-qual)
+		#
+		# Some generated ASN.1 dissectors block this one;
+		# multiple function declarations for the same
+		# function are being generated.
+		#
+		AC_WIRESHARK_COMPILER_FLAGS_CHECK(-Wredundant-decls)
+		#
+		# Some loops are safe, but it's hard to convince the
+		# compiler of that.
+		#
+		AC_WIRESHARK_COMPILER_FLAGS_CHECK(-Wunsafe-loop-optimizations)
+		#
+		# All the registration functions block these for now.
+		#
+		AC_WIRESHARK_COMPILER_FLAGS_CHECK(-Wmissing-prototypes)
+		AC_WIRESHARK_COMPILER_FLAGS_CHECK(-Wmissing-declarations)
+		#
+		# A bunch of "that might not work on SPARC" code blocks
+		# this one for now.
+		#
+		AC_WIRESHARK_COMPILER_FLAGS_CHECK(-Wcast-align)
+		#
+		# Works only with Clang
+		#
+		AC_WIRESHARK_COMPILER_FLAGS_CHECK(-Wunreachable-code)
+		#
+		# Works only with Clang but generates a lot of warnings
+		# (about glib library not using Doxygen)
+		#
+		AC_WIRESHARK_COMPILER_FLAGS_CHECK(-Wdocumentation)
+
+		#
+		# The following are C only, not C++
+		#
+		# Due to various places where APIs we don't control
+		# require us to cast away constness, we can probably
+		# never enable this one with -Werror.
+		#
+		AC_WIRESHARK_COMPILER_FLAGS_CHECK(-Wbad-function-cast, C)
+	fi
+])
+
+# Try to add ASAN address analyze.
+# Only needed for analyse
+#
+AC_ARG_ENABLE(asan,
+  AC_HELP_STRING( [--enable-asan],
+		  [Enable AddressSanitizer (ASAN) for debugging (degrades performance)@<:@default=no@:>@]),
+[
+	#
+	# With Clang >= 3.5 Leak detection is enable by default
+	# and no yet all leak is fixed...
+	# use ASAN_OPTIONS=detect_leaks=0 to disable detect_leaks
+	#
+	# XXX shouldn't this also be added to LDFLAGS?
+	AC_WIRESHARK_COMPILER_FLAGS_CHECK(-fsanitize=address)
+
+])
+
+# Add check hf conflict..
+#
+AC_ARG_ENABLE(checkhf-conflict,
+  AC_HELP_STRING( [--enable-checkhf-conflict],
+		  [Enable hf conflict check for debugging (start-up may be slower)@<:@default=no@:>@]),
+[
+	AC_DEFINE(ENABLE_CHECK_FILTER, 1, [Enable hf conflict check])
+])
 
 AC_WIRESHARK_LDFLAGS_CHECK([-Wl,--as-needed])
 ###AC_WIRESHARK_LDFLAGS_CHECK([-Wl,-M])
@@ -1074,60 +1066,52 @@ AC_WIRESHARK_LDFLAGS_CHECK([-Wl,--as-needed])
 # privileges, and using PIE means the OS can run it at random locations
 # in the address space to make attacks more difficult.
 #
-CFLAGS_before_pie="$CFLAGS"
-AC_WIRESHARK_COMPILER_FLAGS_CHECK(-fPIE)
-if test "x$CFLAGS" != "x$CFLAGS_before_pie"
-then
-	# Restore CFLAGS
-	CFLAGS="$CFLAGS_before_pie"
 
-	LDFLAGS_before_pie="$LDFLAGS"
+WS_CFLAGS_saved="$WS_CFLAGS"
+WS_LDFLAGS_saved="$WS_LDFLAGS"
+AC_WIRESHARK_COMPILER_FLAGS_CHECK(-fPIE, C)
+if test "x$can_add_to_cflags" = "xyes"
+then
 	AC_WIRESHARK_LDFLAGS_CHECK([-fPIE -pie])
-	if test "x$LDFLAGS" != "x$LDFLAGS_before_pie"
+	if test "x$can_add_to_ldflags" = "xyes"
 	then
 		# We can use PIE
 		PIE_CFLAGS="-fPIE"
 		PIE_LDFLAGS="-pie"
-
-		# Restore LDFLAGS
-		LDFLAGS="$LDFLAGS_before_pie"
 	fi
-
 fi
+WS_CFLAGS="$WS_CFLAGS_saved"
+WS_LDFLAGS="$WS_LDFLAGS_saved"
 AC_SUBST(PIE_CFLAGS)
 AC_SUBST(PIE_LDFLAGS)
 
-CFLAGS_before_simd="$CFLAGS"
+WS_CFLAGS_saved="$WS_CFLAGS"
 AC_WIRESHARK_COMPILER_FLAGS_CHECK(-msse4.2, C)
-if test "x$CFLAGS" != "x$CFLAGS_before_simd"
+if test "x$can_add_to_cflags" = "xyes"
 then
 	#
 	# The compiler supports -msse4.2; use that to enable SSE 4.2.
 	#
-	# Restore CFLAGS.  We only want to apply -msse4.2 to
+	# We only want to apply -msse4.2 to
 	# wsutil/ws_mempbrk_sse42.c, as the SSE4.2 code there
 	# is run only if the hardware supports it, but other
 	# code would do no such checks.
 	#
-	CFLAGS="$CFLAGS_before_simd"
 	ac_sse4_2_flag=-msse4.2
 else
 	#
 	# Try -xarch=sse4_2; that's the flag for Sun's compiler.
 	#
 	AC_WIRESHARK_COMPILER_FLAGS_CHECK(-xarch=sse4_2, C)
-	if test "x$CFLAGS" != "x$CFLAGS_before_simd"
+	if test "x$can_add_to_cflags" = "xyes"
 	then
 		#
 		# The compiler supports -xarch=sse4_2; use that to
 		# enable SSE 4.2.
-		#
-		# Restore CFLAGS; see above.
-		#
-		CFLAGS="$CFLAGS_before_simd"
 		ac_sse4_2_flag=-xarch=sse4_2
 	fi
 fi
+WS_CFLAGS="$WS_CFLAGS_saved"
 
 if test "x$ac_sse4_2_flag" != x; then
 	#
@@ -1170,7 +1154,7 @@ if test "x$ac_sse4_2_flag" != x; then
 		#
 		AC_MSG_CHECKING([whether there is nmmintrin.h header and we can use it])
 		saved_CFLAGS="$CFLAGS"
-		CFLAGS="$ac_sse4_2_flag $CFLAGS"
+		CFLAGS="$ac_sse4_2_flag $WS_CFLAGS $CFLAGS"
 		AC_TRY_COMPILE(
 			[#include <nmmintrin.h>],
 			[return 0;],
@@ -1206,8 +1190,10 @@ AC_SUBST(CFLAGS_SSE42)
 #
 if test "x$GCC" = "xyes" -o "x$CC" = "xclang" ; then
   AC_DEFINE(_U_, __attribute__((unused)), [Hint to the compiler that a function parameters is not used])
+  AC_DEFINE(WS_NORETURN, __attribute((noreturn)), [Hint to the compiler that a function never returns])
 else
   AC_DEFINE(_U_, , [Hint to the compiler that a function parameters is not used])
+  AC_DEFINE(WS_NORETURN, , [Hint to the compiler that a function never returns])
 fi
 
 # If we're running GCC or CLang, use FORTIFY_SOURCE=2
@@ -1247,9 +1233,11 @@ AC_ARG_ENABLE(warnings-as-errors,
     with_warnings_as_errors="no"
     AC_MSG_RESULT(no)
   fi
-]
-)
-AM_CONDITIONAL(HAVE_WARNINGS_AS_ERRORS, test "x$with_warnings_as_errors" = "xyes")
+])
+
+AS_IF([test "x$with_warnings_as_errors" = "xyes"], [WERROR="-Werror"], [WERROR=""])
+AC_SUBST(WERROR)
+AM_CONDITIONAL(HAVE_WARNINGS_AS_ERRORS, [test "x$with_warnings_as_errors" = "xyes"])
 
 #
 # Add any platform-specific compiler flags needed.
@@ -1263,9 +1251,9 @@ if test "x$GCC" = "xyes" ; then
 	solaris*)
 		# the X11 headers don't automatically include prototype info
 		# and a lot don't include the return type
-		CPPFLAGS="$CPPFLAGS -DFUNCPROTO=15"
-		CFLAGS="$CFLAGS -Wno-return-type"
-		CXXFLAGS="$CXXFLAGS -Wno-return-type"
+		WS_CPPFLAGS="$WS_CPPFLAGS -DFUNCPROTO=15"
+		WS_CFLAGS="$WS_CFLAGS -Wno-return-type"
+		WS_CXXFLAGS="$WS_CXXFLAGS -Wno-return-type"
 		AC_MSG_RESULT(GCC on Solaris - added -Wno-return-type -DFUNCPROTO=15)
 		;;
 	*)
@@ -1279,15 +1267,16 @@ else
 	case "$host_os" in
 	hpux*)
 		#
-		# HP's ANSI C compiler; flags suggested by Jost Martin.
-		# "-Ae" for ANSI C plus extensions such as "long long".
-		# "+O2", for optimization.  XXX - works with "-g"?
+		# AC_PROG_CC_STDC should already have added whatever
+		# flags are necessary for ISO C - C99 if available,
+		# otherwise C89 - with extensions.
 		#
-		# HP's ANSI C++ compiler doesn't support "-Ae", but
-		# does support "+O2", at least according to the
-		# documentation I can find online.
+		# Add +O2, for optimization, as suggested by Jost Martin.
+		# XXX - works with "-g"?
 		#
-		CFLAGS="-Ae +O2 $CFLAGS"
+		# +O2 is supported both by the C and C++ compiler.
+		#
+		WS_CFLAGS="+O2 $WS_CFLAGS"
 		if test "$CC" = "$CC_FOR_BUILD"; then
 			#
 			# We're building the build tools with the same
@@ -1297,15 +1286,15 @@ else
 			#
 			CFLAGS_FOR_BUILD="-Ae +O2 $CFLAGS"
 		fi
-		CXXFLAGS="+O2 $CFLAGS"
-		AC_MSG_RESULT(HP ANSI C compiler - added -Ae +O2)
+		WS_CXXFLAGS="+O2 $WS_CXXFLAGS"
+		AC_MSG_RESULT(HP C/C++ compiler - added +O2)
 		;;
 	solaris*)
 		#
 		# Crank up the warning level.
 		#
-		CFLAGS="$CFLAGS -v"
-		CXXFLAGS="$CXXFLAGS +w2"
+		WS_CFLAGS="$WS_CFLAGS -v"
+		WS_CXXFLAGS="$WS_CXXFLAGS +w2"
 		;;
 	*)
 		AC_MSG_RESULT(none needed)
@@ -1338,7 +1327,7 @@ darwin*)
 	# with a static version installed in /usr/local/lib rather than
 	# the system version in /usr/lib).
 	#
-	LDFLAGS="-Wl,-headerpad_max_install_names -Wl,-search_paths_first $LDFLAGS"
+	WS_LDFLAGS="-Wl,-headerpad_max_install_names -Wl,-search_paths_first $WS_LDFLAGS"
 	AC_MSG_RESULT([Apple linker - added -Wl,-single_module to shared library linker flags and -Wl,-headerpad_max_install_names -Wl,-search_paths_first and -Wl,-headerpad_max_install_names to all linker flags])
 	;;
 cygwin*)
@@ -1346,7 +1335,7 @@ cygwin*)
 	# Shared libraries in cygwin/Win32 must never contain
 	# undefined symbols.
 	#
-	LDFLAGS="$LDFLAGS -no-undefined"
+	WS_LDFLAGS="$WS_LDFLAGS -no-undefined"
 	AC_MSG_RESULT(CygWin GNU ld - added -no-undefined)
 	;;
 *)
@@ -1374,9 +1363,10 @@ m4_ifdef([AM_SILENT_RULES], [AM_SILENT_RULES([yes])],
 # get version information from plists and thus need Core Foundation
 # to process those plists.
 #
+have_os_x_frameworks=no
 case "$host_os" in
-
 darwin*)
+	have_os_x_frameworks=yes
 	AC_DEFINE(HAVE_OS_X_FRAMEWORKS, 1, [Define to 1 if you have OS X frameworks])
 	APPLICATIONSERVICES_FRAMEWORKS="-framework ApplicationServices"
 	SYSTEMCONFIGURATION_FRAMEWORKS="-framework SystemConfiguration"
@@ -1400,6 +1390,7 @@ esac
 AC_SUBST(APPLICATIONSERVICES_FRAMEWORKS)
 AC_SUBST(SYSTEMCONFIGURATION_FRAMEWORKS)
 AC_SUBST(COREFOUNDATION_FRAMEWORKS)
+AM_CONDITIONAL(HAVE_OS_X_FRAMEWORKS, [test "x$have_os_x_frameworks" = "xyes"])
 
 #
 # On Solaris, check whether we have getexecname().
@@ -1409,38 +1400,6 @@ solaris*)
 	AC_CHECK_FUNC(getexecname)
 	;;
 esac
-
-dnl Look in /usr/local for header files and libraries ?
-dnl XXX FIXME don't include /usr/local if it is already in the system
-dnl search path as this causes gcc 3.2 on Linux to complain about a change
-dnl of the system search order for includes
-AC_ARG_ENABLE(usr-local,
-  AC_HELP_STRING( [--enable-usr-local],
-		  [look for headers and libs in /usr/local tree @<:@default=yes@:>@]),
-    ac_cv_enable_usr_local=$enableval,ac_cv_enable_usr_local=yes)
-
-AC_MSG_CHECKING(whether to use /usr/local for headers and libraries)
-if test "x$ac_cv_enable_usr_local" = "xyes" ; then
-	if test -d "/usr/local"; then
-		AC_MSG_RESULT(yes)
-		#
-		# Arrange that we search for header files in the source directory
-		# and in its "wiretap" subdirectory, as well as in "/usr/local/include",
-		# as various packages we use ("libpcap", "zlib", "adns")
-		# may have been installed under "/usr/local/include".
-		#
-		CPPFLAGS="$CPPFLAGS -I/usr/local/include"
-
-		#
-		# Arrange that we search for libraries in "/usr/local/lib".
-		#
-		AC_WIRESHARK_ADD_DASH_L(LDFLAGS, /usr/local/lib)
-	else
-		AC_MSG_RESULT(no)
-	fi
-else
-	AC_MSG_RESULT(no)
-fi
 
 #
 # If we're running Solaris, and LD_LIBRARY_PATH is defined, add it as a
@@ -1457,46 +1416,6 @@ case "$host_os" in
     fi
   ;;
 esac
-
-#
-# Check for versions of "sed" inadequate to handle, in libtool, a list
-# of object files as large as the list in Wireshark.
-#
-# On Solaris, we check for "/bin/sed", "/usr/bin/sed", and "/usr/ucb/sed",
-# as both "/usr/bin/sed" (which is also "/bin/sed", as "/bin" is just a
-# symlink to "/usr/bin", but people may have "/bin" before "/usr/bin" in
-# their search path) and "/usr/ucb/sed" are inadequate; "/usr/xpg4/bin/sed"
-# is the only "sed" that comes with Solaris that can handle Wireshark.
-#
-# Add any checks here that are necessary for other OSes.
-#
-AC_PATH_PROG(SED, sed)
-if test "x$SED" = x
-then
-	AC_MSG_ERROR(I couldn't find sed; make sure it's installed and in your path)
-fi
-AC_WIRESHARK_GNU_SED_CHECK
-if test "$HAVE_GNU_SED" = no ; then
-	case "$host_os" in
-	solaris*)
-		AC_MSG_CHECKING(whether one of /usr/bin/sed or /bin/sed or /usr/ucb/sed will be used)
-		case `which sed` in
-			/bin/sed|/usr/bin/sed|/usr/ucb/sed)
-			AC_MSG_RESULT(yes)
-			AC_MSG_ERROR([change your path to search /usr/xpg4/bin or directory containing GNU sed before /usr/bin (and /bin and /usr/ucb)])
-			;;
-
-			*)
-			AC_MSG_RESULT(no)
-			;;
-		esac
-		;;
-
-	*)
-		:
-		;;
-	esac
-fi
 
 # Enable/disable wireshark
 AC_ARG_ENABLE(wireshark,
@@ -1522,8 +1441,8 @@ AC_MSG_CHECKING(if profile builds must be generated)
 if test "x$enable_profile_build" = "xyes" ; then
 	if test "x$GCC" = "xyes" -o "x$CLANG" = "xyes" ; then
 		AC_MSG_RESULT(yes)
-		CFLAGS=" -pg $CFLAGS"
-		CXXFLAGS=" -pg $CXXFLAGS"
+		WS_CFLAGS="-pg $WS_CFLAGS"
+		WS_CXXFLAGS="-pg $WS_CXXFLAGS"
 	else
 		AC_MSG_RESULT(no)
 		echo "Building profile binaries currently only supported for GCC and clang."
@@ -1532,34 +1451,52 @@ else
 	AC_MSG_RESULT(no)
 fi
 
-# Create DATAFILE_DIR #define for config.h
-datafiledir=$datadir/wireshark
-datafiledir=`(
-    test "x$prefix" = xNONE && prefix=$ac_default_prefix
-    test "x$exec_prefix" = xNONE && exec_prefix=${prefix}
-    # Ugly hack, but I don't see how this problem can be solved
-    # properly that DATAFILE_DIR had a value starting with
-    # "${prefix}/" instead of e.g. "/usr/local/"
-    eval eval echo "$datafiledir"
-)`
-AC_DEFINE_UNQUOTED(DATAFILE_DIR,"$datafiledir", [Directory for data])
+GLIB_MIN_VERSION=2.16.0
+AC_SUBST(GLIB_MIN_VERSION)
+# GLib checks; we require GLib $GLIB_MIN_VERSION or later, and require gmodule
+# support, as we need that for dynamically loading plugins.
+#
+# Release dates for GLib versions:
+# 2.14.0: 03 Aug 2007
+# 2.16.0: 10 Mar 2008
+# 2.18.0: 02 Sep 2008
+# 2.20.0: 13 Mar 2009
+# 2.22.0: 22 Sep 2009
+# 2.24.0: 28 Mar 2010
+# 2.26.0: 27 Sep 2010
+# 2.28.0: 08 Feb 2011
+# 2.30.0: 27 Sep 2011
+# 2.32.0: 24 Mar 2012
+# 2.34.0: 24 Sep 2012
+# 2.36.0: 25 Mar 2013
+# 2.38.0: 23 Sep 2013
+# 2.40.0: 24 Mar 2014
+# 2.42.0: 22 Sep 2014
+# 2.44.0: 23 Mar 2014
+# 2.46.0: 25 Sep 2015
 
-# Create DOC_DIR #define for config.h
-docdir=`(
-    test "x$prefix" = xNONE && prefix=$ac_default_prefix
-    test "x$exec_prefix" = xNONE && exec_prefix=${prefix}
-    # Ugly hack, but I don't see how this problem can be solved
-    # properly that DOC_DIR had a value starting with
-    # "${prefix}/" instead of e.g. "/usr/local/"
-    eval eval echo "$docdir"
-)`
-AC_DEFINE_UNQUOTED(DOC_DIR, "$docdir", [Directory for docs])
+PKG_WIRESHARK_CHECK_SYSTEM_MODULES([GLIB],
+	[glib-2.0 >= $GLIB_MIN_VERSION gthread-2.0 >= $GLIB_MIN_VERSION gmodule-2.0 >= $GLIB_MIN_VERSION],
+	[GLIB_VERSION=`$PKG_CONFIG --modversion glib-2.0`],
+	[AC_MSG_ERROR([GLib $GLIB_MIN_VERSION or later not found.])])
+
+# Error out if a glib header other than a "top level" header
+#  (glib.h, glib-object.h, gio.h) or certain other headers( e.g.,gmodule.h)
+#  is used.
+AX_APPEND_FLAG([-DG_DISABLE_SINGLE_INCLUDES], [GLIB_CONFIG])
+
+# Error out on the usage of deprecated glib functions
+AX_APPEND_FLAG([-DG_DISABLE_DEPRECATED], [GLIB_CONFIG])
+
+GLIB_CFLAGS="$GLIB_CONFIG $GLIB_CFLAGS"
+AC_SUBST(GLIB_CFLAGS)
+AC_SUBST(GLIB_LIBS)
 
 GTK2_MIN_VERSION=2.12.0
 AC_SUBST(GTK2_MIN_VERSION)
 GTK3_MIN_VERSION=3.0.0
 AC_SUBST(GTK3_MIN_VERSION)
-QT_MIN_VERSION=4.6.0
+QT_MIN_VERSION=4.7.0
 AC_SUBST(QT_MIN_VERSION)
 # GTK+ and Qt checks; we require GTK+ $GTK2_MIN_VERSION or later or
 # GTK3_MIN_VERSION or later or Qt $QT_MIN_VERSION or later.
@@ -1589,6 +1526,7 @@ AC_SUBST(QT_MIN_VERSION)
 # 3.12.0: 25 Mar 2014
 # 3.14.0: 30 Sep 2014
 # 3.16.0: 22 Mar 2015
+# 3.18.0  22 Sep 2015
 #
 # Release dates for Qt versions:
 # https://en.wikipedia.org/wiki/List_of_Qt_releases
@@ -1605,24 +1543,6 @@ AC_SUBST(QT_MIN_VERSION)
 have_qt=no
 have_gtk=no
 if test "x$enable_wireshark" = "xyes"; then
-	if test "x$with_gtk2" = "xunspecified" -a \
-		"x$with_gtk3" = "xunspecified" -a \
-		"x$with_qt" = "xunspecified"; then
-		#
-		# No GUI toolkits were explicitly specified; pick Qt
-		# and GTK+ 3.
-		#
-		with_qt=yes
-		with_gtk3=yes
-	elif test "x$with_gtk2" = "xunspecified" -a \
-		  "x$with_gtk3" = "xunspecified" -a \
-		  "x$with_qt" = "xno"; then
-		#
-		# Qt was explicitly disabled, and neither GTK+ 2 nor
-		# GTK+ 3 were explicitly specified; pick GTK+ 3.
-		#
-		with_gtk3=yes
-	fi
 	if test "x$with_qt" != "xno"; then
 		#
 		# Qt was specified; make sure we have a C++ compiler.
@@ -1637,16 +1557,10 @@ if test "x$enable_wireshark" = "xyes"; then
 		#
 		AC_WIRESHARK_QT_CHECK($QT_MIN_VERSION, "$with_qt",
 		[
-			CFLAGS="$CFLAGS $Qt_CFLAGS"
-			CXXFLAGS="$CXXFLAGS $Qt_CFLAGS"
+			AC_SUBST(Qt_CFLAGS)
+			AC_SUBST(Qt_LIBS)
 			have_qt=yes
 			GUI_CONFIGURE_FLAGS="$GUI_CONFIGURE_FLAGS --with-qt"
-
-			#
-			# XXX - greasy hack to make ui/gtk/recent.c
-			# compile.
-			#
-			CPPFLAGS="-DQT_GUI_LIB"
 
 			#
 			# We're building with Qt, so we need the Qt build
@@ -1683,6 +1597,23 @@ if test "x$enable_wireshark" = "xyes"; then
 				;;
 			esac
 			AC_SUBST(Qt_LDFLAGS)
+
+			if test -z "${MOC_OPTIONS+1}"
+			then
+				if test $qt_version -eq 5
+				then
+					# Squelch moc verbose "nothing to do" output
+					MOC_OPTIONS="-nn"
+				elif test $qt_version -eq 4
+				then
+					qt_minor_version=`echo "$QT_VERSION" | cut -f2 -d.`
+					if test $qt_minor_version -ge 8
+					then
+						MOC_OPTIONS="-nn"
+					fi
+				fi
+			fi
+			AC_SUBST(MOC_OPTIONS)
 		],
 		[
 			case "$with_qt" in
@@ -1709,78 +1640,82 @@ if test "x$enable_wireshark" = "xyes"; then
 		])
 	fi
 
-	if test "x$with_gtk3" = "xyes"; then
+	for want_gtk_version in $with_gtk; do
+		AS_CASE([$want_gtk_version],
+		  [3], [PKG_WIRESHARK_CHECK_SYSTEM_MODULES([GTK],
+			[gtk+-3.0 >= $GTK3_MIN_VERSION glib-2.0 >= $GLIB_MIN_VERSION gthread-2.0 >= $GLIB_MIN_VERSION gmodule-2.0 >= $GLIB_MIN_VERSION],
+			[
+			  have_gtk=yes
+			  GTK_VERSION=`$PKG_CONFIG --modversion gtk+-3.0`
+			  GUI_CONFIGURE_FLAGS="$GUI_CONFIGURE_FLAGS --with-gtk=3"
+			],
+			[
+			  :
+			])],
+		  [2], [PKG_WIRESHARK_CHECK_SYSTEM_MODULES([GTK],
+			[gtk+-2.0 >= $GTK2_MIN_VERSION glib-2.0 >= $GLIB_MIN_VERSION gthread-2.0 >= $GLIB_MIN_VERSION gmodule-2.0 >= $GLIB_MIN_VERSION],
+			[
+			  have_gtk=yes
+			  GTK_VERSION=`$PKG_CONFIG --modversion gtk+-2.0`
+			  GUI_CONFIGURE_FLAGS="$GUI_CONFIGURE_FLAGS --with-gtk=2"
+			],
+			[
+			  :
+			])],
+		  [fail3], [AC_MSG_ERROR([GTK+ 3 was requested but is not available])],
+		  [fail2], [AC_MSG_ERROR([GTK+ 2 was requested but is not available])],
+		  [fail],  [AC_MSG_ERROR([GTK+ was requested but is not available])])
+
+		AS_IF([test "x$have_gtk" = xyes], [break])
+	done
+
+	if test "$have_gtk" = "yes" ; then
+		# If we have GTK then add flags for it.
 		#
-		# GTK+ 3 was specified; make sure they didn't also
-		# specify GTK+ 2, as we don't support building both
-		# GTK+ 2 and GTK+ 3 versions at the same time.
+		# GLib flags first
 		#
-		if test "x$with_gtk2" = "xyes"; then
-			AC_MSG_ERROR([Both GTK+ 2 and GTK+ 3 were specified; choose one but not both])
+		GTK_CONFIG="$GLIB_CONFIG"
+
+		gtk_major_version=`echo $GTK_VERSION | cut -d. -f1`
+		gtk_minor_version=`echo $GTK_VERSION | cut -d. -f2`
+
+		AX_APPEND_FLAG([-DGDK_DISABLE_DEPRECATED], [GTK_CONFIG])
+		if test \( $gtk_major_version -eq 3 -a $gtk_minor_version -ge 10 \) ; then
+			## Allow use of deprecated & disable deprecated warnings if Gtk >= 3.10;
+			##  The deprecations in Gtk 3.10 will not be fixed ...
+			AX_APPEND_FLAG([-DGDK_DISABLE_DEPRECATION_WARNINGS], [GTK_CONFIG])
+		else
+			AX_APPEND_FLAG([-DGTK_DISABLE_DEPRECATED], [GTK_CONFIG])
+		fi
+		AX_APPEND_FLAG([-DGTK_DISABLE_SINGLE_INCLUDES], [GTK_CONFIG])
+		if test ! \( $gtk_major_version -eq 2 -a $gtk_minor_version -lt 20 \) ; then
+			# Enable GSEAL when building with GTK > 2.20
+			# (Versions prior to 2.22 lacked some necessary accessors.)
+			AX_APPEND_FLAG([-DGSEAL_ENABLE], [GTK_CONFIG])
 		fi
 
-		#
-		# Make sure we have GTK+ 3.
-		#
-		AM_PATH_GTK_3_0(3.0.0,
-		[
-			CFLAGS="$CFLAGS $GTK_CFLAGS"
-			CXXFLAGS="$CXXFLAGS $GTK_CFLAGS"
-			have_gtk=yes
-			GUI_CONFIGURE_FLAGS="$GUI_CONFIGURE_FLAGS --with-gtk3"
-		],
-		[AC_MSG_ERROR([GTK+ 3 is not available])])
-	elif test "x$with_gtk2" = "xyes"; then
-		#
-		# GTK+ 3 wasn't specified, and GTK+ 2 was specified;
-		# make sure we have GTK+ 2.
-		#
-		AM_PATH_GTK_2_0($GTK2_MIN_VERSION,
-		[
-			CFLAGS="$CFLAGS $GTK_CFLAGS"
-			CXXFLAGS="$CXXFLAGS $GTK_CFLAGS"
-			have_gtk=yes
-			GUI_CONFIGURE_FLAGS="$GUI_CONFIGURE_FLAGS --with-gtk2"
-		],
-		[AC_MSG_ERROR([GTK+ 2 is not available])])
+		GTK_CFLAGS="$GTK_CONFIG $GTK_CFLAGS"
 	fi
 fi
+
+AC_SUBST(GTK_CFLAGS)
+AC_SUBST(GTK_LIBS)
 AC_SUBST(GUI_CONFIGURE_FLAGS)
 
-GLIB_MIN_VERSION=2.16.0
-AC_SUBST(GLIB_MIN_VERSION)
-# GLib checks; we require GLib $GLIB_MIN_VERSION or later, and require gmodule
-# support, as we need that for dynamically loading plugins.
-# If we found GTK+, this doesn't add GLIB_CFLAGS to CFLAGS, because
-# AM_PATH_GTK will add GTK_CFLAGS to CFLAGS, and GTK_CFLAGS is a
-# superset of GLIB_CFLAGS.  If we didn't find GTK+, it does add
-# GLIB_CFLAGS to CFLAGS.
-# However, this means that both @GLIB_LIBS@ and @GTK_LIBS@ will be
-# set when generating the Makefile, so we can make programs that require
-# only GLib link with @GLIB_LIBS@ and make programs that require GTK+
-# link with @GTK_LIBS@ (which includes @GLIB_LIBS@).
-# We don't add $GLIB_LIBS to LIBS, because we don't want to force all
-# programs to be built with GLib.
-#
-# Release dates for GLib versions:
-# 2.14.0: 03 Aug 2007
-# 2.16.0: 10 Mar 2008
-# 2.18.0: 02 Sep 2008
-# 2.20.0: 13 Mar 2009
-# 2.22.0: 22 Sep 2009
-# 2.24.0: 28 Mar 2010
-# 2.26.0: 27 Sep 2010
-# 2.28.0: 08 Feb 2011
-# 2.30.0: 27 Sep 2011
-# 2.32.0: 24 Mar 2012
-# 2.34.0: 24 Sep 2012
-# 2.36.0: 25 Mar 2013
-# 2.38.0: 23 Sep 2013
-# 2.40.0: 24 Mar 2014
-# 2.42.0: 22 Sep 2014
-# 2.44.0: 23 Mar 2014
+# Check for GTK GUI support for GResource pixbufs
+have_gresource_pixbuf=no
+if test "x$have_gtk" = "xyes"; then
+	AC_MSG_CHECKING(whether GDK-Pixbuf can load data using GResource)
+	PKG_CHECK_EXISTS([gio-2.0 >= 2.32 gdk-pixbuf-2.0 >= 2.26],
+	  [
+	   AC_MSG_RESULT(yes)
+	   AC_DEFINE(HAVE_GDK_GRESOURCE, 1, [Defined if GResource is supported])
+	   have_gresource_pixbuf=yes
+	  ],
+	  [AC_MSG_RESULT(no)])
+fi
+AM_CONDITIONAL(HAVE_GRESOURCE_PIXBUF, test "x$have_gresource_pixbuf" = "xyes")
 
-use_glib_cflags="true"
 if test "$have_gtk" = "yes" -a "$have_qt" = "yes" ; then
 	# We have both GTK and Qt and thus will be building both wireshark
 	# and wireshark-gtk.
@@ -1802,7 +1737,6 @@ if test "$have_gtk" = "yes" -a "$have_qt" = "no" ; then
 	wireshark_bin="wireshark-gtk\$(EXEEXT)"
 	wireshark_man="wireshark.1"
 	wireshark_SUBDIRS="codecs ui/gtk"
-	use_glib_cflags="false"
 	OSX_APP_FLAGS="$OSX_APP_FLAGS -gtk"
 	OSX_DMG_FLAGS="-gtk"
 fi
@@ -1816,65 +1750,24 @@ if test "$have_gtk" = "no" -a "$have_qt" = "no" ; then
 	# problem).
 	#
 	if test "x$enable_wireshark" = "xyes"; then
-		if test "x$with_gtk3" = "xyes"; then
-			AC_MSG_ERROR([Neither Qt nor GTK+ $GTK3_MIN_VERSION or later are available, so Wireshark can't be compiled])
-		else
-			AC_MSG_ERROR([Neither Qt nor GTK+ $GTK2_MIN_VERSION or later are available, so Wireshark can't be compiled])
-		fi
+		AC_MSG_ERROR([Neither Qt nor GTK+ are available, so Wireshark can't be compiled])
 	fi
 	wireshark_bin=""
 	wireshark_man=""
+	wireshark_SUBDIRS=""
 fi
-
-if test "$have_gtk" = "yes" ; then
-	# If we have GTK then add flags for it.
-
-	CPPFLAGS="-DGDK_DISABLE_DEPRECATED $CPPFLAGS"
-	if test \( $gtk_config_major_version -eq 3 -a $gtk_config_minor_version -ge 10 \) ; then
-		## Allow use of deprecated & disable deprecated warnings if Gtk >= 3.10;
-		##  The deprecations in Gtk 3.10 will not be fixed ...
-		CPPFLAGS="-DGDK_DISABLE_DEPRECATION_WARNINGS $CPPFLAGS"
-	else
-		CPPFLAGS="-DGTK_DISABLE_DEPRECATED $CPPFLAGS"
-	fi
-	CPPFLAGS="-DGTK_DISABLE_SINGLE_INCLUDES $CPPFLAGS"
-	if test ! \( $gtk_config_major_version -eq 2 -a $gtk_config_minor_version -lt 20 \) ; then
-		# Enable GSEAL when building with GTK > 2.20
-		# (Versions prior to 2.22 lacked some necessary accessors.)
-		CPPFLAGS="-DGSEAL_ENABLE $CPPFLAGS"
-	fi
-fi
-
-# XXX - Is this really necessary?  When we build with both Gtk+ and Qt it works...
-if test "$use_glib_cflags" = "true"; then
-	# Use GLIB_CFLAGS
-	AM_PATH_GLIB_2_0($GLIB_MIN_VERSION,
-	[
-		CFLAGS="$CFLAGS $GLIB_CFLAGS"
-		CXXFLAGS="$CXXFLAGS $GLIB_CFLAGS"
-	], AC_MSG_ERROR(GLib $GLIB_MIN_VERSION or later distribution not found.), gthread gmodule)
-else
-	# Don't use GLIB_CFLAGS
-	AM_PATH_GLIB_2_0($GLIB_MIN_VERSION, , AC_MSG_ERROR(GLib $GLIB_MIN_VERSION or later distribution not found.), gthread gmodule)
-fi
-
-# Error out if a glib header other than a "top level" header
-#  (glib.h, glib-object.h, gio.h) or certain other headers( e.g.,gmodule.h)
-#  is used.
-CPPFLAGS="-DG_DISABLE_SINGLE_INCLUDES $CPPFLAGS"
-
-# Error out on the usage of deprecated glib functions
-CPPFLAGS="-DG_DISABLE_DEPRECATED $CPPFLAGS"
 
 #
 # Check whether GLib modules are supported, to determine whether we
 # can support plugins.
 #
-AC_MSG_CHECKING(whether GLib supports loadable modules)
+
+AC_CACHE_CHECK([whether GLib supports loadable modules],
+               [ac_cv_glib_supports_modules], [
 ac_save_CFLAGS="$CFLAGS"
 ac_save_LIBS="$LIBS"
-CFLAGS="$CFLAGS $GLIB_CFLAGS"
-LIBS="$GLIB_LIBS $LIBS"
+CFLAGS="$WS_CFLAGS $GLIB_CFLAGS $CFLAGS"
+LIBS="$LIBS $GLIB_LIBS"
 AC_TRY_RUN([
 #include <glib.h>
 #include <gmodule.h>
@@ -1894,12 +1787,11 @@ main ()
     ac_cv_glib_supports_modules=yes])
 CFLAGS="$ac_save_CFLAGS"
 LIBS="$ac_save_LIBS"
+])
 if test "$ac_cv_glib_supports_modules" = yes ; then
-  AC_MSG_RESULT(yes)
   have_plugins=yes
   plugins_dir="plugins"
 else
-  AC_MSG_RESULT(no)
   have_plugins=no
   plugins_dir=""
 fi
@@ -1917,8 +1809,8 @@ then
 	#
 	ac_save_CFLAGS="$CFLAGS"
 	ac_save_LIBS="$LIBS"
-	CFLAGS="$CFLAGS $GLIB_CFLAGS"
-	LIBS="$GLIB_LIBS $LIBS"
+	CFLAGS="$WS_CFLAGS $GLIB_CFLAGS $CFLAGS"
+	LIBS="$LIBS $GLIB_LIBS"
 	AC_CHECK_FUNCS(dladdr)
 	if test x$ac_cv_func_dladdr = xno
 	then
@@ -1941,11 +1833,12 @@ fi
 # be different from the system's printf since GLib can optionally use
 # its own printf implementation.)
 #
-AC_MSG_CHECKING(whether GLib supports POSIX/XSI thousands grouping)
+AC_CACHE_CHECK([whether GLib supports POSIX/XSI thousands grouping],
+               [ac_cv_glib_supports_printf_grouping], [
 ac_save_CFLAGS="$CFLAGS"
 ac_save_LIBS="$LIBS"
-CFLAGS="$CFLAGS $GLIB_CFLAGS"
-LIBS="$GLIB_LIBS $LIBS"
+CFLAGS="$WS_CFLAGS $GLIB_CFLAGS $CFLAGS"
+LIBS="$LIBS $GLIB_LIBS"
 AC_TRY_RUN([
 #include <glib.h>
 #include <locale.h>
@@ -1965,11 +1858,9 @@ main ()
     ac_cv_glib_supports_printf_grouping=no])
 CFLAGS="$ac_save_CFLAGS"
 LIBS="$ac_save_LIBS"
+])
 if test "$ac_cv_glib_supports_printf_grouping" = yes ; then
-  AC_MSG_RESULT(yes)
   AC_DEFINE(HAVE_GLIB_PRINTF_GROUPING, 1, [Define if GLib's printf functions support thousands grouping.])
-else
-  AC_MSG_RESULT(no)
 fi
 
 if test "x$have_gtk" = "xyes"
@@ -2004,6 +1895,7 @@ fi
 
 AC_SUBST(wireshark_bin)
 AC_SUBST(wireshark_man)
+AC_SUBST(wireshark_SUBDIRS)
 AM_CONDITIONAL(HAVE_Qt, test "$have_qt" = "yes")
 AM_CONDITIONAL(HAVE_GTK, test "$have_gtk" = "yes")
 AC_SUBST(OSX_APP_FLAGS)
@@ -2168,10 +2060,6 @@ AC_SUBST(randpkt_man)
 
 AC_SUBST(wiresharkfilter_man)
 
-dnl Checks for "connect()", used as a proxy for "socket()" - and
-dnl "-lsocket", if we need it to get "connect()".
-AC_WIRESHARK_SOCKET_LIB_CHECK
-
 dnl pcap check
 AC_MSG_CHECKING(whether to use libpcap for packet capture)
 
@@ -2199,29 +2087,6 @@ else
 	AC_MSG_RESULT(yes)
 	AC_WIRESHARK_PCAP_CHECK
 fi
-
-
-dnl Check for airpcap
-dnl We might want to remove this entirely unless we want to support
-dnl AutoTools on Windows.
-AC_MSG_CHECKING(whether to include airpcap support)
-AC_ARG_ENABLE(airpcap,
-  AC_HELP_STRING( [--enable-airpcap],
-		  [use AirPcap in Wireshark @<:@default=no@:>@]),
-  enable_airpcap=$enableval, enable_airpcap=no)
-
-if test x$enable_airpcap = xyes; then
-	if test "x$want_pcap" = "xno" ; then
-		enable_airpcap=no
-		AC_MSG_RESULT(pcap not available - disabling airpcap)
-	else
-		AC_MSG_RESULT(yes)
-		AC_DEFINE(HAVE_AIRPCAP, 1, [Enable AirPcap])
-	fi
-else
-	AC_MSG_RESULT(no)
-fi
-
 
 dnl dumpcap check
 AC_MSG_CHECKING(whether to build dumpcap)
@@ -2282,39 +2147,6 @@ else
 fi
 AC_SUBST(rawshark_bin)
 AC_SUBST(rawshark_man)
-
-dnl androiddump check
-AC_MSG_CHECKING(whether to build androiddump)
-
-AC_ARG_ENABLE(androiddump,
-  AC_HELP_STRING( [--enable-androiddump],
-		  [build androiddump @<:@default=yes@:>@]),
-    androiddump=$enableval,enable_androiddump=yes)
-
-if test "x$enable_androiddump" = "xyes" ; then
-	AC_MSG_RESULT(yes)
-else
-	AC_MSG_RESULT(no)
-fi
-
-AC_ARG_ENABLE(androiddump_use_libpcap,
-  AC_HELP_STRING( [--enable-androiddump-use-libpcap],
-		  [build androiddump using libpcap @<:@default=no@:>@]),
-    androiddump_use_libpcap=$enableval,enable_androiddump_use_libpcap=no)
-
-if test "x$enable_androiddump_use_libpcap" = "xyes" ; then
-	AC_DEFINE(ANDROIDDUMP_USE_LIBPCAP, 1, [Androiddump will use Libpcap])
-fi
-
-if test "x$enable_androiddump" = "xyes" ; then
-	androiddump_bin="androiddump\$(EXEEXT)"
-	androiddump_man=""
-else
-	androiddump_bin=""
-	androiddump_man=""
-fi
-AC_SUBST(androiddump_bin)
-AC_SUBST(androiddump_man)
 
 # Enable/disable echld
 AC_ARG_ENABLE(echld,
@@ -2462,11 +2294,11 @@ AC_SUBST(LUA_CFLAGS)
 
 
 dnl portaudio check
-AC_MSG_CHECKING(whether to use libportaudio for the rtp_player)
+AC_MSG_CHECKING(whether to use libportaudio for the GTK+ RTP player)
 
 AC_ARG_WITH(portaudio,
   AC_HELP_STRING( [--with-portaudio@<:@=DIR@:>@],
-		  [use libportaudio (located in directory DIR, if supplied) for the rtp_player @<:@default=yes, if available@:>@]),
+		  [use libportaudio (located in directory DIR, if supplied) for the GTK+ RTP player @<:@default=yes, if available@:>@]),
 [
 	if test $withval = no
 	then
@@ -2491,25 +2323,10 @@ else
 	AC_MSG_RESULT(yes)
 	AC_WIRESHARK_LIBPORTAUDIO_CHECK
 	if test "x$want_portaudio" = "xno" ; then
-		AC_MSG_RESULT(libportaudio not found - disabling support for the rtp_player)
+		AC_MSG_RESULT(libportaudio not found - disabling support for the GTK+ RTP player)
 	fi
 fi
 AM_CONDITIONAL(HAVE_LIBPORTAUDIO, test x$want_portaudio = xyes)
-
-
-dnl ipv6 check
-AC_ARG_ENABLE(ipv6,
-  AC_HELP_STRING( [--enable-ipv6],
-		  [use IPv6 name resolution, if available @<:@default=yes@:>@]),
-    enable_ipv6=$enableval,enable_ipv6=yes)
-
-AC_MSG_CHECKING(whether to enable ipv6 name resolution if available)
-if test "x$enable_ipv6" = "xno" ; then
-	AC_MSG_RESULT(no)
-else
-	AC_MSG_RESULT(yes)
-	AC_WIRESHARK_IPV6_STACK
-fi
 
 
 dnl Check if dumpcap should be installed with filesystem capabilities
@@ -2594,7 +2411,7 @@ elif test "x$withval" = "xyes"; then
 	want_libcap=yes
 elif test -d "$withval"; then
 	want_libcap=yes
-	AC_WIRESHARK_ADD_DASH_L(LDFLAGS, ${withval}/lib)
+	AC_WIRESHARK_ADD_DASH_L(WS_LDFLAGS, ${withval}/lib)
 fi
 ])
 if test "x$with_libcap" = "xno" ; then
@@ -2624,6 +2441,7 @@ AC_CHECK_HEADERS(fcntl.h getopt.h grp.h inttypes.h netdb.h pwd.h unistd.h)
 AC_CHECK_HEADERS(sys/ioctl.h sys/param.h sys/socket.h sys/sockio.h sys/stat.h sys/time.h sys/types.h sys/utsname.h sys/wait.h)
 AC_CHECK_HEADERS(netinet/in.h)
 AC_CHECK_HEADERS(arpa/inet.h arpa/nameser.h)
+AC_CHECK_HEADERS(ifaddrs.h)
 
 #
 # On Linux, check for some additional headers, which we need as a
@@ -2650,7 +2468,7 @@ elif test "x$withval" = "xyes"; then
 	want_ssl=yes
 elif test -d "$withval"; then
 	want_ssl=yes
-	AC_WIRESHARK_ADD_DASH_L(LDFLAGS, ${withval}/lib)
+	AC_WIRESHARK_ADD_DASH_L(WS_LDFLAGS, ${withval}/lib)
 fi
 ],[
 	want_ssl=no
@@ -2707,7 +2525,7 @@ AC_MSG_CHECKING(whether to use the c-ares library if available)
 
 AC_ARG_WITH(c-ares,
   AC_HELP_STRING( [--with-c-ares@<:@=DIR@:>@],
-		  [use c-ares (located in directory DIR, if supplied) - supersedes --with-adns @<:@default=yes, if present@:>@]),
+		  [use c-ares (located in directory DIR, if supplied) @<:@default=yes, if present@:>@]),
 [
 if   test "x$withval" = "xno";  then
 	want_c_ares=no
@@ -2715,7 +2533,7 @@ elif test "x$withval" = "xyes"; then
 	want_c_ares=yes
 elif test -d "$withval"; then
 	want_c_ares=yes
-	AC_WIRESHARK_ADD_DASH_L(LDFLAGS, ${withval}/lib)
+	AC_WIRESHARK_ADD_DASH_L(WS_LDFLAGS, ${withval}/lib)
 fi
 ])
 if test "x$want_c_ares" = "xno" ; then
@@ -2725,56 +2543,6 @@ else
 	AC_WIRESHARK_C_ARES_CHECK
 fi
 AC_SUBST(C_ARES_LIBS)
-
-dnl ADNS Check
-ADNS_LIBS=''
-AC_MSG_CHECKING(whether to use the GNU ADNS library if available)
-
-AC_ARG_WITH(adns,
-  AC_HELP_STRING( [--with-adns@<:@=DIR@:>@],
-		  [use GNU ADNS (located in directory DIR, if supplied) @<:@default=yes, if present@:>@]),
-[
-if   test "x$withval" = "xno";  then
-	want_adns=no
-elif test "x$withval" = "xyes"; then
-	want_adns=yes
-elif test -d "$withval"; then
-	want_adns=yes
-	AC_WIRESHARK_ADD_DASH_L(LDFLAGS, ${withval}/lib)
-fi
-])
-if test "x$want_adns" = "xno" -o "x$have_good_c_ares" = "xyes" ; then
-	AC_MSG_RESULT(no)
-else
-	AC_MSG_RESULT(yes)
-	AC_WIRESHARK_ADNS_CHECK
-fi
-AC_SUBST(ADNS_LIBS)
-
-if test "x$have_good_c_ares" != "xyes" -a "x$have_good_adns" != "xyes"; then
-	# We don't have an asynchronous name resolver, look for a synchronous one
-
-	dnl Checks for "getaddrinfo()" - and "-lnsl", if we need it to get
-	dnl "getaddrinfo()".
-	AC_WIRESHARK_GETADDRINFO_LIB_CHECK
-
-	if test "x$ac_cv_func_getaddrinfo" != "xyes" ; then
-		# We don't have the modern name resolver, try older stuff
-
-		dnl Checks for "gethostbyname()" - and "-lnsl", if we need it to get
-		dnl "gethostbyname()".
-		AC_WIRESHARK_GETHOSTBY_LIB_CHECK
-
-		if test "x$ac_cv_func_gethostbyname" != "xyes" ; then
-			# Hopefully this never actually happens.
-			# The code works even without name resolvers but we
-			# alert the user to this unusual condition.
-			AC_MSG_ERROR(Couldn't find any name resolvers!)
-		fi
-
-		AC_CHECK_FUNCS(gethostbyname2)
-	fi
-fi
 
 dnl GEOIP Check
 GEOIP_LIBS=''
@@ -2790,7 +2558,7 @@ elif test "x$withval" = "xyes"; then
 	want_geoip=yes
 elif test -d "$withval"; then
 	want_geoip=yes
-	AC_WIRESHARK_ADD_DASH_L(LDFLAGS, ${withval}/lib)
+	AC_WIRESHARK_ADD_DASH_L(WS_LDFLAGS, ${withval}/lib)
 fi
 ])
 if test "x$want_geoip" = "xno"; then
@@ -2801,32 +2569,46 @@ else
 fi
 AC_SUBST(GEOIP_LIBS)
 
-#
-# Define WS_MSVC_NORETURN appropriately for declarations of routines that
-# never return (just like Charlie on the MTA).
-#
-# Note that MSVC++ expects __declspec(noreturn) to precede the function
-# name and GCC, as far as I know, expects __attribute__((noreturn)) to
-# follow the function name, so we need two different flavors of
-# noreturn tag.
-#
-AC_DEFINE(WS_MSVC_NORETURN,, [Define as the string to precede declarations of routines that never return])
+dnl LIBSSH Check
+LIBSSH=''
+AC_MSG_CHECKING(whether to use the libssh library if available)
+
+AC_ARG_WITH(ssh,
+  AC_HELP_STRING( [--with-libssh@<:@=DIR@:>@],
+		  [use libssh (located in directory DIR, if supplied) @<:@default=yes, if present@:>@]),
+[
+if   test "x$withval" = "xno";  then
+	want_libssh=no
+elif test "x$withval" = "xyes"; then
+	want_libssh=yes
+elif test -d "$withval"; then
+	want_libssh=yes
+	AC_WIRESHARK_ADD_DASH_L(WS_LDFLAGS, ${withval}/lib)
+fi
+])
+if test "x$want_libssh" = "xno"; then
+	AC_MSG_RESULT(no)
+else
+	AC_MSG_RESULT(yes)
+	AC_WIRESHARK_LIBSSH_CHECK
+fi
+AC_SUBST(LIBSSH_LIBS)
 
 dnl Checks for typedefs, structures, and compiler characteristics.
 # AC_C_CONST
 
 # Check how we can get the time zone abbreviation
-AC_WIRESHARK_TIMEZONE_ABBREV
+AC_STRUCT_TIMEZONE
 
 # We need to know whether "struct stat" has an "st_flags" member
 # for file_user_immutable().
 
-AC_WIRESHARK_STRUCT_ST_FLAGS
+AC_CHECK_MEMBERS([struct stat.st_flags])
 
 # We need to know whether "struct sockaddr" has an "sa_len" member
 # for get_interface_list().
 
-AC_WIRESHARK_STRUCT_SA_LEN
+AC_CHECK_MEMBERS([struct sockaddr.sa_len])
 
 # We must know our byte order
 AC_C_BIGENDIAN
@@ -2835,44 +2617,22 @@ AC_C_BIGENDIAN
 # XXX - do we need this?
 AC_PROG_GCC_TRADITIONAL
 
-AC_CHECK_FUNC(getopt_long,
-  [
-    GETOPT_LO=""
-    AC_DEFINE(HAVE_GETOPT_LONG, 1, [Define to 1 if you have the getopt_long function.])
+AC_REPLACE_FUNCS(getopt_long)
+dnl
+dnl Do we have optreset?
+dnl
+if test "x$ac_cv_func_getopt_long" = xyes; then
+  AC_CACHE_CHECK([whether optreset is defined], ac_cv_have_optreset,
+    AC_LINK_IFELSE([AC_LANG_SOURCE([[extern int optreset;return optreset;]])],
+        ac_cv_have_optreset=yes, ac_cv_have_optreset=no))
+  if test "$ac_cv_have_optreset" = yes ; then
+    AC_DEFINE(HAVE_OPTRESET, 1, [Define to 1 if you have the optreset variable])
+  fi
+fi
 
-    #
-    # Do we have optreset?
-    #
-    AC_MSG_CHECKING(whether optreset is defined)
-    AC_TRY_LINK([],
-      [
-	extern int optreset;
+AC_REPLACE_FUNCS(inet_aton)
 
-	return optreset;
-      ],
-      ac_cv_pcap_debug_defined=yes,
-      ac_cv_pcap_debug_defined=no)
-    if test "$ac_cv_pcap_debug_defined" = yes ; then
-      AC_MSG_RESULT(yes)
-      AC_DEFINE(HAVE_OPTRESET, 1, [Define to 1 if you have the optreset variable])
-    else
-      AC_MSG_RESULT(no)
-    fi
-  ],
-  GETOPT_LO="wsgetopt.lo")
-AC_SUBST(GETOPT_LO)
-
-AC_CHECK_FUNCS(mkstemp mkdtemp)
-
-AC_SEARCH_LIBS(inet_aton, [socket nsl],
-  [
-    INET_ATON_LO=""
-    AC_DEFINE(HAVE_INET_ATON, 0, [Define to 1 if you have the inet_aton function.])
-  ],
-  INET_ATON_LO="inet_aton.lo")
-AC_SUBST(INET_ATON_LO)
-
-AC_SEARCH_LIBS(inet_pton, [socket nsl], [
+AC_CHECK_FUNC(inet_pton, [
   dnl check for pre-BIND82 inet_pton() bug.
   AC_MSG_CHECKING(for broken inet_pton)
   AC_TRY_RUN([#include <sys/types.h>
@@ -2890,69 +2650,25 @@ int main()
 #endif
 }], [AC_MSG_RESULT(ok);
 have_inet_pton=yes], [AC_MSG_RESULT(broken);
-have_inet_pton=no], [AC_MSG_RESULT(cross compiling, assume it is broken);
+have_inet_pton=no], [AC_MSG_RESULT([cross compiling, assume it is broken]);
 have_inet_pton=no])],
 have_inet_pton=no)
 if test "$have_inet_pton" = no; then
-  INET_PTON_LO="inet_pton.lo"
+  AC_LIBOBJ(inet_pton)
 else
-  INET_PTON_LO=""
+  AC_DEFINE(HAVE_INET_PTON, 1, [Define to 1 if you have the `inet_pton' function.])
 fi
-AM_CONDITIONAL(NEED_INET_PTON_LO, test "x$have_inet_pton" = "xno")
-AC_SUBST(INET_PTON_LO)
 
-AC_SEARCH_LIBS(inet_ntop, [socket nsl], [
-  AC_MSG_CHECKING([for inet_ntop prototype])
-  AC_TRY_COMPILE([#include <stdio.h>
-#include <sys/types.h>
-#include <sys/socket.h>
-#include <netinet/in.h>
-#include <arpa/inet.h>
+AC_REPLACE_FUNCS(inet_ntop)
+AC_REPLACE_FUNCS(strptime)
+AC_REPLACE_FUNCS(popcount)
 
-extern const char *inet_ntop(int, const void *, char *, size_t);],, [
-    AC_MSG_RESULT(yes)
-    AC_DEFINE(HAVE_INET_NTOP_PROTO, 1,
-    [Define if inet_ntop() prototype exists])], [
-    AC_TRY_COMPILE([#include <stdio.h>
-#include <sys/types.h>
-#include <sys/socket.h>
-#include <netinet/in.h>
-#include <arpa/inet.h>
-
-extern const char *inet_ntop(int, const void *, char *, socklen_t);],, [
-      AC_MSG_RESULT(yes)
-      AC_DEFINE(HAVE_INET_NTOP_PROTO, 1,
-      [Define if inet_ntop() prototype exists])], [
-      AC_MSG_RESULT(no)])])
-  INET_NTOP_LO=""], [
-  INET_NTOP_LO="inet_ntop.lo"
-  AC_DEFINE(NEED_INET_V6DEFS_H, 1,
-  [Define if inet/v6defs.h needs to be included])])
-AM_CONDITIONAL(NEED_INET_NTOP_LO, test "x$INET_NTOP_LO" != "x")
-AC_SUBST(INET_NTOP_LO)
-
-AC_CHECK_FUNC(strptime,
-  [
-    STRPTIME_LO=""
-    AC_DEFINE(HAVE_STRPTIME, 1, [Define if you have the strptime function.])
-  ],
-  STRPTIME_LO="strptime.lo")
-AC_SUBST(STRPTIME_LO)
-
-AC_CHECK_FUNC(popcount,
-  [
-    POPCOUNT_LO=""
-    AC_DEFINE(HAVE_POPCOUNT, 1, [Define if you have the popcount function.])
-  ],
-  POPCOUNT_LO="popcount.lo")
-AC_SUBST(POPCOUNT_LO)
-
+AC_CHECK_FUNCS(getaddrinfo)
+AC_CHECK_FUNCS(mkstemp mkdtemp)
 AC_CHECK_FUNCS(getprotobynumber)
 AC_CHECK_FUNCS(issetugid)
 AC_CHECK_FUNCS(sysconf)
-
-dnl blank for now, but will be used in future
-AC_SUBST(wireshark_SUBDIRS)
+AC_CHECK_FUNCS(getifaddrs)
 
 # Check Bluetooth SBC codec for RTP Player
 # git://git.kernel.org/pub/scm/bluetooth/sbc.git
@@ -2972,13 +2688,14 @@ if test "x$with_sbc" != "xno"; then
 else
     have_sbc=no
 fi
+AM_CONDITIONAL(HAVE_SBC, test "x$have_sbc" = "xyes")
 
 dnl
 dnl check whether plugins should be enabled and, if they should be,
 dnl check for plugins directory - stolen from Amanda's configure.ac
 dnl
 dnl we don't wish to expand ${libdir} yet
-plugindir='${libdir}/wireshark/plugins/${VERSION}'
+plugindir="\${libdir}/wireshark/plugins/${VERSION}"
 AC_ARG_WITH(plugins,
   AC_HELP_STRING( [--with-plugins@<:@=DIR@:>@],
 		  [support plugins (installed in DIR, if supplied) @<:@default=yes, if possible@:>@]),
@@ -2997,7 +2714,6 @@ then
   AC_DEFINE(HAVE_PLUGINS, 1, [Define if plugins are enabled])
 fi
 AC_SUBST(plugindir)
-CPPFLAGS="$CPPFLAGS '-DPLUGIN_INSTALL_DIR=\"\$(plugindir)\"'"
 
 #
 # The plugin dissectors reside in ./plugins/PROTO/
@@ -3005,9 +2721,12 @@ CPPFLAGS="$CPPFLAGS '-DPLUGIN_INSTALL_DIR=\"\$(plugindir)\"'"
 PLUGIN_LIBS=""
 AC_SUBST(PLUGIN_LIBS)
 
-
-dnl Use extcap by default
-extcapdir='${datadir}/wireshark/extcap/'
+dnl
+dnl check whether extcap programs should be enabled and, if they should be,
+dnl check for extcap directory - stolen from Amanda's configure.ac
+dnl
+dnl we don't wish to expand ${libdir} yet
+extcapdir="\${libdir}/wireshark/extcap"
 AC_ARG_WITH(extcap,
   AC_HELP_STRING( [--with-extcap@<:@=DIR@:>@],
 		  [use extcap for external capture sources (installed in DIR, if supplied) @<:@default=yes, if possible@:>@]),
@@ -3027,9 +2746,135 @@ AM_CONDITIONAL(HAVE_EXTCAP, test "x$have_extcap" = "xyes")
 if test "x$have_extcap" = "xyes"
 then
   AC_DEFINE(HAVE_EXTCAP, 1, [Define if external capture sources should be enabled])
-  AC_DEFINE_UNQUOTED(EXTCAP_DIR,"$extcapdir", [Directory for extcap plugins])
+  extcap_subdir="extcap"
+  extcap_man="extcap.4"
 fi
+AC_SUBST(extcap_subdir)
+AC_SUBST(extcap_man)
 AC_SUBST(extcapdir)
+
+dnl androiddump check
+AC_MSG_CHECKING(whether to build androiddump)
+
+AC_ARG_ENABLE(androiddump,
+  AC_HELP_STRING( [--enable-androiddump],
+		  [build androiddump @<:@default=yes@:>@]),
+    androiddump=$enableval,enable_androiddump=yes)
+
+if test "x$have_extcap" != xyes; then
+	AC_MSG_RESULT([no, extcap disabled])
+	enable_androiddump=no
+elif test "x$enable_androiddump" = "xyes" ; then
+	AC_MSG_RESULT(yes)
+else
+	AC_MSG_RESULT(no)
+fi
+
+AC_ARG_ENABLE(androiddump_use_libpcap,
+  AC_HELP_STRING( [--enable-androiddump-use-libpcap],
+		  [build androiddump using libpcap @<:@default=no@:>@]),
+    androiddump_use_libpcap=$enableval,enable_androiddump_use_libpcap=no)
+
+if test "x$enable_androiddump" = "xyes" -a "x$enable_androiddump_use_libpcap" = "xyes" ; then
+	AC_DEFINE(ANDROIDDUMP_USE_LIBPCAP, 1, [Androiddump will use Libpcap])
+fi
+
+if test "x$enable_androiddump" = "xyes" ; then
+	androiddump_bin="androiddump\$(EXEEXT)"
+	androiddump_man="androiddump.1"
+else
+	androiddump_bin=""
+	androiddump_man=""
+fi
+AC_SUBST(androiddump_bin)
+AC_SUBST(androiddump_man)
+
+dnl sshdump check
+AC_MSG_CHECKING(whether to build sshdump)
+
+AC_ARG_ENABLE(sshdump,
+	AC_HELP_STRING( [--enable-sshdump],
+		[build sshdump @<:@default=yes@:>@]),
+	[],[enable_sshdump=yes])
+
+if test "x$have_extcap" != xyes; then
+	AC_MSG_RESULT([no, extcap disabled])
+	enable_sshdump=no
+elif test "x$have_good_libssh" != xyes; then
+	AC_MSG_RESULT([no, libssh not available])
+	enable_sshdump=no
+elif test "x$enable_sshdump" = "xyes" ; then
+	AC_MSG_RESULT(yes)
+else
+	AC_MSG_RESULT(no)
+fi
+
+if test "x$enable_sshdump" = "xyes" ; then
+	sshdump_bin="sshdump\$(EXEEXT)"
+	sshdump_man="sshdump.1"
+else
+	sshdump_bin=""
+	sshdump_man=""
+fi
+AC_SUBST(sshdump_bin)
+AC_SUBST(sshdump_man)
+
+dnl ciscodump check
+AC_MSG_CHECKING(whether to build ciscodump)
+
+AC_ARG_ENABLE(ciscodump,
+	AC_HELP_STRING( [--enable-ciscodump],
+		[build ciscodump @<:@default=yes@:>@]),
+	[],[enable_ciscodump=yes])
+
+if test "x$have_extcap" != xyes; then
+	AC_MSG_RESULT([no, extcap disabled])
+	enable_ciscodump=no
+elif test "x$have_good_libssh" != xyes; then
+	AC_MSG_RESULT([no, libssh not available])
+	enable_ciscodump=no
+elif test "x$enable_ciscodump" = "xyes" ; then
+	AC_MSG_RESULT(yes)
+else
+	AC_MSG_RESULT(no)
+fi
+
+if test "x$enable_ciscodump" = "xyes" ; then
+	ciscodump_bin="ciscodump\$(EXEEXT)"
+	ciscodump_man="ciscodump.1"
+else
+	ciscodump_bin=""
+	ciscodump_man=""
+fi
+AC_SUBST(ciscodump_bin)
+AC_SUBST(ciscodump_man)
+
+dnl randpktdump check
+AC_MSG_CHECKING(whether to build randpktdump)
+
+AC_ARG_ENABLE(randpktdump,
+	AC_HELP_STRING( [--enable-randpktdump],
+		[build randpktdump @<:@default=yes@:>@]),
+	randpktdump=$enableval,enable_randpktdump=yes)
+
+if test "x$have_extcap" != xyes; then
+	AC_MSG_RESULT([no, extcap disabled])
+	enable_randpktdump=no
+elif test "x$enable_randpktdump" = "xyes" ; then
+	AC_MSG_RESULT(yes)
+else
+	AC_MSG_RESULT(no)
+fi
+
+if test "x$enable_randpktdump" = "xyes" ; then
+	randpktdump_bin="randpktdump\$(EXEEXT)"
+	randpktdump_man="randpktdump.1"
+else
+	randpktdump_bin=""
+	randpktdump_man=""
+fi
+AC_SUBST(randpktdump_bin)
+AC_SUBST(randpktdump_man)
 
 dnl libtool defs
 #
@@ -3052,7 +2897,7 @@ AC_SUBST(ENABLE_STATIC)
 
 # Gather which GUI we're building for rpmbuild
 if test "x$have_gtk" = "xyes"; then
-	if test "x$with_gtk3" = "xyes"; then
+	if test "x$gtk_major_version" = "x3"; then
 		RPMBUILD_WITH_ARGS="--with gtk3 --without gtk2"
 	else
 		RPMBUILD_WITH_ARGS="--without gtk3 --with gtk2"
@@ -3061,11 +2906,30 @@ else
 	RPMBUILD_WITH_ARGS="--without gtk2 --without gtk3"
 fi
 if test "x$have_qt" = "xyes" ; then
-	RPMBUILD_WITH_ARGS="$RPMBUILD_WITH_ARGS --with qt"
+	if test "$qt_version" -eq "5"; then
+		RPMBUILD_WITH_ARGS="$RPMBUILD_WITH_ARGS --with qt5"
+	else
+		RPMBUILD_WITH_ARGS="$RPMBUILD_WITH_ARGS --with qt"
+	fi
 else
-	RPMBUILD_WITH_ARGS="$RPMBUILD_WITH_ARGS --without qt"
+	RPMBUILD_WITH_ARGS="$RPMBUILD_WITH_ARGS --without qt --without qt5"
+fi
+if test "x$have_lua" = "xyes" ; then
+	RPMBUILD_WITH_ARGS="$RPMBUILD_WITH_ARGS --with lua"
+else
+	RPMBUILD_WITH_ARGS="$RPMBUILD_WITH_ARGS --without lua"
 fi
 AC_SUBST(RPMBUILD_WITH_ARGS)
+AC_SUBST(RPM_VERSION, version_major.version_minor.version_micro)
+
+AC_SUBST(WS_CPPFLAGS)
+AC_SUBST(WS_CFLAGS)
+AC_SUBST(WS_CXXFLAGS)
+AC_SUBST(WS_LDFLAGS)
+
+AC_SUBST(WS_CFLAGS_FOR_BUILD)
+
+AH_BOTTOM([#include <ws_diag_control.h>])
 
 dnl Save the cacheable configure results to config.cache before recursing
 AC_CACHE_SAVE
@@ -3073,118 +2937,120 @@ AC_CACHE_SAVE
 sinclude(plugins/Custom.m4) dnl
 ifdef(_CUSTOM_AC_OUTPUT_,, define(_CUSTOM_AC_OUTPUT_, )) dnl
 
-sinclude(asn1/Custom.m4) dnl
+sinclude(epan/dissectors/asn1/Custom.m4) dnl
 ifdef(_CUSTOM_ASN1_AC_OUTPUT_,, define(_CUSTOM_ASN1_AC_OUTPUT_, )) dnl
 
-AC_CONFIG_HEADERS(config.h)
-AC_OUTPUT(
+AC_CONFIG_HEADERS([config.h])
+
+AC_CONFIG_FILES(
   Makefile
   doxygen.cfg
-  asn1/Makefile
+  epan/dissectors/asn1/Makefile
+  wireshark.pc
   _CUSTOM_ASN1_AC_OUTPUT_
-  asn1/acp133/Makefile
-  asn1/acse/Makefile
-  asn1/ansi_map/Makefile
-  asn1/ansi_tcap/Makefile
-  asn1/atn-cm/Makefile
-  asn1/atn-cpdlc/Makefile
-  asn1/atn-ulcs/Makefile
-  asn1/c1222/Makefile
-  asn1/camel/Makefile
-  asn1/cdt/Makefile
-  asn1/charging_ase/Makefile
-  asn1/cmip/Makefile
-  asn1/cmp/Makefile
-  asn1/crmf/Makefile
-  asn1/cms/Makefile
-  asn1/credssp/Makefile
-  asn1/dap/Makefile
-  asn1/disp/Makefile
-  asn1/dop/Makefile
-  asn1/dsp/Makefile
-  asn1/ess/Makefile
-  asn1/ftam/Makefile
-  asn1/goose/Makefile
-  asn1/gprscdr/Makefile
-  asn1/gsm_map/Makefile
-  asn1/h225/Makefile
-  asn1/h235/Makefile
-  asn1/h245/Makefile
-  asn1/h248/Makefile
-  asn1/h282/Makefile
-  asn1/h283/Makefile
-  asn1/h323/Makefile
-  asn1/h450/Makefile
-  asn1/h450-ros/Makefile
-  asn1/h460/Makefile
-  asn1/h501/Makefile
-  asn1/HI2Operations/Makefile
-  asn1/hnbap/Makefile
-  asn1/idmp/Makefile
-  asn1/ilp/Makefile
-  asn1/inap/Makefile
-  asn1/isdn-sup/Makefile
-  asn1/kerberos/Makefile
-  asn1/lcsap/Makefile
-  asn1/ldap/Makefile
-  asn1/logotypecertextn/Makefile
-  asn1/lpp/Makefile
-  asn1/lppa/Makefile
-  asn1/lppe/Makefile
-  asn1/lte-rrc/Makefile
-  asn1/m3ap/Makefile
-  asn1/mms/Makefile
-  asn1/mpeg-audio/Makefile
-  asn1/mpeg-pes/Makefile
-  asn1/nbap/Makefile
-  asn1/ns_cert_exts/Makefile
-  asn1/novell_pkis/Makefile
-  asn1/ocsp/Makefile
-  asn1/p1/Makefile
-  asn1/p22/Makefile
-  asn1/p7/Makefile
-  asn1/p772/Makefile
-  asn1/pcap/Makefile
-  asn1/pkcs1/Makefile
-  asn1/pkcs12/Makefile
-  asn1/pkinit/Makefile
-  asn1/pkixac/Makefile
-  asn1/pkix1explicit/Makefile
-  asn1/pkix1implicit/Makefile
-  asn1/pkixproxy/Makefile
-  asn1/pkixqualified/Makefile
-  asn1/pkixtsp/Makefile
-  asn1/pres/Makefile
-  asn1/q932/Makefile
-  asn1/q932-ros/Makefile
-  asn1/qsig/Makefile
-  asn1/ranap/Makefile
-  asn1/rnsap/Makefile
-  asn1/ros/Makefile
-  asn1/rrc/Makefile
-  asn1/rrlp/Makefile
-  asn1/rtse/Makefile
-  asn1/rua/Makefile
-  asn1/s1ap/Makefile
-  asn1/sabp/Makefile
-  asn1/sbc-ap/Makefile
-  asn1/smrse/Makefile
-  asn1/snmp/Makefile
-  asn1/spnego/Makefile
-  asn1/sv/Makefile
-  asn1/t124/Makefile
-  asn1/t125/Makefile
-  asn1/t38/Makefile
-  asn1/tcap/Makefile
-  asn1/tetra/Makefile
-  asn1/ulp/Makefile
-  asn1/wlancertextn/Makefile
-  asn1/x2ap/Makefile
-  asn1/x509af/Makefile
-  asn1/x509ce/Makefile
-  asn1/x509if/Makefile
-  asn1/x509sat/Makefile
-  asn1/x721/Makefile
+  epan/dissectors/asn1/acp133/Makefile
+  epan/dissectors/asn1/acse/Makefile
+  epan/dissectors/asn1/ansi_map/Makefile
+  epan/dissectors/asn1/ansi_tcap/Makefile
+  epan/dissectors/asn1/atn-cm/Makefile
+  epan/dissectors/asn1/atn-cpdlc/Makefile
+  epan/dissectors/asn1/atn-ulcs/Makefile
+  epan/dissectors/asn1/c1222/Makefile
+  epan/dissectors/asn1/camel/Makefile
+  epan/dissectors/asn1/cdt/Makefile
+  epan/dissectors/asn1/charging_ase/Makefile
+  epan/dissectors/asn1/cmip/Makefile
+  epan/dissectors/asn1/cmp/Makefile
+  epan/dissectors/asn1/crmf/Makefile
+  epan/dissectors/asn1/cms/Makefile
+  epan/dissectors/asn1/credssp/Makefile
+  epan/dissectors/asn1/dap/Makefile
+  epan/dissectors/asn1/disp/Makefile
+  epan/dissectors/asn1/dop/Makefile
+  epan/dissectors/asn1/dsp/Makefile
+  epan/dissectors/asn1/ess/Makefile
+  epan/dissectors/asn1/ftam/Makefile
+  epan/dissectors/asn1/goose/Makefile
+  epan/dissectors/asn1/gprscdr/Makefile
+  epan/dissectors/asn1/gsm_map/Makefile
+  epan/dissectors/asn1/h225/Makefile
+  epan/dissectors/asn1/h235/Makefile
+  epan/dissectors/asn1/h245/Makefile
+  epan/dissectors/asn1/h248/Makefile
+  epan/dissectors/asn1/h282/Makefile
+  epan/dissectors/asn1/h283/Makefile
+  epan/dissectors/asn1/h323/Makefile
+  epan/dissectors/asn1/h450/Makefile
+  epan/dissectors/asn1/h450-ros/Makefile
+  epan/dissectors/asn1/h460/Makefile
+  epan/dissectors/asn1/h501/Makefile
+  epan/dissectors/asn1/HI2Operations/Makefile
+  epan/dissectors/asn1/hnbap/Makefile
+  epan/dissectors/asn1/idmp/Makefile
+  epan/dissectors/asn1/ilp/Makefile
+  epan/dissectors/asn1/inap/Makefile
+  epan/dissectors/asn1/isdn-sup/Makefile
+  epan/dissectors/asn1/kerberos/Makefile
+  epan/dissectors/asn1/lcsap/Makefile
+  epan/dissectors/asn1/ldap/Makefile
+  epan/dissectors/asn1/logotypecertextn/Makefile
+  epan/dissectors/asn1/lpp/Makefile
+  epan/dissectors/asn1/lppa/Makefile
+  epan/dissectors/asn1/lppe/Makefile
+  epan/dissectors/asn1/lte-rrc/Makefile
+  epan/dissectors/asn1/m3ap/Makefile
+  epan/dissectors/asn1/mms/Makefile
+  epan/dissectors/asn1/mpeg-audio/Makefile
+  epan/dissectors/asn1/mpeg-pes/Makefile
+  epan/dissectors/asn1/nbap/Makefile
+  epan/dissectors/asn1/ns_cert_exts/Makefile
+  epan/dissectors/asn1/novell_pkis/Makefile
+  epan/dissectors/asn1/ocsp/Makefile
+  epan/dissectors/asn1/p1/Makefile
+  epan/dissectors/asn1/p22/Makefile
+  epan/dissectors/asn1/p7/Makefile
+  epan/dissectors/asn1/p772/Makefile
+  epan/dissectors/asn1/pcap/Makefile
+  epan/dissectors/asn1/pkcs1/Makefile
+  epan/dissectors/asn1/pkcs12/Makefile
+  epan/dissectors/asn1/pkinit/Makefile
+  epan/dissectors/asn1/pkixac/Makefile
+  epan/dissectors/asn1/pkix1explicit/Makefile
+  epan/dissectors/asn1/pkix1implicit/Makefile
+  epan/dissectors/asn1/pkixproxy/Makefile
+  epan/dissectors/asn1/pkixqualified/Makefile
+  epan/dissectors/asn1/pkixtsp/Makefile
+  epan/dissectors/asn1/pres/Makefile
+  epan/dissectors/asn1/q932/Makefile
+  epan/dissectors/asn1/q932-ros/Makefile
+  epan/dissectors/asn1/qsig/Makefile
+  epan/dissectors/asn1/ranap/Makefile
+  epan/dissectors/asn1/rnsap/Makefile
+  epan/dissectors/asn1/ros/Makefile
+  epan/dissectors/asn1/rrc/Makefile
+  epan/dissectors/asn1/rrlp/Makefile
+  epan/dissectors/asn1/rtse/Makefile
+  epan/dissectors/asn1/rua/Makefile
+  epan/dissectors/asn1/s1ap/Makefile
+  epan/dissectors/asn1/sabp/Makefile
+  epan/dissectors/asn1/sbc-ap/Makefile
+  epan/dissectors/asn1/smrse/Makefile
+  epan/dissectors/asn1/snmp/Makefile
+  epan/dissectors/asn1/spnego/Makefile
+  epan/dissectors/asn1/sv/Makefile
+  epan/dissectors/asn1/t124/Makefile
+  epan/dissectors/asn1/t125/Makefile
+  epan/dissectors/asn1/t38/Makefile
+  epan/dissectors/asn1/tcap/Makefile
+  epan/dissectors/asn1/tetra/Makefile
+  epan/dissectors/asn1/ulp/Makefile
+  epan/dissectors/asn1/wlancertextn/Makefile
+  epan/dissectors/asn1/x2ap/Makefile
+  epan/dissectors/asn1/x509af/Makefile
+  epan/dissectors/asn1/x509ce/Makefile
+  epan/dissectors/asn1/x509if/Makefile
+  epan/dissectors/asn1/x509sat/Makefile
+  epan/dissectors/asn1/x721/Makefile
   capchild/Makefile
   capchild/doxygen.cfg
   caputils/Makefile
@@ -3198,11 +3064,11 @@ AC_OUTPUT(
   epan/dfilter/Makefile
   epan/dissectors/Makefile
   epan/dissectors/dcerpc/Makefile
-  epan/dissectors/pidl/Makefile
   epan/ftypes/Makefile
   epan/nghttp2/Makefile
   epan/wmem/Makefile
   epan/wslua/Makefile
+  extcap/Makefile
   codecs/Makefile
   ui/Makefile
   ui/doxygen.cfg
@@ -3239,26 +3105,27 @@ AC_OUTPUT(
   plugins/wimax/Makefile
   plugins/wimaxasncp/Makefile
   plugins/wimaxmacphy/Makefile
+  randpkt_core/doxygen.cfg
+  randpkt_core/Makefile
   tools/Makefile
   tools/lemon/Makefile
   wiretap/Makefile
+  writecap/Makefile
+  writecap/doxygen.cfg
   wsutil/Makefile
   echld/Makefile
   _CUSTOM_AC_OUTPUT_
-  ,)
-dnl AC_CONFIG_FILES([tools/setuid-root.pl], [chmod +x tools/setuid-root.pl])
+)
+
+AC_OUTPUT
 
 
 # Pretty messages
 
 if test "x$have_gtk" = "xyes"; then
-	if test "x$with_gtk3" = "xyes"; then
-		gtk_lib_message=" (with GTK+ 3"
-	else
-		gtk_lib_message=" (with GTK+ 2"
-	fi
+	gtk_lib_message=" (with GTK+ v$GTK_VERSION"
 	if test "x$have_ige_mac" = "xyes"; then
-		gtk_lib_message="$gtk_lib_message and Mac OS X integration)"
+		gtk_lib_message="$gtk_lib_message and OS X integration)"
 	else
 		gtk_lib_message="$gtk_lib_message)"
 	fi
@@ -3266,7 +3133,7 @@ fi
 
 if test "x$have_qt" = "xyes" ; then
 	enable_wireshark_qt="yes"
-	qt_lib_message=" (with Qt $qt_version)"
+	qt_lib_message=" (with Qt$qt_version v$QT_VERSION)"
 else
 	enable_wireshark_qt="no"
 fi
@@ -3301,6 +3168,12 @@ else
 	lua_message="no"
 fi
 
+if test "x$have_qt_multimedia_lib" = "xyes" ; then
+	qt_multimedia_message="yes"
+else
+	qt_multimedia_message="no"
+fi
+
 if test "x$want_portaudio" = "xyes" ; then
 	portaudio_message="yes"
 else
@@ -3322,17 +3195,7 @@ fi
 if test "x$have_good_c_ares" = "xyes" ; then
 	c_ares_message="yes"
 else
-	c_ares_message="no"
-fi
-
-if test "x$have_good_adns" = "xyes" ; then
-	adns_message="yes"
-else
-	if test "x$have_good_c_ares" = "xyes" ; then
-		adns_message="no (using c-ares instead)"
-	else
-		adns_message="no"
-	fi
+	c_ares_message="no (name resolution will be disabled)"
 fi
 
 if test "x$have_good_libcap" = "xyes" ; then
@@ -3347,8 +3210,32 @@ else
 	geoip_message="no"
 fi
 
+if test "x$have_good_libssh" = "xyes" ; then
+	libssh_message="yes"
+else
+	libssh_message="no"
+fi
+
+if test "x$have_ssh_userauth_agent" = "xyes" ; then
+	ssh_userauth_agent_message="yes"
+else
+	ssh_userauth_agent_message="no"
+fi
+
 echo ""
-echo "The Wireshark package has been configured with the following options."
+echo "  CPPFLAGS: $WS_CPPFLAGS $CPPFLAGS"
+echo ""
+echo "  CFLAGS: $WS_CFLAGS $CFLAGS"
+echo ""
+echo "  CXXFLAGS: $WS_CXXFLAGS $CXXFLAGS"
+echo ""
+echo "  LDFLAGS: $WS_LDFLAGS $LDFLAGS"
+echo ""
+echo "  LIBS: $LIBS"
+
+echo ""
+echo "The Wireshark package has been configured with the following options:"
+echo "                       GLib version : v$GLIB_VERSION"
 echo "                    Build wireshark : $enable_wireshark_qt$qt_lib_message"
 echo "                Build wireshark-gtk : $have_gtk""$gtk_lib_message"
 echo "                       Build tshark : $enable_tshark"
@@ -3364,6 +3251,9 @@ echo "                      Build randpkt : $enable_randpkt"
 echo "                       Build dftest : $enable_dftest"
 echo "                     Build rawshark : $enable_rawshark"
 echo "                  Build androiddump : $enable_androiddump"
+echo "                      Build sshdump : $enable_sshdump"
+echo "                    Build ciscodump : $enable_ciscodump"
+echo "                  Build randpktdump : $enable_randpktdump"
 echo "                        Build echld : $have_echld"
 echo ""
 echo "   Save files as pcap-ng by default : $enable_pcap_ng_default"
@@ -3373,19 +3263,21 @@ echo "                  Use dumpcap group : $dumpcap_group_message"
 echo "                        Use plugins : $have_plugins"
 echo "       Use external capture sources : $have_extcap"
 echo "                    Use Lua library : $lua_message"
-echo "                   Build rtp_player : $portaudio_message"
+echo "                Build Qt RTP player : $qt_multimedia_message"
+echo "              Build GTK+ RTP player : $portaudio_message"
 echo "             Build profile binaries : $enable_profile_build"
 echo "                   Use pcap library : $want_pcap"
 echo "                   Use zlib library : $zlib_message"
 echo "               Use kerberos library : $krb5_message"
 echo "                 Use c-ares library : $c_ares_message"
-echo "               Use GNU ADNS library : $adns_message"
 echo "                Use SMI MIB library : $libsmi_message"
-echo "             Use GNU crypto library : $gcrypt_message"
+echo "             Use GNU gcrypt library : $gcrypt_message"
 echo "             Use SSL crypto library : $ssl_message"
-echo "           Use IPv6 name resolution : $enable_ipv6"
-echo "                 Use gnutls library : $tls_message"
+echo "                 Use GnuTLS library : $tls_message"
 echo "     Use POSIX capabilities library : $libcap_message"
 echo "                  Use GeoIP library : $geoip_message"
+echo "                 Use libssh library : $libssh_message"
+echo "            Have ssh_userauth_agent : $ssh_userauth_agent_message"
 echo "                     Use nl library : $libnl_message"
 echo "              Use SBC codec library : $have_sbc"
+#echo "       Use GDK-Pixbuf with GResource: $have_gresource_pixbuf"

@@ -30,30 +30,14 @@
 #include <locale.h>
 #include <limits.h>
 
-#ifdef HAVE_UNISTD_H
-#include <unistd.h>
-#endif
-
 #ifdef HAVE_GETOPT_H
 #include <getopt.h>
 #endif
 
 #include <errno.h>
 
-#ifdef HAVE_FCNTL_H
-#include <fcntl.h>
-#endif
-
 #ifndef _WIN32
 #include <signal.h>
-#endif
-
-#ifdef HAVE_SYS_STAT_H
-# include <sys/stat.h>
-#endif
-
-#ifdef HAVE_LIBZ
-#include <zlib.h>      /* to get the libz version number */
 #endif
 
 #ifdef HAVE_LIBCAP
@@ -77,8 +61,9 @@
 #include <wsutil/file_util.h>
 #include <wsutil/privileges.h>
 #include <wsutil/report_err.h>
-#include <wsutil/ws_diag_control.h>
-#include <wsutil/ws_version_info.h>
+#include <ws_version_info.h>
+#include <wiretap/wtap_opttypes.h>
+#include <wiretap/pcapng.h>
 
 #include "globals.h"
 #include <epan/timestamp.h>
@@ -86,7 +71,6 @@
 #ifdef HAVE_LUA
 #include <epan/wslua/init_wslua.h>
 #endif
-#include "file.h"
 #include "frame_tvbuff.h"
 #include <epan/disabled_protos.h>
 #include <epan/prefs.h>
@@ -98,8 +82,10 @@
 #endif
 #include "ui/util.h"
 #include "ui/ui_util.h"
+#include "ui/decode_as_utils.h"
 #include "ui/cli/tshark-tap.h"
 #include "register.h"
+#include "filter_files.h"
 #include <epan/epan_dissect.h>
 #include <epan/tap.h>
 #include <epan/stat_tap_ui.h>
@@ -126,9 +112,12 @@
 #endif /* _WIN32 */
 #include <capchild/capture_session.h>
 #include <capchild/capture_sync.h>
+#include <capture_info.h>
 #endif /* HAVE_LIBPCAP */
 #include "log.h"
 #include <epan/funnel.h>
+
+#include <wsutil/str_util.h>
 
 #ifdef HAVE_PLUGINS
 #include <wsutil/plugins.h>
@@ -136,15 +125,9 @@
 
 
 #if 0
-#define tshark_debug0(str) g_warning(str)
-#define tshark_debug1(str,p1) g_warning(str,p1)
-#define tshark_debug2(str,p1,p2) g_warning(str,p1,p2)
-#define tshark_debug3(str,p1,p2,p3) g_warning(str,p1,p2,p3)
+#define tshark_debug(...) g_warning(__VA_ARGS__)
 #else
-#define tshark_debug0(str)
-#define tshark_debug1(str,p1)
-#define tshark_debug2(str,p1,p2)
-#define tshark_debug3(str,p1,p2,p3)
+#define tshark_debug(...)
 #endif
 
 
@@ -201,6 +184,7 @@ static gboolean print_packet_counts;
 
 static capture_options global_capture_opts;
 static capture_session global_capture_session;
+static info_data_t global_info_data;
 
 #ifdef SIGINFO
 static gboolean infodelay;      /* if TRUE, don't print capture info in SIGINFO handler */
@@ -446,6 +430,7 @@ glossary_option_help(void)
   fprintf(output, "  -G column-formats        dump column format codes and exit\n");
   fprintf(output, "  -G decodes               dump \"layer type\"/\"decode as\" associations and exit\n");
   fprintf(output, "  -G dissector-tables      dump dissector table names, types, and properties\n");
+  fprintf(output, "  -G fieldcount            dump count of header fields and exit\n");
   fprintf(output, "  -G fields                dump fields glossary and exit\n");
   fprintf(output, "  -G ftypes                dump field type basic and descriptive names\n");
   fprintf(output, "  -G heuristic-decodes     dump heuristic dissector tables\n");
@@ -931,19 +916,6 @@ get_tshark_compiled_version_info(GString *str)
 {
   /* Capture libraries */
   get_compiled_caplibs_version(str);
-
-  /* LIBZ */
-  g_string_append(str, ", ");
-#ifdef HAVE_LIBZ
-  g_string_append(str, "with libz ");
-#ifdef ZLIB_VERSION
-  g_string_append(str, ZLIB_VERSION);
-#else /* ZLIB_VERSION */
-  g_string_append(str, "(version unknown)");
-#endif /* ZLIB_VERSION */
-#else /* HAVE_LIBZ */
-  g_string_append(str, "without libz");
-#endif /* HAVE_LIBZ */
 }
 
 static void
@@ -953,11 +925,6 @@ get_tshark_runtime_version_info(GString *str)
     /* Capture libraries */
     g_string_append(str, ", ");
     get_runtime_caplibs_version(str);
-#endif
-
-    /* zlib */
-#if defined(HAVE_LIBZ) && !defined(_WIN32)
-    g_string_append_printf(str, ", with libz %s", zlibVersion());
 #endif
 
     /* stuff used by libwireshark */
@@ -971,14 +938,12 @@ main(int argc, char *argv[])
   GString             *runtime_info_str;
   char                *init_progfile_dir_error;
   int                  opt;
-DIAG_OFF(cast-qual)
   static const struct option long_options[] = {
-    {(char *)"help", no_argument, NULL, 'h'},
-    {(char *)"version", no_argument, NULL, 'v'},
+    {"help", no_argument, NULL, 'h'},
+    {"version", no_argument, NULL, 'v'},
     LONGOPT_CAPTURE_COMMON
     {0, 0, 0, 0 }
   };
-DIAG_ON(cast-qual)
   gboolean             arg_error = FALSE;
 
 #ifdef _WIN32
@@ -987,10 +952,12 @@ DIAG_ON(cast-qual)
 
   char                *gpf_path, *pf_path;
   char                *gdp_path, *dp_path;
+  char                *cf_path;
   int                  gpf_open_errno, gpf_read_errno;
   int                  pf_open_errno, pf_read_errno;
   int                  gdp_open_errno, gdp_read_errno;
   int                  dp_open_errno, dp_read_errno;
+  int                  cf_open_errno;
   int                  err;
   volatile int         exit_status = 0;
 #ifdef HAVE_LIBPCAP
@@ -1050,7 +1017,7 @@ DIAG_ON(cast-qual)
 
   static const char    optstring[] = OPTSTRING;
 
-  tshark_debug1("tshark started with %d args", argc);
+  tshark_debug("tshark started with %d args", argc);
 
   /* Set the C-language locale to the native environment. */
   setlocale(LC_ALL, "");
@@ -1077,7 +1044,7 @@ DIAG_ON(cast-qual)
   /*
    * Attempt to get the pathname of the executable file.
    */
-  init_progfile_dir_error = init_progfile_dir(argv[0], (void *)main);
+  init_progfile_dir_error = init_progfile_dir(argv[0], main);
   if (init_progfile_dir_error != NULL) {
     fprintf(stderr, "tshark: Can't get pathname of tshark program: %s.\n",
             init_progfile_dir_error);
@@ -1112,6 +1079,9 @@ DIAG_ON(cast-qual)
       get_ws_vcs_version_info(), comp_info_str->str, runtime_info_str->str);
   g_string_free(comp_info_str, TRUE);
   g_string_free(runtime_info_str, TRUE);
+
+  /* Fail sometimes. Useful for testing fuzz scripts. */
+  /* if (g_random_int_range(0, 100) < 5) abort(); */
 
   /*
    * In order to have the -X opts assigned before the wslua machine starts
@@ -1230,7 +1200,9 @@ DIAG_ON(cast-qual)
      "-G" flag, as the "-G" flag dumps information registered by the
      dissectors, and we must do it before we read the preferences, in
      case any dissectors register preferences. */
-  epan_init(register_all_protocols, register_all_protocol_handoffs, NULL, NULL);
+  if (!epan_init(register_all_protocols, register_all_protocol_handoffs, NULL,
+                 NULL))
+    return 2;
 
   /* Register all tap listeners; we do this before we parse the arguments,
      as the "-z" argument can specify a registered tap. */
@@ -1275,7 +1247,10 @@ DIAG_ON(cast-qual)
         write_prefs(NULL);
       else if (strcmp(argv[2], "dissector-tables") == 0)
         dissector_dump_dissector_tables();
-      else if (strcmp(argv[2], "fields") == 0)
+      else if (strcmp(argv[2], "fieldcount") == 0) {
+        /* return value for the test suite */
+        return proto_registrar_dump_fieldcount();
+      } else if (strcmp(argv[2], "fields") == 0)
         proto_registrar_dump_fields();
       else if (strcmp(argv[2], "ftypes") == 0)
         proto_registrar_dump_ftypes();
@@ -1305,7 +1280,10 @@ DIAG_ON(cast-qual)
     return 0;
   }
 
-  tshark_debug0("tshark reading preferences");
+  /* load the decode as entries of this profile */
+  load_decode_as_entries();
+
+  tshark_debug("tshark reading preferences");
 
   prefs_p = read_prefs(&gpf_open_errno, &gpf_read_errno, &gpf_path,
                      &pf_open_errno, &pf_read_errno, &pf_path);
@@ -1330,6 +1308,13 @@ DIAG_ON(cast-qual)
     }
     g_free(pf_path);
     pf_path = NULL;
+  }
+
+  read_filter_list(CFILTER_LIST, &cf_path, &cf_open_errno);
+  if (cf_path != NULL) {
+      cmdarg_err("Could not open your capture filter file\n\"%s\": %s.",
+          cf_path, g_strerror(cf_open_errno));
+      g_free(cf_path);
   }
 
   /* Read the disabled protocols file. */
@@ -1545,8 +1530,7 @@ DIAG_ON(cast-qual)
       if (badopt != '\0') {
         cmdarg_err("-N specifies unknown resolving option '%c'; valid options are:",
                    badopt);
-        cmdarg_err_cont("\t'C' to enable concurrent (asynchronous) DNS lookups\n"
-                        "\t'd' to enable address resolution from captured DNS packets\n"
+        cmdarg_err_cont("\t'd' to enable address resolution from captured DNS packets\n"
                         "\t'm' to enable MAC address resolution\n"
                         "\t'n' to enable network address resolution\n"
                         "\t'N' to enable using external resolvers (e.g., DNS)\n"
@@ -2030,11 +2014,19 @@ DIAG_ON(cast-qual)
   /* At this point MATE will have registered its field array so we can
      check if the fields specified by the user are all good.
    */
-  if (!output_fields_valid(output_fields)) {
-    cmdarg_err("Some fields aren't valid");
-    return 1;
-  }
+  {
+    GSList* it = NULL;
+    GSList *invalid_fields = output_fields_valid(output_fields);
+    if (invalid_fields != NULL) {
 
+      cmdarg_err("Some fields aren't valid:");
+      for (it=invalid_fields; it != NULL; it = g_slist_next(it)) {
+        cmdarg_err_cont("\t%s", (gchar *)it->data);
+      }
+      g_slist_free(invalid_fields);
+      return 1;
+    }
+  }
 #ifdef HAVE_LIBPCAP
   /* We currently don't support taps, or printing dissected packets,
      if we're writing to a pipe. */
@@ -2100,7 +2092,7 @@ DIAG_ON(cast-qual)
 #endif
 
   if (rfilter != NULL) {
-    tshark_debug1("Compiling read filter: '%s'", rfilter);
+    tshark_debug("Compiling read filter: '%s'", rfilter);
     if (!dfilter_compile(rfilter, &rfcode, &err_msg)) {
       cmdarg_err("%s", err_msg);
       g_free(err_msg);
@@ -2126,7 +2118,7 @@ DIAG_ON(cast-qual)
   cfile.rfcode = rfcode;
 
   if (dfilter != NULL) {
-    tshark_debug1("Compiling display filter: '%s'", dfilter);
+    tshark_debug("Compiling display filter: '%s'", dfilter);
     if (!dfilter_compile(dfilter, &dfcode, &err_msg)) {
       cmdarg_err("%s", err_msg);
       g_free(err_msg);
@@ -2181,10 +2173,10 @@ DIAG_ON(cast-qual)
 
         we're using any taps that need dissection. */
   do_dissection = print_packet_info || rfcode || dfcode || tap_listeners_require_dissection();
-  tshark_debug1("tshark: do_dissection = %s", do_dissection ? "TRUE" : "FALSE");
+  tshark_debug("tshark: do_dissection = %s", do_dissection ? "TRUE" : "FALSE");
 
   if (cf_name) {
-    tshark_debug1("tshark: Opening capture file: %s", cf_name);
+    tshark_debug("tshark: Opening capture file: %s", cf_name);
     /*
      * We're reading a capture file.
      */
@@ -2194,7 +2186,7 @@ DIAG_ON(cast-qual)
     }
 
     /* Process the packets in the file */
-    tshark_debug0("tshark: invoking load_cap_file() to process the packets");
+    tshark_debug("tshark: invoking load_cap_file() to process the packets");
     TRY {
 #ifdef HAVE_LIBPCAP
       err = load_cap_file(&cfile, global_capture_opts.save_file, out_file_type, out_file_name_res,
@@ -2221,7 +2213,7 @@ DIAG_ON(cast-qual)
       exit_status = 2;
     }
   } else {
-    tshark_debug0("tshark: no capture file specified");
+    tshark_debug("tshark: no capture file specified");
     /* No capture file specified, so we're supposed to do a live capture
        or get a list of link-layer types for a live capture device;
        do we have support for live captures? */
@@ -2288,9 +2280,9 @@ DIAG_ON(cast-qual)
      * suppress the information printed for each packet, but it'll
      * also suppress the packet counts.
      */
-    if (!isatty(fileno(stderr)))
+    if (!ws_isatty(ws_fileno(stderr)))
       print_packet_counts = FALSE;
-    else if (print_packet_info && isatty(fileno(stdout)))
+    else if (print_packet_info && ws_isatty(ws_fileno(stdout)))
       print_packet_counts = FALSE;
     else if (quiet)
       print_packet_counts = FALSE;
@@ -2304,7 +2296,7 @@ DIAG_ON(cast-qual)
       }
     }
 
-    tshark_debug0("tshark: performing live capture");
+    tshark_debug("tshark: performing live capture");
     /*
      * XXX - this returns FALSE if an error occurred, but it also
      * returns FALSE if the capture stops because a time limit
@@ -2567,7 +2559,7 @@ capture(void)
   fflush(stderr);
   g_string_free(str, TRUE);
 
-  ret = sync_pipe_start(&global_capture_opts, &global_capture_session, NULL);
+  ret = sync_pipe_start(&global_capture_opts, &global_capture_session, &global_info_data, NULL);
 
   if (!ret)
     return FALSE;
@@ -2990,7 +2982,7 @@ process_packet_first_pass(capture_file *cf, epan_dissect_t *edt,
      do a dissection and do so. */
   if (edt) {
     if (gbl_resolv_flags.mac_name || gbl_resolv_flags.network_name ||
-        gbl_resolv_flags.transport_name || gbl_resolv_flags.concurrent_dns)
+        gbl_resolv_flags.transport_name)
       /* Grab any resolved addresses */
       host_name_lookup_process();
 
@@ -3063,7 +3055,7 @@ process_packet_second_pass(capture_file *cf, epan_dissect_t *edt, frame_data *fd
      do a dissection and do so. */
   if (edt) {
     if (gbl_resolv_flags.mac_name || gbl_resolv_flags.network_name ||
-        gbl_resolv_flags.transport_name || gbl_resolv_flags.concurrent_dns)
+        gbl_resolv_flags.transport_name)
       /* Grab any resolved addresses */
       host_name_lookup_process();
 
@@ -3159,12 +3151,13 @@ load_cap_file(capture_file *cf, char *save_file, int out_file_type,
   char        *save_file_string = NULL;
   gboolean     filtering_tap_listeners;
   guint        tap_flags;
-  wtapng_section_t            *shb_hdr = NULL;
+  wtap_optionblock_t           shb_hdr = NULL;
   wtapng_iface_descriptions_t *idb_inf = NULL;
-  wtapng_name_res_t           *nrb_hdr = NULL;
+  wtap_optionblock_t           nrb_hdr = NULL;
   struct wtap_pkthdr phdr;
   Buffer       buf;
   epan_dissect_t *edt = NULL;
+  char                        *shb_user_appl;
 
   wtap_phdr_init(&phdr);
 
@@ -3188,27 +3181,42 @@ load_cap_file(capture_file *cf, char *save_file, int out_file_type,
       /* Snapshot length of input file not known. */
       snapshot_length = WTAP_MAX_PACKET_SIZE;
     }
-    tshark_debug1("tshark: snapshot_length = %d", snapshot_length);
+    tshark_debug("tshark: snapshot_length = %d", snapshot_length);
 
     shb_hdr = wtap_file_get_shb_for_new_file(cf->wth);
     nrb_hdr = wtap_file_get_nrb_for_new_file(cf->wth);
 
     /* If we don't have an application name add Tshark */
-    if (shb_hdr->shb_user_appl == NULL) {
-        /* this is free'd by wtap_free_shb() later */
-        shb_hdr->shb_user_appl = g_strdup_printf("TShark (Wireshark) %s", get_ws_vcs_version_info());
+    wtap_optionblock_get_option_string(shb_hdr, OPT_SHB_USERAPPL, &shb_user_appl);
+    if (shb_user_appl == NULL) {
+        /* this is free'd by wtap_optionblock_free() later */
+        shb_user_appl = g_strdup_printf("TShark (Wireshark) %s", get_ws_vcs_version_info());
+        wtap_optionblock_set_option_string(shb_hdr, OPT_SHB_USERAPPL, shb_user_appl);
+        g_free(shb_user_appl);
     }
 
     if (linktype != WTAP_ENCAP_PER_PACKET &&
         out_file_type == WTAP_FILE_TYPE_SUBTYPE_PCAP) {
-        tshark_debug1("tshark: writing PCAP format to %s", save_file);
-        pdh = wtap_dump_open(save_file, out_file_type, linktype,
-            snapshot_length, FALSE /* compressed */, &err);
+        tshark_debug("tshark: writing PCAP format to %s", save_file);
+        if (strcmp(save_file, "-") == 0) {
+          /* Write to the standard output. */
+          pdh = wtap_dump_open_stdout(out_file_type, linktype,
+              snapshot_length, FALSE /* compressed */, &err);
+        } else {
+          pdh = wtap_dump_open(save_file, out_file_type, linktype,
+              snapshot_length, FALSE /* compressed */, &err);
+        }
     }
     else {
-        tshark_debug2("tshark: writing format type %d, to %s", out_file_type, save_file);
-        pdh = wtap_dump_open_ng(save_file, out_file_type, linktype,
-            snapshot_length, FALSE /* compressed */, shb_hdr, idb_inf, nrb_hdr, &err);
+        tshark_debug("tshark: writing format type %d, to %s", out_file_type, save_file);
+        if (strcmp(save_file, "-") == 0) {
+          /* Write to the standard output. */
+          pdh = wtap_dump_open_stdout_ng(out_file_type, linktype,
+              snapshot_length, FALSE /* compressed */, shb_hdr, idb_inf, nrb_hdr, &err);
+        } else {
+          pdh = wtap_dump_open_ng(save_file, out_file_type, linktype,
+              snapshot_length, FALSE /* compressed */, shb_hdr, idb_inf, nrb_hdr, &err);
+        }
     }
 
     g_free(idb_inf);
@@ -3267,7 +3275,7 @@ load_cap_file(capture_file *cf, char *save_file, int out_file_type,
   if (perform_two_pass_analysis) {
     frame_data *fdata;
 
-    tshark_debug1("tshark: perform_two_pass_analysis, do_dissection=%s", do_dissection ? "TRUE" : "FALSE");
+    tshark_debug("tshark: perform_two_pass_analysis, do_dissection=%s", do_dissection ? "TRUE" : "FALSE");
 
     /* Allocate a frame_data_sequence for all the frames. */
     cf->frames = new_frame_data_sequence();
@@ -3280,14 +3288,14 @@ load_cap_file(capture_file *cf, char *save_file, int out_file_type,
       if (cf->rfcode || cf->dfcode)
         create_proto_tree = TRUE;
 
-      tshark_debug1("tshark: create_proto_tree = %s", create_proto_tree ? "TRUE" : "FALSE");
+      tshark_debug("tshark: create_proto_tree = %s", create_proto_tree ? "TRUE" : "FALSE");
 
       /* We're not going to display the protocol tree on this pass,
          so it's not going to be "visible". */
       edt = epan_dissect_new(cf->epan, create_proto_tree, FALSE);
     }
 
-    tshark_debug0("tshark: reading records for first pass");
+    tshark_debug("tshark: reading records for first pass");
     while (wtap_read(cf->wth, &err, &err_info, &data_offset)) {
       if (process_packet_first_pass(cf, edt, data_offset, wtap_phdr(cf->wth),
                          wtap_buf_ptr(cf->wth))) {
@@ -3297,7 +3305,7 @@ load_cap_file(capture_file *cf, char *save_file, int out_file_type,
          * (unless we roll over max_packet_count ?)
          */
         if ( (--max_packet_count == 0) || (max_byte_count != 0 && data_offset >= max_byte_count)) {
-          tshark_debug3("tshark: max_packet_count (%d) or max_byte_count (%" G_GINT64_MODIFIER "d/%" G_GINT64_MODIFIER "d) reached",
+          tshark_debug("tshark: max_packet_count (%d) or max_byte_count (%" G_GINT64_MODIFIER "d/%" G_GINT64_MODIFIER "d) reached",
                         max_packet_count, data_offset, max_byte_count);
           err = 0; /* This is not an error */
           break;
@@ -3321,7 +3329,7 @@ load_cap_file(capture_file *cf, char *save_file, int out_file_type,
     prev_cap = NULL;
     ws_buffer_init(&buf, 1500);
 
-    tshark_debug0("tshark: done with first pass");
+    tshark_debug("tshark: done with first pass");
 
     if (do_dissection) {
       gboolean create_proto_tree;
@@ -3332,7 +3340,7 @@ load_cap_file(capture_file *cf, char *save_file, int out_file_type,
       else
            create_proto_tree = FALSE;
 
-      tshark_debug1("tshark: create_proto_tree = %s", create_proto_tree ? "TRUE" : "FALSE");
+      tshark_debug("tshark: create_proto_tree = %s", create_proto_tree ? "TRUE" : "FALSE");
 
       /* The protocol tree will be "visible", i.e., printed, only if we're
          printing packet details, which is true if we're printing stuff
@@ -3345,17 +3353,17 @@ load_cap_file(capture_file *cf, char *save_file, int out_file_type,
       fdata = frame_data_sequence_find(cf->frames, framenum);
       if (wtap_seek_read(cf->wth, fdata->file_off, &phdr, &buf, &err,
                          &err_info)) {
-        tshark_debug1("tshark: invoking process_packet_second_pass() for frame #%d", framenum);
+        tshark_debug("tshark: invoking process_packet_second_pass() for frame #%d", framenum);
         if (process_packet_second_pass(cf, edt, fdata, &phdr, &buf,
                                        tap_flags)) {
           /* Either there's no read filtering or this packet passed the
              filter, so, if we're writing to a capture file, write
              this packet out. */
           if (pdh != NULL) {
-            tshark_debug1("tshark: writing packet #%d to outfile", framenum);
+            tshark_debug("tshark: writing packet #%d to outfile", framenum);
             if (!wtap_dump(pdh, &phdr, ws_buffer_start_ptr(&buf), &err, &err_info)) {
               /* Error writing to a capture file */
-              tshark_debug1("tshark: error writing to a capture file (%d)", err);
+              tshark_debug("tshark: error writing to a capture file (%d)", err);
               switch (err) {
 
               case WTAP_ERR_UNWRITABLE_ENCAP:
@@ -3425,8 +3433,8 @@ load_cap_file(capture_file *cf, char *save_file, int out_file_type,
                 break;
               }
               wtap_dump_close(pdh, &err);
-              wtap_free_shb(shb_hdr);
-              wtap_free_nrb(nrb_hdr);
+              wtap_optionblock_free(shb_hdr);
+              wtap_optionblock_free(nrb_hdr);
               exit(2);
             }
           }
@@ -3441,13 +3449,13 @@ load_cap_file(capture_file *cf, char *save_file, int out_file_type,
 
     ws_buffer_free(&buf);
 
-    tshark_debug0("tshark: done with second pass");
+    tshark_debug("tshark: done with second pass");
   }
   else {
     /* !perform_two_pass_analysis */
     framenum = 0;
 
-    tshark_debug1("tshark: perform one pass analysis, do_dissection=%s", do_dissection ? "TRUE" : "FALSE");
+    tshark_debug("tshark: perform one pass analysis, do_dissection=%s", do_dissection ? "TRUE" : "FALSE");
 
     if (do_dissection) {
       gboolean create_proto_tree;
@@ -3458,7 +3466,7 @@ load_cap_file(capture_file *cf, char *save_file, int out_file_type,
       else
         create_proto_tree = FALSE;
 
-      tshark_debug1("tshark: create_proto_tree = %s", create_proto_tree ? "TRUE" : "FALSE");
+      tshark_debug("tshark: create_proto_tree = %s", create_proto_tree ? "TRUE" : "FALSE");
 
       /* The protocol tree will be "visible", i.e., printed, only if we're
          printing packet details, which is true if we're printing stuff
@@ -3470,7 +3478,7 @@ load_cap_file(capture_file *cf, char *save_file, int out_file_type,
     while (wtap_read(cf->wth, &err, &err_info, &data_offset)) {
       framenum++;
 
-      tshark_debug1("tshark: processing packet #%d", framenum);
+      tshark_debug("tshark: processing packet #%d", framenum);
 
       if (process_packet(cf, edt, data_offset, wtap_phdr(cf->wth),
                          wtap_buf_ptr(cf->wth),
@@ -3479,10 +3487,10 @@ load_cap_file(capture_file *cf, char *save_file, int out_file_type,
            filter, so, if we're writing to a capture file, write
            this packet out. */
         if (pdh != NULL) {
-          tshark_debug1("tshark: writing packet #%d to outfile", framenum);
+          tshark_debug("tshark: writing packet #%d to outfile", framenum);
           if (!wtap_dump(pdh, wtap_phdr(cf->wth), wtap_buf_ptr(cf->wth), &err, &err_info)) {
             /* Error writing to a capture file */
-            tshark_debug1("tshark: error writing to a capture file (%d)", err);
+            tshark_debug("tshark: error writing to a capture file (%d)", err);
             switch (err) {
 
             case WTAP_ERR_UNWRITABLE_ENCAP:
@@ -3540,8 +3548,8 @@ load_cap_file(capture_file *cf, char *save_file, int out_file_type,
               break;
             }
             wtap_dump_close(pdh, &err);
-            wtap_free_shb(shb_hdr);
-            wtap_free_nrb(nrb_hdr);
+            wtap_optionblock_free(shb_hdr);
+            wtap_optionblock_free(nrb_hdr);
             exit(2);
           }
         }
@@ -3552,7 +3560,7 @@ load_cap_file(capture_file *cf, char *save_file, int out_file_type,
        * (unless we roll over max_packet_count ?)
        */
       if ( (--max_packet_count == 0) || (max_byte_count != 0 && data_offset >= max_byte_count)) {
-        tshark_debug3("tshark: max_packet_count (%d) or max_byte_count (%" G_GINT64_MODIFIER "d/%" G_GINT64_MODIFIER "d) reached",
+        tshark_debug("tshark: max_packet_count (%d) or max_byte_count (%" G_GINT64_MODIFIER "d/%" G_GINT64_MODIFIER "d) reached",
                       max_packet_count, data_offset, max_byte_count);
         err = 0; /* This is not an error */
         break;
@@ -3568,7 +3576,7 @@ load_cap_file(capture_file *cf, char *save_file, int out_file_type,
   wtap_phdr_cleanup(&phdr);
 
   if (err != 0) {
-    tshark_debug1("tshark: something failed along the line (%d)", err);
+    tshark_debug("tshark: something failed along the line (%d)", err);
     /*
      * Print a message noting that the read failed somewhere along the line.
      *
@@ -3657,8 +3665,8 @@ out:
   cf->wth = NULL;
 
   g_free(save_file_string);
-  wtap_free_shb(shb_hdr);
-  wtap_free_nrb(nrb_hdr);
+  wtap_optionblock_free(shb_hdr);
+  wtap_optionblock_free(nrb_hdr);
 
   return err;
 }
@@ -3686,7 +3694,7 @@ process_packet(capture_file *cf, epan_dissect_t *edt, gint64 offset, struct wtap
      do a dissection and do so. */
   if (edt) {
     if (print_packet_info && (gbl_resolv_flags.mac_name || gbl_resolv_flags.network_name ||
-        gbl_resolv_flags.transport_name || gbl_resolv_flags.concurrent_dns))
+        gbl_resolv_flags.transport_name))
       /* Grab any resolved addresses */
       host_name_lookup_process();
 

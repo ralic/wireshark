@@ -60,6 +60,7 @@ NONGENERATED_C_FILES = \
 	libpcap.c		\
 	merge.c			\
 	mpeg.c			\
+	mplog.c			\
 	mp2t.c			\
 	netmon.c		\
 	netscaler.c		\
@@ -83,7 +84,8 @@ NONGENERATED_C_FILES = \
 	visual.c		\
 	vms.c			\
 	vwr.c           \
-	wtap.c
+	wtap.c			\
+	wtap_opttypes.c
 
 # Header files that are not generated from other files
 NONGENERATED_HEADER_FILES = \
@@ -121,6 +123,7 @@ NONGENERATED_HEADER_FILES = \
 	logcat_text.h		\
 	merge.h			\
 	mpeg.h			\
+	mplog.h			\
 	mp2t.h			\
 	netmon.h		\
 	netscreen.h		\
@@ -147,6 +150,7 @@ NONGENERATED_HEADER_FILES = \
 	vms.h			\
 	vwr.h           \
 	wtap.h			\
+	wtap_opttypes.h \
 	wtap-int.h
 
 # Files that generate compileable files

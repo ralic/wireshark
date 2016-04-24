@@ -190,7 +190,7 @@ dissect_ipa_attr(tvbuff_t *tvb, int base_offs, proto_tree *tree)
 			proto_tree_add_item(tree, hf_ipaccess_attr_string,
 					    tvb, offset+3, len-1, ENC_ASCII|ENC_NA);
 			break;
-		case 0x01:	/* a single-byte reqest for a certain attr */
+		case 0x01:	/* a single-byte request for a certain attr */
 			len = 0;
 			proto_tree_add_item(tree, hf_ipaccess_attr_tag,
 					    tvb, offset+1, 1, ENC_BIG_ENDIAN);
@@ -370,16 +370,18 @@ dissect_ipa(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, gboolean is_udp
 	}
 }
 
-static void
-dissect_ipa_tcp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
+static int
+dissect_ipa_tcp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data _U_)
 {
 	dissect_ipa(tvb, pinfo, tree, FALSE);
+	return tvb_captured_length(tvb);
 }
 
-static void
-dissect_ipa_udp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
+static int
+dissect_ipa_udp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data _U_)
 {
 	dissect_ipa(tvb, pinfo, tree, TRUE);
+	return tvb_captured_length(tvb);
 }
 
 void proto_register_ipa(void)
@@ -419,7 +421,7 @@ void proto_register_ipa(void)
 		{&hf_ipaccess_msgtype,
 		 {"MessageType", "ipaccess.msg_type",
 		  FT_UINT8, BASE_HEX, VALS(ipaccess_msgtype_vals), 0x0,
-		  "Type of ip.access messsage", HFILL}
+		  "Type of ip.access message", HFILL}
 		 },
 		{&hf_ipaccess_attr_tag,
 		 {"Tag", "ipaccess.attr_tag",
@@ -452,8 +454,8 @@ void proto_register_ipa(void)
 
 	/* Register table for subdissectors */
 	osmo_dissector_table = register_dissector_table("ipa.osmo.protocol",
-					"GSM over IP ip.access Protocol",
-					FT_UINT8, BASE_DEC);
+					"GSM over IP ip.access Protocol", proto_ipa,
+					FT_UINT8, BASE_DEC, DISSECTOR_TABLE_NOT_ALLOW_DUPLICATE);
 
 
 	range_convert_str(&global_ipa_tcp_ports, IPA_TCP_PORTS, MAX_TCP_PORT);
@@ -486,10 +488,10 @@ void proto_reg_handoff_gsm_ipa(void)
 	static range_t *ipa_tcp_ports, *ipa_udp_ports;
 
 	if (!ipa_initialized) {
-		sub_handles[SUB_RSL] = find_dissector("gsm_abis_rsl");
-		sub_handles[SUB_OML] = find_dissector("gsm_abis_oml");
-		sub_handles[SUB_SCCP] = find_dissector("sccp");
-		sub_handles[SUB_MGCP] = find_dissector("mgcp");
+		sub_handles[SUB_RSL] = find_dissector_add_dependency("gsm_abis_rsl", proto_ipa);
+		sub_handles[SUB_OML] = find_dissector_add_dependency("gsm_abis_oml", proto_ipa);
+		sub_handles[SUB_SCCP] = find_dissector_add_dependency("sccp", proto_ipa);
+		sub_handles[SUB_MGCP] = find_dissector_add_dependency("mgcp", proto_ipa);
 		sub_handles[SUB_DATA] = find_dissector("data");
 
 		ipa_tcp_handle = create_dissector_handle(dissect_ipa_tcp, proto_ipa);

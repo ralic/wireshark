@@ -27,6 +27,7 @@
 #include <glib.h>
 
 #include "wmem.h"
+#include "wmem_tree-int.h"
 #include "wmem_allocator.h"
 #include "wmem_allocator_block.h"
 #include "wmem_allocator_block_fast.h"
@@ -131,7 +132,7 @@ wmem_test_cb(wmem_allocator_t *allocator, wmem_cb_event_t event,
 }
 
 static gboolean
-wmem_test_foreach_cb(void *value, void *user_data)
+wmem_test_foreach_cb(const void *key _U_, void *value, void *user_data)
 {
     g_assert(user_data == expected_user_data);
 
@@ -474,6 +475,8 @@ wmem_test_array(void)
     unsigned int        i, j, k;
     guint32             val, *buf;
     guint32             vals[8];
+    guint32            *raw;
+    guint32            lastint;
 
     allocator = wmem_allocator_new(WMEM_ALLOCATOR_STRICT);
 
@@ -497,6 +500,7 @@ wmem_test_array(void)
     }
 
     array = wmem_array_sized_new(allocator, sizeof(guint32), 73);
+    wmem_array_set_null_terminator(array);
 
     for (i=0; i<CONTAINER_ITERS; i++) {
         for (j=0; j<8; j++) {
@@ -534,7 +538,20 @@ wmem_test_array(void)
     }
     g_assert(k == wmem_array_get_count(array));
 
+    lastint = 77;
+    wmem_array_append_one(array, lastint);
+
+    raw = (guint32*)wmem_array_get_raw(array);
+    g_assert(raw[wmem_array_get_count(array)] == 0);
+    g_assert(raw[wmem_array_get_count(array) - 1] == lastint);
+
     wmem_destroy_allocator(allocator);
+}
+
+static void
+check_val_list(gpointer val, gpointer val_to_check)
+{
+    g_assert(val == val_to_check);
 }
 
 static void
@@ -557,6 +574,7 @@ wmem_test_list(void)
     for (i=0; i<CONTAINER_ITERS; i++) {
         wmem_list_prepend(list, GINT_TO_POINTER(i));
         g_assert(wmem_list_count(list) == i+1);
+        g_assert(wmem_list_find(list, GINT_TO_POINTER(i)));
 
         frame = wmem_list_head(list);
         g_assert(frame);
@@ -623,6 +641,19 @@ wmem_test_list(void)
     }
     g_assert(wmem_list_count(list) == CONTAINER_ITERS);
     wmem_destroy_list(list);
+
+    list = wmem_list_new(NULL);
+    for (i=0; i<CONTAINER_ITERS; i++) {
+        wmem_list_append(list, GINT_TO_POINTER(1));
+    }
+    wmem_list_foreach(list, check_val_list, GINT_TO_POINTER(1));
+    wmem_destroy_list(list);
+}
+
+void
+check_val_map(gpointer key _U_, gpointer val, gpointer user_data)
+{
+    g_assert(val == user_data);
 }
 
 static void
@@ -670,6 +701,23 @@ wmem_test_map(void)
         ret = wmem_map_lookup(map, str_key);
         g_assert(ret == GINT_TO_POINTER(i));
     }
+
+    /* test foreach */
+    map = wmem_map_new(allocator, wmem_str_hash, g_str_equal);
+    g_assert(map);
+    for (i=0; i<CONTAINER_ITERS; i++) {
+        str_key = wmem_test_rand_string(allocator, 1, 64);
+        wmem_map_insert(map, str_key, GINT_TO_POINTER(2));
+    }
+    wmem_map_foreach(map, check_val_map, GINT_TO_POINTER(2));
+
+    /* test size */
+    map = wmem_map_new(allocator, g_direct_hash, g_direct_equal);
+    g_assert(map);
+    for (i=0; i<CONTAINER_ITERS; i++) {
+        wmem_map_insert(map, GINT_TO_POINTER(i), GINT_TO_POINTER(i));
+    }
+    g_assert(wmem_map_size(map) == CONTAINER_ITERS);
 
     wmem_destroy_allocator(allocator);
 }
@@ -982,6 +1030,109 @@ wmem_test_tree(void)
     wmem_destroy_allocator(allocator);
 }
 
+
+/* to be used as userdata in the callback wmem_test_itree_check_overlap_cb*/
+typedef struct wmem_test_itree_user_data {
+    wmem_range_t range;
+    guint counter;
+} wmem_test_itree_user_data_t;
+
+
+/* increase userData counter in case the range match the userdata range */
+static gboolean
+wmem_test_itree_check_overlap_cb (const void *key, void *value _U_, void *userData)
+{
+    const wmem_range_t *ckey = (const wmem_range_t *)key;
+    struct wmem_test_itree_user_data * d = (struct wmem_test_itree_user_data *)userData;
+    g_assert(key);
+    g_assert(d);
+
+    if(wmem_itree_range_overlap(ckey, &d->range)) {
+        d->counter++;
+    }
+
+    return FALSE;
+}
+
+
+static gboolean
+wmem_test_overlap(guint64 low, guint64 high, guint64 lowbis, guint64 highbis)
+{
+    wmem_range_t r1 = {low, high, 0};
+    wmem_range_t r2 = {lowbis, highbis, 0};
+    return wmem_itree_range_overlap(&r1, &r2);
+}
+
+static void
+wmem_test_itree(void)
+{
+    wmem_allocator_t   *allocator, *extra_allocator;
+    wmem_itree_t       *tree;
+    int i = 0;
+    gint32 max_rand = 0;
+    wmem_test_itree_user_data_t userData;
+    wmem_range_t range, r2;
+
+    allocator       = wmem_allocator_new(WMEM_ALLOCATOR_STRICT);
+    extra_allocator = wmem_allocator_new(WMEM_ALLOCATOR_STRICT);
+
+    tree = wmem_itree_new(allocator);
+    g_assert(tree);
+    g_assert(wmem_itree_is_empty(tree));
+
+    wmem_free_all(allocator);
+
+    /* make sure that wmem_test_overlap is correct (well it's no proof but...)*/
+    g_assert(wmem_test_overlap(0, 10, 0, 4));
+    g_assert(wmem_test_overlap(0, 10, 9, 14));
+    g_assert(wmem_test_overlap(5, 10, 3, 8));
+    g_assert(wmem_test_overlap(5, 10, 1, 12));
+    g_assert(!wmem_test_overlap(0, 10, 11, 12));
+
+    /* Generate a reference range, then fill an itree with random ranges,
+    then we count greedily the number of overlapping ranges and compare
+    the result with the optimized result
+     */
+
+    userData.counter = 0;
+
+    tree = wmem_itree_new(allocator);
+
+    /* even though keys are uint64_t, we use G_MAXINT32 as a max because of the type returned by
+      g_test_rand_int_range.
+     */
+    max_rand = G_MAXINT32;
+    r2.max_edge = range.max_edge = 0;
+    range.low = g_test_rand_int_range(0, max_rand);
+    range.high = g_test_rand_int_range( (gint32)range.low, (gint32)max_rand);
+    userData.range = range;
+
+    for (i=0; i<CONTAINER_ITERS; i++) {
+
+        wmem_list_t *results = NULL;
+
+        /* reset the search */
+        userData.counter = 0;
+        r2.low = (guint64)g_test_rand_int_range(0, 100);
+        r2.high = (guint64)g_test_rand_int_range( (gint32)r2.low, 100);
+
+        wmem_itree_insert(tree, r2.low, r2.high, GINT_TO_POINTER(i));
+
+        /* greedy search */
+        wmem_tree_foreach(tree, wmem_test_itree_check_overlap_cb, &userData);
+
+        /* Optimized search */
+        results = wmem_itree_find_intervals(tree, allocator, range.low, range.high);
+
+        /* keep it as a loop instead of wmem_list_count in case one */
+        g_assert(wmem_list_count(results) == userData.counter);
+    }
+
+    wmem_destroy_allocator(extra_allocator);
+    wmem_destroy_allocator(allocator);
+}
+
+
 int
 main(int argc, char **argv)
 {
@@ -1007,6 +1158,7 @@ main(int argc, char **argv)
     g_test_add_func("/wmem/datastruct/stack",  wmem_test_stack);
     g_test_add_func("/wmem/datastruct/strbuf", wmem_test_strbuf);
     g_test_add_func("/wmem/datastruct/tree",   wmem_test_tree);
+    g_test_add_func("/wmem/datastruct/itree",  wmem_test_itree);
 
     ret = g_test_run();
 

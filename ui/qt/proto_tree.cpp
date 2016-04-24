@@ -32,12 +32,12 @@
 #include <QContextMenuEvent>
 #include <QDesktopServices>
 #include <QHeaderView>
+#include <QScrollBar>
 #include <QTreeWidgetItemIterator>
 #include <QUrl>
 
 // To do:
 // - Fix "apply as filter" behavior.
-// - Add colorize conversation.
 
 /* Fill a single protocol tree item with its string value and set its color. */
 static void
@@ -151,7 +151,8 @@ proto_tree_draw_node(proto_node *node, gpointer data)
 
 ProtoTree::ProtoTree(QWidget *parent) :
     QTreeWidget(parent),
-    decode_as_(NULL)
+    decode_as_(NULL),
+    column_resize_timer_(0)
 {
     setAccessibleName(tr("Packet details"));
     // Leave the uniformRowHeights property as-is (false) since items might
@@ -209,6 +210,7 @@ ProtoTree::ProtoTree(QWidget *parent) :
         submenu->addAction(window()->findChild<QAction *>("actionAnalyzeFollowTCPStream"));
         submenu->addAction(window()->findChild<QAction *>("actionAnalyzeFollowUDPStream"));
         submenu->addAction(window()->findChild<QAction *>("actionAnalyzeFollowSSLStream"));
+        submenu->addAction(window()->findChild<QAction *>("actionAnalyzeFollowHTTPStream"));
         ctx_menu_.addSeparator();
 
         main_menu_item = window()->findChild<QMenu *>("menuEditCopy");
@@ -240,6 +242,8 @@ ProtoTree::ProtoTree(QWidget *parent) :
         submenu->addAction(action);
         copy_actions_ << action;
 
+        action = window()->findChild<QAction *>("actionContextShowPacketBytes");
+        ctx_menu_.addAction(action);
         action = window()->findChild<QAction *>("actionFileExportPacketBytes");
         ctx_menu_.addAction(action);
 
@@ -272,6 +276,11 @@ ProtoTree::ProtoTree(QWidget *parent) :
             this, SIGNAL(showProtocolPreferences(QString)));
     connect(&proto_prefs_menu_, SIGNAL(editProtocolPreference(preference*,pref_module*)),
             this, SIGNAL(editProtocolPreference(preference*,pref_module*)));
+
+    // resizeColumnToContents checks 1000 items by default. The user might
+    // have scrolled to an area with a different width at this point.
+    connect(verticalScrollBar(), SIGNAL(sliderReleased()),
+            this, SLOT(updateContentWidth()));
 }
 
 void ProtoTree::closeContextMenu()
@@ -282,6 +291,7 @@ void ProtoTree::closeContextMenu()
 void ProtoTree::clear() {
     updateSelectionStatus(NULL);
     QTreeWidget::clear();
+    updateContentWidth();
 }
 
 void ProtoTree::contextMenuEvent(QContextMenuEvent *event)
@@ -320,6 +330,44 @@ void ProtoTree::contextMenuEvent(QContextMenuEvent *event)
     decode_as_->setData(QVariant());
 }
 
+void ProtoTree::timerEvent(QTimerEvent *event)
+{
+    if (event->timerId() == column_resize_timer_) {
+        killTimer(column_resize_timer_);
+        column_resize_timer_ = 0;
+        resizeColumnToContents(0);
+    } else {
+        QTreeWidget::timerEvent(event);
+    }
+}
+
+// resizeColumnToContents checks 1000 items by default. The user might
+// have scrolled to an area with a different width at this point.
+void ProtoTree::keyReleaseEvent(QKeyEvent *event)
+{
+    if (event->isAutoRepeat()) return;
+
+    switch(event->key()) {
+        case Qt::Key_Up:
+        case Qt::Key_Down:
+        case Qt::Key_PageUp:
+        case Qt::Key_PageDown:
+        case Qt::Key_Home:
+        case Qt::Key_End:
+            updateContentWidth();
+            break;
+        default:
+            break;
+    }
+}
+
+void ProtoTree::updateContentWidth()
+{
+    if (column_resize_timer_ == 0) {
+        column_resize_timer_ = startTimer(0);
+    }
+}
+
 void ProtoTree::setMonospaceFont(const QFont &mono_font)
 {
     mono_font_ = mono_font;
@@ -332,6 +380,7 @@ void ProtoTree::fillProtocolTree(proto_tree *protocol_tree) {
     setFont(mono_font_);
 
     proto_tree_children_foreach(protocol_tree, proto_tree_draw_node, invisibleRootItem());
+    updateContentWidth();
 }
 
 void ProtoTree::emitRelatedFrame(int related_frame, ft_framenum_type_t framenum_type)
@@ -358,9 +407,8 @@ void ProtoTree::goToField(int hf_id)
     }
 }
 
-void ProtoTree::updateSelectionStatus(QTreeWidgetItem* item) {
-    static const QString emptyQString;
-
+void ProtoTree::updateSelectionStatus(QTreeWidgetItem* item)
+{
     if (item) {
         field_info *fi;
         QString item_info;
@@ -385,14 +433,16 @@ void ProtoTree::updateSelectionStatus(QTreeWidgetItem* item) {
                 item_info.append(QString(tr(", %1 bytes")).arg(finfo_length));
             }
 
-            emit protoItemSelected(emptyQString);
+            saveSelectedField(item);
+
+            emit protoItemSelected("");
             emit protoItemSelected(NULL);
             emit protoItemSelected(item_info);
             emit protoItemSelected(fi);
         } // else the GTK+ version pushes an empty string as described below.
         /*
          * Don't show anything if the field name is zero-length;
-         * the pseudo-field for "proto_tree_add_text()" is such
+         * the pseudo-field for text-only items is such
          * a field, and we don't want "Text (text)" showing up
          * on the status line if you've selected such a field.
          *
@@ -404,14 +454,13 @@ void ProtoTree::updateSelectionStatus(QTreeWidgetItem* item) {
          * but we'd have to add checks for null pointers in some
          * places if we did that.
          *
-         * Or perhaps protocol tree items added with
-         * "proto_tree_add_text()" should have -1 as the field index,
-         * with no pseudo-field being used, but that might also
-         * require special checks for -1 to be added.
+         * Or perhaps text-only items should have -1 as the field
+         * index, with no pseudo-field being used, but that might
+         * also require special checks for -1 to be added.
          */
 
     } else {
-        emit protoItemSelected(emptyQString);
+        emit protoItemSelected("");
         emit protoItemSelected(NULL);
     }
 }
@@ -441,6 +490,8 @@ void ProtoTree::expand(const QModelIndex & index) {
                  fi->tree_type < num_tree_types);
         tree_expanded_set(fi->tree_type, TRUE);
     }
+
+    updateContentWidth();
 }
 
 void ProtoTree::collapse(const QModelIndex & index) {
@@ -458,6 +509,7 @@ void ProtoTree::collapse(const QModelIndex & index) {
                  fi->tree_type < num_tree_types);
         tree_expanded_set(fi->tree_type, FALSE);
     }
+    updateContentWidth();
 }
 
 void ProtoTree::expandSubtrees()
@@ -487,6 +539,7 @@ void ProtoTree::expandSubtrees()
         (*iter)->setExpanded(true);
         iter++;
     }
+    updateContentWidth();
 }
 
 void ProtoTree::expandAll()
@@ -496,6 +549,7 @@ void ProtoTree::expandAll()
         tree_expanded_set(i, TRUE);
     }
     QTreeWidget::expandAll();
+    updateContentWidth();
 }
 
 void ProtoTree::collapseAll()
@@ -505,6 +559,7 @@ void ProtoTree::collapseAll()
         tree_expanded_set(i, FALSE);
     }
     QTreeWidget::collapseAll();
+    updateContentWidth();
 }
 
 void ProtoTree::itemDoubleClick(QTreeWidgetItem *item, int) {
@@ -533,6 +588,57 @@ void ProtoTree::itemDoubleClick(QTreeWidgetItem *item, int) {
             QDesktopServices::openUrl(QUrl(url));
             g_free(url);
         }
+    }
+}
+
+void ProtoTree::selectField(field_info *fi)
+{
+    QTreeWidgetItemIterator iter(this);
+    while (*iter) {
+        if (fi == (*iter)->data(0, Qt::UserRole).value<field_info *>()) {
+            setCurrentItem(*iter);
+            scrollToItem(*iter);
+            break;
+        }
+        iter++;
+    }
+}
+
+// Remember the currently focussed field based on:
+// - current hf_id (obviously)
+// - parent items (to avoid selecting a text item in a different tree)
+// - position within a tree if there are multiple items (wishlist)
+static QList<int> serializeAsPath(QTreeWidgetItem *item)
+{
+    QList<int> path;
+    do {
+        field_info *fi = item->data(0, Qt::UserRole).value<field_info *>();
+        path.prepend(fi->hfinfo->id);
+    } while ((item = item->parent()));
+    return path;
+}
+void ProtoTree::saveSelectedField(QTreeWidgetItem *item)
+{
+    selected_field_path_ = serializeAsPath(item);
+}
+
+// Try to focus a tree item which was previously also visible
+void ProtoTree::restoreSelectedField()
+{
+    if (selected_field_path_.isEmpty()) {
+        return;
+    }
+    int last_hf_id = selected_field_path_.last();
+    QTreeWidgetItemIterator iter(this);
+    while (*iter) {
+        field_info *fi = (*iter)->data(0, Qt::UserRole).value<field_info *>();
+        if (last_hf_id == fi->hfinfo->id &&
+            serializeAsPath(*iter) == selected_field_path_) {
+            setCurrentItem(*iter);
+            scrollToItem(*iter);
+            break;
+        }
+        iter++;
     }
 }
 

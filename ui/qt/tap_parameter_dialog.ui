@@ -21,7 +21,7 @@
      </property>
      <column>
       <property name="text">
-       <string notr="true">Item</string>
+       <string>Item</string>
       </property>
      </column>
     </widget>
@@ -30,6 +30,9 @@
     <widget class="QLabel" name="hintLabel">
      <property name="text">
       <string>&lt;small&gt;&lt;i&gt;A hint.&lt;/i&gt;&lt;/small&gt;</string>
+     </property>
+     <property name="wordWrap">
+      <bool>true</bool>
      </property>
     </widget>
    </item>
@@ -76,7 +79,7 @@
     <string>Copy a text representation of the tree to the clipboard</string>
    </property>
    <property name="shortcut">
-    <string>Ctrl+C</string>
+    <string notr="true">Ctrl+C</string>
    </property>
   </action>
   <action name="actionSaveAs">
@@ -87,7 +90,7 @@
     <string>Save the displayed data in various formats</string>
    </property>
    <property name="shortcut">
-    <string>Ctrl+S</string>
+    <string notr="true">Ctrl+S</string>
    </property>
   </action>
  </widget>

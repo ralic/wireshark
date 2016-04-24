@@ -46,6 +46,9 @@
 #include <epan/asn1.h>
 #include <epan/strutil.h>
 #include <epan/uat.h>
+#include <epan/proto_data.h>
+
+#include <wsutil/str_util.h>
 
 #include "packet-p1.h"
 #include "packet-p22.h"
@@ -363,13 +366,16 @@ static int hf_analysis_total_time = -1;
 static int hf_analysis_retrans_time = -1;
 static int hf_analysis_total_retrans_time = -1;
 static int hf_analysis_msg_num = -1;
+static int hf_analysis_acks_msg_num = -1;
 static int hf_analysis_retrans_no = -1;
 static int hf_analysis_ack_num = -1;
 static int hf_analysis_ack_missing = -1;
 static int hf_analysis_ack_dup_no = -1;
 static int hf_analysis_rep_num = -1;
+static int hf_analysis_acks_rep_num = -1;
 static int hf_analysis_rep_time = -1;
 static int hf_analysis_not_num = -1;
+static int hf_analysis_acks_not_num = -1;
 static int hf_analysis_not_time = -1;
 static int hf_analysis_msg_resend_from = -1;
 static int hf_analysis_rep_resend_from = -1;
@@ -483,6 +489,7 @@ static expert_field ei_checksum_bad = EI_INIT;
 static expert_field ei_message_body_uncompress = EI_INIT;
 static expert_field ei_addr_ext_rec_no_generated = EI_INIT;
 static expert_field ei_envelope_msg_id = EI_INIT;
+static expert_field ei_7bit_string_unused_bits = EI_INIT;
 static expert_field ei_analysis_ack_missing = EI_INIT;
 static expert_field ei_analysis_ack_dup_no = EI_INIT;
 static expert_field ei_analysis_ack_unexpected = EI_INIT;
@@ -1376,8 +1383,8 @@ static gint dmp_id_hash_equal (gconstpointer k1, gconstpointer k2)
   if (dmp1->id != dmp2->id)
     return 0;
 
-  return (ADDRESSES_EQUAL (&dmp1->src, &dmp2->src) &&
-          ADDRESSES_EQUAL (&dmp1->dst, &dmp2->dst));
+  return (addresses_equal (&dmp1->src, &dmp2->src) &&
+          addresses_equal (&dmp1->dst, &dmp2->dst));
 }
 
 static void register_dmp_id (packet_info *pinfo, guint8 reason)
@@ -1401,8 +1408,8 @@ static void register_dmp_id (packet_info *pinfo, guint8 reason)
   {
     /* Try to match corresponding message */
     dmp_key->id = (guint) dmp.subj_id;
-    WMEM_COPY_ADDRESS(wmem_file_scope(), &dmp_key->src, &(pinfo->dst));
-    WMEM_COPY_ADDRESS(wmem_file_scope(), &dmp_key->dst, &(pinfo->src));
+    copy_address_wmem(wmem_file_scope(), &dmp_key->src, &(pinfo->dst));
+    copy_address_wmem(wmem_file_scope(), &dmp_key->dst, &(pinfo->src));
 
     dmp_data = (dmp_id_val *) g_hash_table_lookup (dmp_id_hash_table, dmp_key);
 
@@ -1419,12 +1426,12 @@ static void register_dmp_id (packet_info *pinfo, guint8 reason)
 
   if (dmp.msg_type == ACK) {
     dmp_key->id = (guint) dmp.subj_id;
-    WMEM_COPY_ADDRESS(wmem_file_scope(), &dmp_key->src, &(pinfo->dst));
-    WMEM_COPY_ADDRESS(wmem_file_scope(), &dmp_key->dst, &(pinfo->src));
+    copy_address_wmem(wmem_file_scope(), &dmp_key->src, &(pinfo->dst));
+    copy_address_wmem(wmem_file_scope(), &dmp_key->dst, &(pinfo->src));
   } else {
     dmp_key->id = (guint) dmp.msg_id;
-    WMEM_COPY_ADDRESS(wmem_file_scope(), &dmp_key->src, &(pinfo->src));
-    WMEM_COPY_ADDRESS(wmem_file_scope(), &dmp_key->dst, &(pinfo->dst));
+    copy_address_wmem(wmem_file_scope(), &dmp_key->src, &(pinfo->src));
+    copy_address_wmem(wmem_file_scope(), &dmp_key->dst, &(pinfo->dst));
   }
 
   dmp_data = (dmp_id_val *) g_hash_table_lookup (dmp_id_hash_table, dmp_key);
@@ -1436,7 +1443,7 @@ static void register_dmp_id (packet_info *pinfo, guint8 reason)
         if (reason == 0) {
           if (dmp_data->ack_id == 0) {
             /* Only save reference to first ACK */
-            dmp_data->ack_id = pinfo->fd->num;
+            dmp_data->ack_id = pinfo->num;
           } else {
             /* Only count when resending */
             dmp_data->ack_resend_count++;
@@ -1445,9 +1452,9 @@ static void register_dmp_id (packet_info *pinfo, guint8 reason)
       } else {
         /* Message resent */
         dmp_data->msg_resend_count++;
-        dmp_data->prev_msg_id = pinfo->fd->num;
+        dmp_data->prev_msg_id = pinfo->num;
         dmp_data->prev_msg_time = dmp_data->msg_time;
-        dmp_data->msg_time = pinfo->fd->abs_ts;
+        dmp_data->msg_time = pinfo->abs_ts;
       }
     } else {
       /* New message */
@@ -1456,21 +1463,21 @@ static void register_dmp_id (packet_info *pinfo, guint8 reason)
 
       if (dmp.msg_type == ACK) {
         /* No matching message for this ack */
-        dmp_data->ack_id = pinfo->fd->num;
+        dmp_data->ack_id = pinfo->num;
       } else {
-        dmp_data->first_msg_time = pinfo->fd->abs_ts;
-        dmp_data->msg_time = pinfo->fd->abs_ts;
+        dmp_data->first_msg_time = pinfo->abs_ts;
+        dmp_data->msg_time = pinfo->abs_ts;
 
         if (dmp.msg_type == REPORT) {
-          dmp_data->rep_id = pinfo->fd->num;
+          dmp_data->rep_id = pinfo->num;
           dmp_data->msg_id = msg_id;
           dmp_data->rep_not_msg_time = msg_time;
         } else if (dmp.msg_type == NOTIF) {
-          dmp_data->not_id = pinfo->fd->num;
+          dmp_data->not_id = pinfo->num;
           dmp_data->msg_id = msg_id;
           dmp_data->rep_not_msg_time = msg_time;
         } else {
-          dmp_data->msg_id = pinfo->fd->num;
+          dmp_data->msg_id = pinfo->num;
         }
 
         g_hash_table_insert (dmp_id_hash_table, dmp_key, dmp_data);
@@ -1536,7 +1543,7 @@ static void dmp_add_seq_ack_analysis (tvbuff_t *tvb, packet_info *pinfo,
                                   tvb, 0, 0, dmp.id_val->msg_id);
         PROTO_ITEM_SET_GENERATED (en);
 
-        nstime_delta (&ns, &pinfo->fd->abs_ts, &dmp.id_val->rep_not_msg_time);
+        nstime_delta (&ns, &pinfo->abs_ts, &dmp.id_val->rep_not_msg_time);
         en = proto_tree_add_time (analysis_tree, hf_analysis_rep_time,
                                   tvb, 0, 0, &ns);
         PROTO_ITEM_SET_GENERATED (en);
@@ -1549,7 +1556,7 @@ static void dmp_add_seq_ack_analysis (tvbuff_t *tvb, packet_info *pinfo,
                                   tvb, 0, 0, dmp.id_val->msg_id);
         PROTO_ITEM_SET_GENERATED (en);
 
-        nstime_delta (&ns, &pinfo->fd->abs_ts, &dmp.id_val->rep_not_msg_time);
+        nstime_delta (&ns, &pinfo->abs_ts, &dmp.id_val->rep_not_msg_time);
         en = proto_tree_add_time (analysis_tree, hf_analysis_not_time,
                                   tvb, 0, 0, &ns);
         PROTO_ITEM_SET_GENERATED (en);
@@ -1577,12 +1584,12 @@ static void dmp_add_seq_ack_analysis (tvbuff_t *tvb, packet_info *pinfo,
       }
       PROTO_ITEM_SET_GENERATED (en);
 
-      nstime_delta (&ns, &pinfo->fd->abs_ts, &dmp.id_val->prev_msg_time);
+      nstime_delta (&ns, &pinfo->abs_ts, &dmp.id_val->prev_msg_time);
       en = proto_tree_add_time (analysis_tree, hf_analysis_retrans_time,
                                 tvb, 0, 0, &ns);
       PROTO_ITEM_SET_GENERATED (en);
 
-      nstime_delta (&ns, &pinfo->fd->abs_ts, &dmp.id_val->first_msg_time);
+      nstime_delta (&ns, &pinfo->abs_ts, &dmp.id_val->first_msg_time);
       eh = proto_tree_add_time (analysis_tree, hf_analysis_total_retrans_time,
                                 tvb, 0, 0, &ns);
       PROTO_ITEM_SET_GENERATED (eh);
@@ -1596,23 +1603,23 @@ static void dmp_add_seq_ack_analysis (tvbuff_t *tvb, packet_info *pinfo,
   } else if (dmp.msg_type == ACK) {
     if (dmp.id_val->msg_type != ACK) {
       if (dmp.id_val->msg_type == REPORT) {
-        en = proto_tree_add_uint (analysis_tree, hf_analysis_rep_num,
+        en = proto_tree_add_uint (analysis_tree, hf_analysis_acks_rep_num,
                                   tvb, 0, 0, dmp.id_val->rep_id);
       } else if (dmp.id_val->msg_type == NOTIF) {
-        en = proto_tree_add_uint (analysis_tree, hf_analysis_not_num,
+        en = proto_tree_add_uint (analysis_tree, hf_analysis_acks_not_num,
                                   tvb, 0, 0, dmp.id_val->not_id);
       } else {
-        en = proto_tree_add_uint (analysis_tree, hf_analysis_msg_num,
+        en = proto_tree_add_uint (analysis_tree, hf_analysis_acks_msg_num,
                                   tvb, 0, 0, dmp.id_val->msg_id);
       }
       PROTO_ITEM_SET_GENERATED (en);
 
-      nstime_delta (&ns, &pinfo->fd->abs_ts, &dmp.id_val->msg_time);
+      nstime_delta (&ns, &pinfo->abs_ts, &dmp.id_val->msg_time);
       en = proto_tree_add_time (analysis_tree, hf_analysis_ack_time,
                                 tvb, 0, 0, &ns);
       PROTO_ITEM_SET_GENERATED (en);
 
-      nstime_delta (&ns, &pinfo->fd->abs_ts, &dmp.id_val->first_msg_time);
+      nstime_delta (&ns, &pinfo->abs_ts, &dmp.id_val->first_msg_time);
       eh = proto_tree_add_time (analysis_tree, hf_analysis_total_time,
                                 tvb, 0, 0, &ns);
       PROTO_ITEM_SET_GENERATED (eh);
@@ -1644,7 +1651,7 @@ static void dmp_add_seq_ack_analysis (tvbuff_t *tvb, packet_info *pinfo,
   }
 }
 
-static gchar *dissect_7bit_string (tvbuff_t *tvb, gint offset, gint length)
+static gchar *dissect_7bit_string (tvbuff_t *tvb, gint offset, gint length, guchar *byte_rest)
 {
   guchar *encoded = (guchar *)tvb_memdup (wmem_packet_scope(), tvb, offset, length);
   guchar *decoded = (guchar *)wmem_alloc0 (wmem_packet_scope(), (size_t)(length * 1.2) + 1);
@@ -1663,15 +1670,19 @@ static gchar *dissect_7bit_string (tvbuff_t *tvb, gint offset, gint length)
     }
   }
 
+  if (byte_rest) {
+    *byte_rest = rest;
+  }
+
   return (gchar *) decoded;
 }
 
-static const gchar *dissect_thales_mts_id (tvbuff_t *tvb, gint offset, gint length)
+static const gchar *dissect_thales_mts_id (tvbuff_t *tvb, gint offset, gint length, guchar *byte_rest)
 {
   /* Thales XOmail uses this format: "MTA-NAME/000000000000" */
   if (length >= 7 && length <= 22) {
     return wmem_strdup_printf (wmem_packet_scope(), "%s/%08X%04X",
-                               dissect_7bit_string (tvb, offset, length - 6),
+                               dissect_7bit_string (tvb, offset, length - 6, byte_rest),
                                tvb_get_ntohl (tvb, offset + length - 6),
                                tvb_get_ntohs (tvb, offset + length - 2));
   }
@@ -1679,7 +1690,7 @@ static const gchar *dissect_thales_mts_id (tvbuff_t *tvb, gint offset, gint leng
   return ILLEGAL_FORMAT;
 }
 
-static const gchar *dissect_thales_ipm_id (tvbuff_t *tvb, gint offset, gint length, gint modifier)
+static const gchar *dissect_thales_ipm_id (tvbuff_t *tvb, gint offset, gint length, gint modifier, guchar *byte_rest)
 {
   /* Thales XOmail uses this format: "<prefix>0000 YYMMDDhhmmssZ" */
   if (length >= 6 && length <= 20 && modifier >= 0 && modifier <= 2) {
@@ -1698,7 +1709,7 @@ static const gchar *dissect_thales_ipm_id (tvbuff_t *tvb, gint offset, gint leng
     }
 
     return wmem_strdup_printf (wmem_packet_scope(), "%s%0*d %02d%02d%02d%02d%02d%02dZ",
-                               (length == 6) ? "" : dissect_7bit_string (tvb, offset, length - 6),
+                               (length == 6) ? "" : dissect_7bit_string (tvb, offset, length - 6, byte_rest),
                                number_len, number,
                                tmp->tm_year % 100, tmp->tm_mon + 1, tmp->tm_mday,
                                tmp->tm_hour, tmp->tm_min, tmp->tm_sec);
@@ -2674,28 +2685,29 @@ static gint dissect_dmp_ack (tvbuff_t *tvb, packet_info *pinfo,
   return offset;
 }
 
-static gint dissect_mts_identifier (tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree,
+static gint dissect_mts_identifier (tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree,
                                     gint offset, gboolean subject)
 {
-  proto_item *hidden_item;
+  proto_item *ti, *hidden_item;
   const gchar *mts_id;
+  guchar byte_rest = 0;
 
   if (dmp.msg_id_type == X400_MSG_ID || dmp_nat_decode == NAT_DECODE_DMP) {
-    mts_id = dissect_7bit_string (tvb, offset, dmp.mts_id_length);
+    mts_id = dissect_7bit_string (tvb, offset, dmp.mts_id_length, &byte_rest);
   } else if (dmp_nat_decode == NAT_DECODE_THALES) {
-    mts_id = dissect_thales_mts_id (tvb, offset, dmp.mts_id_length);
+    mts_id = dissect_thales_mts_id (tvb, offset, dmp.mts_id_length, &byte_rest);
   } else {
     mts_id = tvb_bytes_to_str(wmem_packet_scope(), tvb, offset, dmp.mts_id_length);
   }
   proto_item_append_text (dmp.mts_id_item, " (%zu bytes decompressed)", strlen(mts_id));
   mts_id = format_text (mts_id, strlen(mts_id));
   if (subject) {
-    proto_tree_add_string (tree, hf_message_subj_mts_id, tvb, offset, dmp.mts_id_length, mts_id);
+    ti = proto_tree_add_string (tree, hf_message_subj_mts_id, tvb, offset, dmp.mts_id_length, mts_id);
     hidden_item = proto_tree_add_string (tree, hf_mts_id, tvb, offset, dmp.mts_id_length, mts_id);
     /* Read from hash, for analysis */
     dmp.subj_id = GPOINTER_TO_UINT (g_hash_table_lookup (dmp_long_id_hash_table, mts_id));
   } else {
-    proto_tree_add_string (tree, hf_envelope_mts_id, tvb, offset, dmp.mts_id_length, mts_id);
+    ti = proto_tree_add_string (tree, hf_envelope_mts_id, tvb, offset, dmp.mts_id_length, mts_id);
     hidden_item = proto_tree_add_string (tree, hf_mts_id, tvb, offset, dmp.mts_id_length, mts_id);
     /* Insert into hash, for analysis */
     g_hash_table_insert (dmp_long_id_hash_table, g_strdup (mts_id), GUINT_TO_POINTER ((guint)dmp.msg_id));
@@ -2703,16 +2715,21 @@ static gint dissect_mts_identifier (tvbuff_t *tvb, packet_info *pinfo _U_, proto
   PROTO_ITEM_SET_HIDDEN (hidden_item);
   offset += dmp.mts_id_length;
 
+  if (byte_rest) {
+    expert_add_info (pinfo, ti, &ei_7bit_string_unused_bits);
+  }
+
   return offset;
 }
 
-static gint dissect_ipm_identifier (tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree,
+static gint dissect_ipm_identifier (tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree,
                                     gint offset, gboolean subject)
 {
   proto_tree *field_tree;
-  proto_item *tf, *hidden_item;
+  proto_item *ti, *tf, *hidden_item;
   const gchar *ipm_id;
   gint        length, modifier, ipm_id_length;
+  guchar      byte_rest = 0;
 
   length = tvb_get_guint8 (tvb, offset);
   modifier = (length & 0xC0) >> 6;
@@ -2732,27 +2749,31 @@ static gint dissect_ipm_identifier (tvbuff_t *tvb, packet_info *pinfo _U_, proto
   offset += 1;
 
   if (modifier == IPM_MODIFIER_X400 || dmp_nat_decode == NAT_DECODE_DMP) {
-    ipm_id = dissect_7bit_string (tvb, offset, ipm_id_length);
+    ipm_id = dissect_7bit_string (tvb, offset, ipm_id_length, &byte_rest);
   } else if (dmp_nat_decode == NAT_DECODE_THALES) {
-    ipm_id = dissect_thales_ipm_id (tvb, offset, ipm_id_length, modifier);
+    ipm_id = dissect_thales_ipm_id (tvb, offset, ipm_id_length, modifier, &byte_rest);
   } else {
     ipm_id = tvb_bytes_to_str(wmem_packet_scope(), tvb, offset, ipm_id_length);
   }
   proto_item_append_text (tf, " (%zu bytes decompressed)", strlen(ipm_id));
   ipm_id = format_text (ipm_id, strlen(ipm_id));
   if (subject) {
-    proto_tree_add_string (tree, hf_message_subj_ipm_id, tvb, offset, ipm_id_length, ipm_id);
+    ti = proto_tree_add_string (tree, hf_message_subj_ipm_id, tvb, offset, ipm_id_length, ipm_id);
     hidden_item = proto_tree_add_string (tree, hf_ipm_id, tvb, offset, ipm_id_length, ipm_id);
     /* Read from hash, for analysis */
     dmp.subj_id = GPOINTER_TO_UINT (g_hash_table_lookup (dmp_long_id_hash_table, ipm_id));
   } else {
-    proto_tree_add_string (tree, hf_envelope_ipm_id, tvb, offset, ipm_id_length, ipm_id);
+    ti = proto_tree_add_string (tree, hf_envelope_ipm_id, tvb, offset, ipm_id_length, ipm_id);
     hidden_item = proto_tree_add_string (tree, hf_ipm_id, tvb, offset, ipm_id_length, ipm_id);
     /* Insert into hash, for analysis */
     g_hash_table_insert (dmp_long_id_hash_table, g_strdup (ipm_id), GUINT_TO_POINTER ((guint)dmp.msg_id));
   }
   PROTO_ITEM_SET_HIDDEN (hidden_item);
   offset += ipm_id_length;
+
+  if (byte_rest) {
+    expert_add_info (pinfo, ti, &ei_7bit_string_unused_bits);
+  }
 
   return offset;
 }
@@ -2947,7 +2968,7 @@ static gint dissect_dmp_envelope (tvbuff_t *tvb, packet_info *pinfo,
   /* Submission Time */
   subm_time = tvb_get_ntohs (tvb, offset);
   dmp.subm_time = dmp_dec_subm_time ((guint16)(subm_time & 0x7FFF),
-                                     (gint32) pinfo->fd->abs_ts.secs);
+                                     (gint32) pinfo->abs_ts.secs);
   tf = proto_tree_add_uint_format (envelope_tree, hf_envelope_subm_time, tvb,
                                    offset, 2, subm_time,
                                    "Submission time: %s",
@@ -3185,7 +3206,7 @@ static gint dissect_dmp_message (tvbuff_t *tvb, packet_info *pinfo,
         add_new_data_source (pinfo, body_tvb, "Uncompressed User data");
         tf = proto_tree_add_item (message_tree, hf_message_body_data,
                                   body_tvb, 0, body_len, ENC_NA);
-        proto_item_set_text (tf, "User data, Length: %d", len);
+        proto_item_set_text (tf, "User data, Length: %d", body_len);
         PROTO_ITEM_SET_GENERATED (tf);
       } else {
         proto_tree_add_expert (message_tree, pinfo, &ei_message_body_uncompress, tvb, offset, len);
@@ -4373,7 +4394,7 @@ void proto_register_dmp (void)
       { "Recipient Number (bits 14-7)", "dmp.rec_no_offset2", FT_UINT8,
         BASE_DEC, NULL, 0xFF, "Recipient Number (bits 14-7) Offset", HFILL } },
     { &hf_addr_ext_address,
-      { "Extended Address", "dmp.addr_form", FT_NONE, BASE_NONE,
+      { "Extended Address", "dmp.addr_form_ext", FT_NONE, BASE_NONE,
         NULL, 0x0, NULL, HFILL } },
     { &hf_addr_ext_type,
       { "Address Type", "dmp.addr_type", FT_UINT8, BASE_DEC,
@@ -4624,13 +4645,13 @@ void proto_register_dmp (void)
       { "Structured Id", "dmp.body.id", FT_UINT32, BASE_DEC,
         NULL, 0x0, "Structured Body Id (4 bytes)", HFILL } },
     { &hf_message_bodyid_uint64,
-      { "Structured Id", "dmp.body.id", FT_UINT64, BASE_DEC,
+      { "Structured Id", "dmp.body.id64", FT_UINT64, BASE_DEC,
         NULL, 0x0, "Structured Body Id (8 bytes)", HFILL } },
     { &hf_message_bodyid_string,
-      { "Structured Id", "dmp.body.id", FT_STRING, BASE_NONE,
+      { "Structured Id", "dmp.body.idstring", FT_STRING, BASE_NONE,
         NULL, 0x0, "Structured Body Id (fixed text string)", HFILL } },
     { &hf_message_bodyid_zstring,
-      { "Structured Id", "dmp.body.id", FT_STRINGZ, BASE_NONE,
+      { "Structured Id", "dmp.body.idstring", FT_STRINGZ, BASE_NONE,
         NULL, 0x0, "Structured Body Id (zero terminated text string)",
         HFILL } },
     { &hf_message_body_structured,
@@ -4784,15 +4805,24 @@ void proto_register_dmp (void)
     { &hf_analysis_msg_num,
       { "Message in", "dmp.analysis.msg_in", FT_FRAMENUM, BASE_NONE,
         NULL, 0x0, "This packet has a Message in this frame", HFILL } },
+    { &hf_analysis_acks_msg_num,
+      { "This is an Ack to the Message in", "dmp.analysis.acks_msg_in", FT_FRAMENUM, BASE_NONE,
+        FRAMENUM_TYPE(FT_FRAMENUM_ACK), 0x0, "This packet ACKs a Message in this frame", HFILL } },
     { &hf_analysis_ack_num,
       { "Acknowledgement in", "dmp.analysis.ack_in", FT_FRAMENUM, BASE_NONE,
         NULL, 0x0, "This packet has an Acknowledgement in this frame", HFILL } },
     { &hf_analysis_rep_num,
       { "Report in", "dmp.analysis.report_in", FT_FRAMENUM, BASE_NONE,
         NULL, 0x0, "This packet has a Report in this frame", HFILL } },
+    { &hf_analysis_acks_rep_num,
+      { "This is an Ack to the Report in", "dmp.analysis.acks_report_in", FT_FRAMENUM, BASE_NONE,
+        FRAMENUM_TYPE(FT_FRAMENUM_ACK), 0x0, "This packet ACKs a Report in this frame", HFILL } },
     { &hf_analysis_not_num,
       { "Notification in", "dmp.analysis.notif_in", FT_FRAMENUM, BASE_NONE,
         NULL, 0x0, "This packet has a Notification in this frame", HFILL } },
+    { &hf_analysis_acks_not_num,
+      { "This is an Ack to the Notification in", "dmp.analysis.acks_notif_in", FT_FRAMENUM, BASE_NONE,
+        FRAMENUM_TYPE(FT_FRAMENUM_ACK), 0x0, "This packet ACKs a Notification in this frame", HFILL } },
     { &hf_analysis_ack_missing,
       { "Acknowledgement missing", "dmp.analysis.ack_missing", FT_NONE, BASE_NONE,
         NULL, 0x0, "The acknowledgement for this packet is missing", HFILL } },
@@ -4950,6 +4980,7 @@ void proto_register_dmp (void)
      { &ei_ack_reason, { "dmp.ack_reason.expert", PI_RESPONSE_CODE, PI_NOTE, "ACK reason: %s", EXPFILL }},
      { &ei_envelope_version_value, { "dmp.version_value.unsupported", PI_UNDECODED, PI_ERROR, "Unsupported DMP Version", EXPFILL }},
      { &ei_envelope_msg_id, { "dmp.msg_id.short_id", PI_PROTOCOL, PI_NOTE, "Id < 4096 - should use ShortId", EXPFILL }},
+     { &ei_7bit_string_unused_bits, { "dmp.7bit_string.unused_bits", PI_PROTOCOL, PI_WARN, "Unused bits in last byte shall be null", EXPFILL }},
      { &ei_message_compr, { "dmp.body.compression.unknown", PI_UNDECODED, PI_WARN, "Unknown compression algorithm", EXPFILL }},
      { &ei_message_body_uncompress, { "dmp.body.uncompress.fail", PI_UNDECODED, PI_WARN, "Error: Unable to uncompress content", EXPFILL }},
      { &ei_checksum_bad, { "dmp.checksum_bad.expert", PI_CHECKSUM, PI_WARN, "Bad checksum", EXPFILL }},
@@ -4981,7 +5012,7 @@ void proto_register_dmp (void)
 
   proto_dmp = proto_register_protocol (PNAME, PSNAME, PFNAME);
 
-  dmp_handle = new_register_dissector(PFNAME, dissect_dmp, proto_dmp);
+  dmp_handle = register_dissector(PFNAME, dissect_dmp, proto_dmp);
 
   proto_register_field_array (proto_dmp, hf, array_length (hf));
   proto_register_subtree_array (ett, array_length (ett));

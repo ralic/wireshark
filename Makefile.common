@@ -31,6 +31,7 @@ BUILT_SOURCES =	$(BUILT_C_FILES) $(BUILT_HEADER_FILES)
 
 # Header files generated from source files.
 GENERATED_HEADER_FILES = \
+	text2pcap-scanner_lex.h \
 	$(BUILT_HEADER_FILES)
 
 # C source files generated from source files.
@@ -39,20 +40,23 @@ GENERATED_C_FILES =
 # All the generated files.
 GENERATED_FILES = $(GENERATED_C_FILES) $(GENERATED_HEADER_FILES)
 
+EXTCAP_COMMON_SRC = \
+	extcap.c		\
+	extcap_parser.c
+
+EXTCAP_COMMON_INCLUDES = \
+	extcap.h		\
+	extcap_parser.h
+
 # sources common for wireshark, tshark, and rawshark
 SHARK_COMMON_SRC =	\
 	cfile.c			\
 	frame_tvbuff.c		\
-	sync_pipe_write.c	\
-	extcap.c		\
-	extcap_parser.c
+	sync_pipe_write.c
 
 # corresponding headers
 SHARK_COMMON_INCLUDES =	\
 	cfile.h			\
-	color.h			\
-	extcap.h		\
-	extcap_parser.h		\
 	file.h			\
 	fileset.h		\
 	frame_tvbuff.h		\
@@ -64,16 +68,17 @@ WIRESHARK_COMMON_SRC =	\
 	$(SHARK_COMMON_SRC)	\
 	capture_info.c	\
 	capture_opts.c	\
-	color_filters.c	\
 	file.c		\
 	fileset.c	\
-	summary.c
+	filter_files.c \
+	summary.c	\
+	ws_version_info.c
 
 # corresponding headers
 WIRESHARK_COMMON_INCLUDES =	\
 	capture_info.h	\
 	capture_opts.h	\
-	color_filters.h	\
+	filter_files.h \
 	globals.h	\
 	log.h		\
 	summary.h	\
@@ -83,51 +88,55 @@ WIRESHARK_COMMON_INCLUDES =	\
 tshark_SOURCES =	\
 	$(SHARK_COMMON_SRC)	\
 	capture_opts.c		\
-	tshark.c
+	filter_files.c		\
+	tshark.c		\
+	ws_version_info.c
 
 # tfshark specifics
 tfshark_SOURCES =	\
 	$(SHARK_COMMON_SRC)	\
-	tfshark.c
+	tfshark.c		\
+	ws_version_info.c
 
 # rawshark specifics
 rawshark_SOURCES =	\
 	$(SHARK_COMMON_SRC)	\
-	rawshark.c
-
-# androiddump specifics
-androiddump_SOURCES =	\
-	extcap/androiddump.c
+	rawshark.c		\
+	ws_version_info.c
 
 # text2pcap specifics
 text2pcap_SOURCES = \
-	pcapio.c		\
 	text2pcap.c		\
-	text2pcap-scanner.l
+	text2pcap-scanner.l	\
+	ws_version_info.c
 
 text2pcap_INCLUDES = \
-	pcapio.h \
 	text2pcap.h
 
 # mergecap specifics
 mergecap_SOURCES = \
-	mergecap.c
+	mergecap.c	\
+	ws_version_info.c
 
 # editcap specifics
 editcap_SOURCES = \
-	editcap.c
+	editcap.c	\
+	ws_version_info.c
 
 # reordercap specifics
 reordercap_SOURCES = \
-	reordercap.c
+	reordercap.c	\
+	ws_version_info.c
 
 # capinfos specifics
 capinfos_SOURCES = \
-	capinfos.c
+	capinfos.c	\
+	ws_version_info.c
 
 # captype specifics
 captype_SOURCES = \
-	captype.c
+	captype.c	\
+	ws_version_info.c
 
 # dftest specifics
 dftest_SOURCES =	\
@@ -140,13 +149,13 @@ echld_test_SOURCES =	\
 	capture_stop_conditions.c	\
 	cfile.c		\
 	conditions.c	\
-	pcapio.c	\
 	ringbuffer.c	\
 	sync_pipe_write.c
 
 # randpkt specifics
 randpkt_SOURCES = \
-	randpkt.c
+	randpkt.c	\
+	ws_version_info.c
 
 # dumpcap specifics
 dumpcap_SOURCES =	\
@@ -154,19 +163,22 @@ dumpcap_SOURCES =	\
 	capture_stop_conditions.c	\
 	conditions.c	\
 	dumpcap.c	\
-	pcapio.c	\
+	filter_files.c	\
 	ringbuffer.c	\
-	sync_pipe_write.c
+	sync_pipe_write.c	\
+	ws_version_info.c
 
 # corresponding headers
 dumpcap_INCLUDES = \
 	capture_stop_conditions.h	\
 	conditions.h	\
-	pcapio.h	\
 	ringbuffer.h
 
 # this target needed for distribution only
 noinst_HEADERS =	\
 	$(SHARK_COMMON_INCLUDES) \
+	$(EXTCAP_COMMON_INCLUDES) \
 	$(WIRESHARK_COMMON_INCLUDES) \
-	$(dumpcap_INCLUDES)
+	$(dumpcap_INCLUDES) \
+	ws_diag_control.h	\
+	ws_version_info.h

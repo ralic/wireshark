@@ -153,15 +153,15 @@ wka_hash_to_qstringlist(gpointer key, gpointer value, gpointer sl_ptr)
 {
     QStringList *string_list = (QStringList *) sl_ptr;
     gchar *name = (gchar *)value;
-    gint64 eth_as_gint64 = *(gint64*)key;
+    guint8 *eth_addr = (guint8*)key;
 
     QString entry = QString("%1:%2:%3:%4:%5:%6 %7")
-            .arg((eth_as_gint64 >> 40 & 0xff), 2, 16, QChar('0'))
-            .arg((eth_as_gint64 >> 32 & 0xff), 2, 16, QChar('0'))
-            .arg((eth_as_gint64 >> 24 & 0xff), 2, 16, QChar('0'))
-            .arg((eth_as_gint64 >> 16 & 0xff), 2, 16, QChar('0'))
-            .arg((eth_as_gint64 >>  8 & 0xff), 2, 16, QChar('0'))
-            .arg((eth_as_gint64 & 0xff), 2, 16, QChar('0'))
+            .arg(eth_addr[0], 2, 16, QChar('0'))
+            .arg(eth_addr[1], 2, 16, QChar('0'))
+            .arg(eth_addr[2], 2, 16, QChar('0'))
+            .arg(eth_addr[3], 2, 16, QChar('0'))
+            .arg(eth_addr[4], 2, 16, QChar('0'))
+            .arg(eth_addr[5], 2, 16, QChar('0'))
             .arg(name);
 
     *string_list << entry;
@@ -172,11 +172,13 @@ const QString no_entries_ = QObject::tr("No entries.");
 const QString entry_count_ = QObject::tr("%1 entries.");
 
 ResolvedAddressesDialog::ResolvedAddressesDialog(QWidget *parent, CaptureFile *capture_file) :
-    QDialog(NULL),
+    GeometryStateDialog(NULL),
     ui(new Ui::ResolvedAddressesDialog),
     file_name_(tr("[no file]"))
 {
     ui->setupUi(this);
+    if (parent) loadGeometry(parent->width() * 2 / 3, parent->height());
+    setAttribute(Qt::WA_DeleteOnClose, true);
 
     QStringList title_parts = QStringList() << tr("Resolved Addresses");
 
@@ -185,9 +187,6 @@ ResolvedAddressesDialog::ResolvedAddressesDialog(QWidget *parent, CaptureFile *c
         title_parts << file_name_;
     }
     setWindowTitle(wsApp->windowTitleString(title_parts));
-
-    // XXX Use recent settings instead
-    resize(parent->width() * 2 / 3, parent->height());
 
     ui->plainTextEdit->setFont(wsApp->monospaceFont());
     ui->plainTextEdit->setReadOnly(true);

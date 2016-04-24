@@ -428,7 +428,7 @@ proto_register_xot(void)
    proto_xot = proto_register_protocol("X.25 over TCP", "XOT", "xot");
    proto_register_field_array(proto_xot, hf, array_length(hf));
    proto_register_subtree_array(ett, array_length(ett));
-   xot_handle = new_register_dissector("xot", dissect_xot_tcp_heur, proto_xot);
+   xot_handle = register_dissector("xot", dissect_xot_tcp_heur, proto_xot);
    xot_module = prefs_register_protocol(proto_xot, NULL);
 
    prefs_register_bool_preference(xot_module, "desegment",
@@ -450,7 +450,7 @@ proto_reg_handoff_xot(void)
 {
    dissector_add_uint("tcp.port", TCP_PORT_XOT, xot_handle);
 
-   x25_handle = find_dissector("x.25");
+   x25_handle = find_dissector_add_dependency("x.25", proto_xot);
 }
 
 /*

@@ -20,13 +20,9 @@
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 
 include Makefile.common
+include $(top_srcdir)/Makefile.am.inc
 
-if HAVE_WARNINGS_AS_ERRORS
-AM_CFLAGS = -Werror
-endif
-
-AM_CPPFLAGS = \
-	-I$(top_srcdir)
+AM_CPPFLAGS = $(INCLUDEDIRS) $(WS_CPPFLAGS) $(GLIB_CFLAGS)
 
 noinst_LTLIBRARIES = libairpdcap.la
 
@@ -47,7 +43,9 @@ libairpdcap_la_SOURCES =	\
 EXTRA_DIST = \
 	Custom.common \
 	Makefile.common	\
-	Makefile.nmake
+	Makefile.nmake	\
+	CMakeLists.txt	\
+	CMakeListsCustom.txt.example
 
 checkapi:
 	$(PERL) $(top_srcdir)/tools/checkAPIs.pl -g termoutput -build \

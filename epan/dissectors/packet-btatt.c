@@ -31,19 +31,23 @@
 
 #include <epan/packet.h>
 #include <epan/prefs.h>
-#include <epan/expert.h>
 #include <epan/oui.h>
 #include <epan/decode_as.h>
 #include <epan/tap.h>
+#include <epan/proto_data.h>
 
 #include "packet-bluetooth.h"
 #include "packet-btatt.h"
 #include "packet-btl2cap.h"
 #include "packet-btsdp.h"
+#include "packet-http.h"
 #include "packet-usb-hid.h"
+
+#define HANDLE_TVB -1
 
 /* Initialize the protocol and registered fields */
 static int proto_btatt = -1;
+static int proto_btgatt = -1;
 
 static int hf_btatt_opcode = -1;
 static int hf_btatt_handle = -1;
@@ -54,6 +58,10 @@ static int hf_btatt_value = -1;
 static int hf_btatt_req_opcode_in_error = -1;
 static int hf_btatt_handle_in_error = -1;
 static int hf_btatt_error_code = -1;
+static int hf_btatt_service_uuid16 = -1;
+static int hf_btatt_service_uuid128 = -1;
+static int hf_btatt_characteristic_uuid16 = -1;
+static int hf_btatt_characteristic_uuid128 = -1;
 static int hf_btatt_uuid16 = -1;
 static int hf_btatt_uuid128 = -1;
 static int hf_btatt_client_rx_mtu = -1;
@@ -491,6 +499,7 @@ static int hf_btatt_heart_rate_measurement_flags_value_16 = -1;
 static int hf_btatt_heart_rate_measurement_value_8 = -1;
 static int hf_btatt_heart_rate_measurement_value_16 = -1;
 static int hf_btatt_heart_rate_measurement_energy_expended = -1;
+static int hf_btatt_heart_rate_measurement_rr_intervals = -1;
 static int hf_btatt_heart_rate_measurement_rr_interval = -1;
 static int hf_btatt_record_access_control_point_opcode = -1;
 static int hf_btatt_record_access_control_point_operator = -1;
@@ -501,6 +510,415 @@ static int hf_btatt_record_access_control_point_operand_max_time_offset = -1;
 static int hf_btatt_record_access_control_point_operand_number_of_records = -1;
 static int hf_btatt_record_access_control_point_request_opcode = -1;
 static int hf_btatt_record_access_control_point_response_code = -1;
+static int hf_btatt_value_trigger_setting_condition = -1;
+static int hf_btatt_value_trigger_setting_analog = -1;
+static int hf_btatt_value_trigger_setting_analog_one = -1;
+static int hf_btatt_value_trigger_setting_analog_two = -1;
+static int hf_btatt_digital = -1;
+static int hf_btatt_analog = -1;
+static int hf_btatt_location_name = -1;
+static int hf_btatt_uncertainty = -1;
+static int hf_btatt_uncertainty_reserved = -1;
+static int hf_btatt_uncertainty_precision = -1;
+static int hf_btatt_uncertainty_update_time = -1;
+static int hf_btatt_uncertainty_stationary = -1;
+static int hf_btatt_latitude = -1;
+static int hf_btatt_longitude = -1;
+static int hf_btatt_local_north_coordinate = -1;
+static int hf_btatt_local_east_coordinate = -1;
+static int hf_btatt_floor_number = -1;
+static int hf_btatt_altitude = -1;
+static int hf_btatt_indoor_positioning_configuration = -1;
+static int hf_btatt_indoor_positioning_configuration_reserved = -1;
+static int hf_btatt_indoor_positioning_configuration_location_name = -1;
+static int hf_btatt_indoor_positioning_configuration_uncertainty = -1;
+static int hf_btatt_indoor_positioning_configuration_floor_number = -1;
+static int hf_btatt_indoor_positioning_configuration_altitude = -1;
+static int hf_btatt_indoor_positioning_configuration_tx_power = -1;
+static int hf_btatt_indoor_positioning_configuration_coordinate_system = -1;
+static int hf_btatt_indoor_positioning_configuration_coordinates = -1;
+static int hf_btatt_number_of_digitals = -1;
+static int hf_btatt_time_trigger_setting_condition = -1;
+static int hf_btatt_time_trigger_setting_value = -1;
+static int hf_btatt_time_trigger_setting_value_count = -1;
+static int hf_btatt_time_trigger_setting_value_time_interval = -1;
+static int hf_btatt_rsc_measurement_flags = -1;
+static int hf_btatt_rsc_measurement_flags_reserved = -1;
+static int hf_btatt_rsc_measurement_flags_type_of_movement = -1;
+static int hf_btatt_rsc_measurement_flags_total_distance_present = -1;
+static int hf_btatt_rsc_measurement_flags_instantaneous_stride_length_present = -1;
+static int hf_btatt_rsc_measurement_instantaneous_speed = -1;
+static int hf_btatt_rsc_measurement_instantaneous_cadence = -1;
+static int hf_btatt_rsc_measurement_instantaneous_stride_length = -1;
+static int hf_btatt_rsc_measurement_total_distance = -1;
+static int hf_btatt_sc_control_point_opcode = -1;
+static int hf_btatt_sc_control_point_cumulative_value = -1;
+static int hf_btatt_sc_control_point_request_opcode = -1;
+static int hf_btatt_sc_control_point_response_value = -1;
+static int hf_btatt_cycling_power_measurement_flags = -1;
+static int hf_btatt_cycling_power_measurement_flags_reserved = -1;
+static int hf_btatt_cycling_power_measurement_flags_offset_compensation_indicator = -1;
+static int hf_btatt_cycling_power_measurement_flags_accumulated_energy = -1;
+static int hf_btatt_cycling_power_measurement_flags_bottom_dead_spot_angle = -1;
+static int hf_btatt_cycling_power_measurement_flags_top_dead_spot_angle = -1;
+static int hf_btatt_cycling_power_measurement_flags_extreme_angles = -1;
+static int hf_btatt_cycling_power_measurement_flags_extreme_torque_magnitudes = -1;
+static int hf_btatt_cycling_power_measurement_flags_extreme_force_magnitudes = -1;
+static int hf_btatt_cycling_power_measurement_flags_crank_revolution_data = -1;
+static int hf_btatt_cycling_power_measurement_flags_wheel_revolution_data = -1;
+static int hf_btatt_cycling_power_measurement_flags_accumulated_torque_source = -1;
+static int hf_btatt_cycling_power_measurement_flags_accumulated_torque = -1;
+static int hf_btatt_cycling_power_measurement_flags_pedal_power_balance_reference = -1;
+static int hf_btatt_cycling_power_measurement_flags_pedal_power_balance = -1;
+static int hf_btatt_cycling_power_measurement_instantaneous_power = -1;
+static int hf_btatt_cycling_power_measurement_pedal_power_balance = -1;
+static int hf_btatt_cycling_power_measurement_accumulated_torque = -1;
+static int hf_btatt_cycling_power_measurement_wheel_revolution_data_cumulative_wheel_revolutions = -1;
+static int hf_btatt_cycling_power_measurement_wheel_revolution_data_last_wheel_event_time = -1;
+static int hf_btatt_cycling_power_measurement_crank_revolution_data_cumulative_crank_revolutions = -1;
+static int hf_btatt_cycling_power_measurement_crank_revolution_data_last_crank_event_time = -1;
+static int hf_btatt_cycling_power_measurement_extreme_force_magnitudes_maximum_force_magnitude = -1;
+static int hf_btatt_cycling_power_measurement_extreme_force_magnitudes_minimum_force_magnitude = -1;
+static int hf_btatt_cycling_power_measurement_extreme_torque_magnitudes_maximum_torque_magnitude = -1;
+static int hf_btatt_cycling_power_measurement_extreme_torque_magnitudes_minimum_torque_magnitude = -1;
+static int hf_btatt_cycling_power_measurement_extreme_angles = -1;
+static int hf_btatt_cycling_power_measurement_extreme_angles_maximum = -1;
+static int hf_btatt_cycling_power_measurement_extreme_angles_minimum = -1;
+static int hf_btatt_cycling_power_measurement_top_dead_spot_angle = -1;
+static int hf_btatt_cycling_power_measurement_bottom_dead_spot_angle = -1;
+static int hf_btatt_cycling_power_measurement_accumulated_energy = -1;
+static int hf_btatt_csc_measurement_flags = -1;
+static int hf_btatt_csc_measurement_flags_reserved = -1;
+static int hf_btatt_csc_measurement_flags_crank_revolution_data = -1;
+static int hf_btatt_csc_measurement_flags_wheel_revolution_data = -1;
+static int hf_btatt_csc_measurement_cumulative_wheel_revolutions = -1;
+static int hf_btatt_csc_measurement_cumulative_crank_revolutions = -1;
+static int hf_btatt_csc_measurement_last_event_time = -1;
+static int hf_btatt_cycling_power_vector_flags = -1;
+static int hf_btatt_cycling_power_vector_flags_reserved = -1;
+static int hf_btatt_cycling_power_vector_flags_instantaneous_measurement_direction = -1;
+static int hf_btatt_cycling_power_vector_flags_instantaneous_torque_magnitude_array = -1;
+static int hf_btatt_cycling_power_vector_flags_instantaneous_force_magnitude_array = -1;
+static int hf_btatt_cycling_power_vector_flags_first_crank_measurement_angle = -1;
+static int hf_btatt_cycling_power_vector_flags_crank_revolution_data = -1;
+static int hf_btatt_cycling_power_vector_crank_revolution_data_cumulative_crank_revolutions = -1;
+static int hf_btatt_cycling_power_vector_crank_revolution_data_last_crank_event_time = -1;
+static int hf_btatt_cycling_power_vector_first_crank_measurement_angle = -1;
+static int hf_btatt_cycling_power_vector_instantaneous_force_magnitude_array = -1;
+static int hf_btatt_cycling_power_vector_instantaneous_torque_magnitude_array = -1;
+static int hf_btatt_cycling_power_control_point_opcode = -1;
+static int hf_btatt_cycling_power_control_point_cumulative_value = -1;
+static int hf_btatt_cycling_power_control_point_sensor_location = -1;
+static int hf_btatt_cycling_power_control_point_crank_length = -1;
+static int hf_btatt_cycling_power_control_point_chain_length = -1;
+static int hf_btatt_cycling_power_control_point_chain_weight = -1;
+static int hf_btatt_cycling_power_control_point_span_length = -1;
+static int hf_btatt_cycling_power_control_point_content_mask = -1;
+static int hf_btatt_cycling_power_control_point_content_mask_reserved = -1;
+static int hf_btatt_cycling_power_control_point_content_mask_accumulated_energy = -1;
+static int hf_btatt_cycling_power_control_point_content_mask_bottom_dead_spot_angle = -1;
+static int hf_btatt_cycling_power_control_point_content_mask_top_dead_spot_angle = -1;
+static int hf_btatt_cycling_power_control_point_content_mask_extreme_angles = -1;
+static int hf_btatt_cycling_power_control_point_content_mask_extreme_magnitudes = -1;
+static int hf_btatt_cycling_power_control_point_content_mask_crank_revolution_data = -1;
+static int hf_btatt_cycling_power_control_point_content_mask_wheel_revolution_data = -1;
+static int hf_btatt_cycling_power_control_point_content_mask_accumulated_torque = -1;
+static int hf_btatt_cycling_power_control_point_content_mask_pedal_power_balance = -1;
+static int hf_btatt_cycling_power_control_point_request_opcode = -1;
+static int hf_btatt_cycling_power_control_point_response_value = -1;
+static int hf_btatt_cycling_power_control_point_start_offset_compensation = -1;
+static int hf_btatt_cycling_power_control_point_sampling_rate = -1;
+static int hf_btatt_cycling_power_control_point_factory_calibration_date = -1;
+static int hf_btatt_location_and_speed_flags = -1;
+static int hf_btatt_location_and_speed_flags_reserved = -1;
+static int hf_btatt_location_and_speed_flags_heading_source = -1;
+static int hf_btatt_location_and_speed_flags_elevation_source = -1;
+static int hf_btatt_location_and_speed_flags_speed_and_distance_format = -1;
+static int hf_btatt_location_and_speed_flags_position_status = -1;
+static int hf_btatt_location_and_speed_flags_utc_time = -1;
+static int hf_btatt_location_and_speed_flags_rolling_time = -1;
+static int hf_btatt_location_and_speed_flags_heading = -1;
+static int hf_btatt_location_and_speed_flags_elevation = -1;
+static int hf_btatt_location_and_speed_flags_location = -1;
+static int hf_btatt_location_and_speed_flags_total_distance = -1;
+static int hf_btatt_location_and_speed_flags_instantaneous_speed = -1;
+static int hf_btatt_location_and_speed_instantaneous_speed = -1;
+static int hf_btatt_location_and_speed_total_distance = -1;
+static int hf_btatt_location_and_speed_location_latitude = -1;
+static int hf_btatt_location_and_speed_location_longitude = -1;
+static int hf_btatt_location_and_speed_elevation = -1;
+static int hf_btatt_location_and_speed_heading = -1;
+static int hf_btatt_location_and_speed_rolling_time = -1;
+static int hf_btatt_location_and_speed_utc_time = -1;
+static int hf_btatt_navigation_flags = -1;
+static int hf_btatt_navigation_flags_reserved = -1;
+static int hf_btatt_navigation_flags_destination_reached = -1;
+static int hf_btatt_navigation_flags_waypoint_reached = -1;
+static int hf_btatt_navigation_flags_navigation_indicator_type = -1;
+static int hf_btatt_navigation_flags_heading_source = -1;
+static int hf_btatt_navigation_flags_position_status = -1;
+static int hf_btatt_navigation_flags_estimated_time_of_arrival = -1;
+static int hf_btatt_navigation_flags_remaining_vertical_distance = -1;
+static int hf_btatt_navigation_flags_remaining_distance = -1;
+static int hf_btatt_navigation_bearing = -1;
+static int hf_btatt_navigation_heading = -1;
+static int hf_btatt_navigation_remaining_distance = -1;
+static int hf_btatt_navigation_remaining_vertical_distance = -1;
+static int hf_btatt_navigation_estimated_time_of_arrival = -1;
+static int hf_btatt_position_quality_flags = -1;
+static int hf_btatt_position_quality_flags_reserved = -1;
+static int hf_btatt_position_quality_flags_position_status = -1;
+static int hf_btatt_position_quality_flags_vdop = -1;
+static int hf_btatt_position_quality_flags_hdop = -1;
+static int hf_btatt_position_quality_flags_evpe = -1;
+static int hf_btatt_position_quality_flags_ehpe = -1;
+static int hf_btatt_position_quality_flags_time_to_first_fix = -1;
+static int hf_btatt_position_quality_flags_number_of_beacons_in_view = -1;
+static int hf_btatt_position_quality_flags_number_of_beacons_in_solution = -1;
+static int hf_btatt_position_quality_number_of_beacons_in_solution = -1;
+static int hf_btatt_position_quality_number_of_beacons_in_view = -1;
+static int hf_btatt_position_quality_time_to_first_fix = -1;
+static int hf_btatt_position_quality_ehpe = -1;
+static int hf_btatt_position_quality_evpe = -1;
+static int hf_btatt_position_quality_hdop = -1;
+static int hf_btatt_position_quality_vdop = -1;
+static int hf_btatt_ln_control_point_opcode = -1;
+static int hf_btatt_ln_control_point_cumulative_value = -1;
+static int hf_btatt_ln_control_point_content_mask = -1;
+static int hf_btatt_ln_control_point_content_mask_reserved = -1;
+static int hf_btatt_ln_control_point_content_mask_utc_time = -1;
+static int hf_btatt_ln_control_point_content_mask_rolling_time = -1;
+static int hf_btatt_ln_control_point_content_mask_heading = -1;
+static int hf_btatt_ln_control_point_content_mask_elevation = -1;
+static int hf_btatt_ln_control_point_content_mask_location = -1;
+static int hf_btatt_ln_control_point_content_mask_total_distance = -1;
+static int hf_btatt_ln_control_point_content_mask_instantaneous_speed = -1;
+static int hf_btatt_ln_control_point_navigation_control = -1;
+static int hf_btatt_ln_control_point_route_number = -1;
+static int hf_btatt_ln_control_point_fix_rate = -1;
+static int hf_btatt_ln_control_point_elevation = -1;
+static int hf_btatt_ln_control_point_request_opcode = -1;
+static int hf_btatt_ln_control_point_response_value = -1;
+static int hf_btatt_ln_control_point_response_value_number_of_routes = -1;
+static int hf_btatt_ln_control_point_response_value_name_of_route = -1;
+static int hf_btatt_body_composition_measurement_flags = -1;
+static int hf_btatt_body_composition_measurement_flags_reserved = -1;
+static int hf_btatt_body_composition_measurement_flags_multiple_packet_measurement = -1;
+static int hf_btatt_body_composition_measurement_flags_height = -1;
+static int hf_btatt_body_composition_measurement_flags_weight = -1;
+static int hf_btatt_body_composition_measurement_flags_impedance = -1;
+static int hf_btatt_body_composition_measurement_flags_body_water_mass = -1;
+static int hf_btatt_body_composition_measurement_flags_soft_lean_mass = -1;
+static int hf_btatt_body_composition_measurement_flags_fat_free_mass = -1;
+static int hf_btatt_body_composition_measurement_flags_muscle_mass = -1;
+static int hf_btatt_body_composition_measurement_flags_muscle_percentage = -1;
+static int hf_btatt_body_composition_measurement_flags_basal_metabolism = -1;
+static int hf_btatt_body_composition_measurement_flags_user_id = -1;
+static int hf_btatt_body_composition_measurement_flags_timestamp = -1;
+static int hf_btatt_body_composition_measurement_flags_measurement_units = -1;
+static int hf_btatt_body_composition_measurement_body_fat_percentage = -1;
+static int hf_btatt_body_composition_measurement_timestamp = -1;
+static int hf_btatt_body_composition_measurement_user_id = -1;
+static int hf_btatt_body_composition_measurement_basal_metabolism = -1;
+static int hf_btatt_body_composition_measurement_muscle_percentage = -1;
+static int hf_btatt_body_composition_measurement_muscle_mass_lb = -1;
+static int hf_btatt_body_composition_measurement_muscle_mass_kg = -1;
+static int hf_btatt_body_composition_measurement_fat_free_mass_lb = -1;
+static int hf_btatt_body_composition_measurement_fat_free_mass_kg = -1;
+static int hf_btatt_body_composition_measurement_soft_lean_mass_lb = -1;
+static int hf_btatt_body_composition_measurement_soft_lean_mass_kg = -1;
+static int hf_btatt_body_composition_measurement_body_water_mass_lb = -1;
+static int hf_btatt_body_composition_measurement_body_water_mass_kg = -1;
+static int hf_btatt_body_composition_measurement_impedance = -1;
+static int hf_btatt_body_composition_measurement_weight_lb = -1;
+static int hf_btatt_body_composition_measurement_weight_kg = -1;
+static int hf_btatt_body_composition_measurement_height_inches = -1;
+static int hf_btatt_body_composition_measurement_height_meter = -1;
+static int hf_btatt_weight_measurement_flags = -1;
+static int hf_btatt_weight_measurement_flags_reserved = -1;
+static int hf_btatt_weight_measurement_flags_bmi_and_height = -1;
+static int hf_btatt_weight_measurement_flags_user_id = -1;
+static int hf_btatt_weight_measurement_flags_timestamp = -1;
+static int hf_btatt_weight_measurement_flags_measurement_units = -1;
+static int hf_btatt_weight_measurement_weight_lb = -1;
+static int hf_btatt_weight_measurement_weight_kg = -1;
+static int hf_btatt_weight_measurement_timestamp = -1;
+static int hf_btatt_weight_measurement_user_id = -1;
+static int hf_btatt_weight_measurement_bmi = -1;
+static int hf_btatt_weight_measurement_height_in = -1;
+static int hf_btatt_weight_measurement_height_m = -1;
+static int hf_btatt_user_control_point_opcode = -1;
+static int hf_btatt_user_control_point_request_opcode = -1;
+static int hf_btatt_user_control_point_response_value = -1;
+static int hf_btatt_user_control_point_consent_code = -1;
+static int hf_btatt_cgm_measurement_size = -1;
+static int hf_btatt_cgm_measurement_flags = -1;
+static int hf_btatt_cgm_measurement_flags_cgm_trend_information = -1;
+static int hf_btatt_cgm_measurement_flags_cgm_quality = -1;
+static int hf_btatt_cgm_measurement_flags_reserved = -1;
+static int hf_btatt_cgm_measurement_flags_sensor_status_annunciation_warning = -1;
+static int hf_btatt_cgm_measurement_flags_sensor_status_annunciation_cal_temp = -1;
+static int hf_btatt_cgm_measurement_flags_sensor_status_annunciation_status = -1;
+static int hf_btatt_cgm_measurement_glucose_concentration = -1;
+static int hf_btatt_cgm_measurement_time_offset = -1;
+static int hf_btatt_cgm_sensor_status_annunciation = -1;
+static int hf_btatt_cgm_sensor_status_annunciation_status = -1;
+static int hf_btatt_cgm_sensor_status_annunciation_status_reserved = -1;
+static int hf_btatt_cgm_sensor_status_annunciation_status_general_device_fault_has_occurred_in_the_sensor = -1;
+static int hf_btatt_cgm_sensor_status_annunciation_status_device_specific_alert = -1;
+static int hf_btatt_cgm_sensor_status_annunciation_status_sensor_malfunction = -1;
+static int hf_btatt_cgm_sensor_status_annunciation_status_sensor_type_incorrect_for_device = -1;
+static int hf_btatt_cgm_sensor_status_annunciation_status_device_battery_low = -1;
+static int hf_btatt_cgm_sensor_status_annunciation_status_session_stopped = -1;
+static int hf_btatt_cgm_sensor_status_annunciation_cal_temp = -1;
+static int hf_btatt_cgm_sensor_status_annunciation_cal_temp_reserved = -1;
+static int hf_btatt_cgm_sensor_status_annunciation_cal_temp_sensor_temperature_too_low_for_valid_test_result_at_time_of_measurement = -1;
+static int hf_btatt_cgm_sensor_status_annunciation_cal_temp_sensor_temperature_too_high_for_valid_test_result_at_time_of_measurement = -1;
+static int hf_btatt_cgm_sensor_status_annunciation_cal_temp_calibration_required = -1;
+static int hf_btatt_cgm_sensor_status_annunciation_cal_temp_calibration_recommended = -1;
+static int hf_btatt_cgm_sensor_status_annunciation_cal_temp_calibration_not_allowed = -1;
+static int hf_btatt_cgm_sensor_status_annunciation_cal_temp_time_synchronization_between_sensor_and_collector_required = -1;
+static int hf_btatt_cgm_sensor_status_annunciation_warning = -1;
+static int hf_btatt_cgm_sensor_status_annunciation_warning_sensor_result_higher_than_the_device_can_process = -1;
+static int hf_btatt_cgm_sensor_status_annunciation_warning_sensor_result_lower_than_the_device_can_process = -1;
+static int hf_btatt_cgm_sensor_status_annunciation_warning_sensor_rate_of_increase_exceeded = -1;
+static int hf_btatt_cgm_sensor_status_annunciation_warning_sensor_rate_of_decrease_exceeded = -1;
+static int hf_btatt_cgm_sensor_status_annunciation_warning_sensor_result_higher_than_the_hyper_level = -1;
+static int hf_btatt_cgm_sensor_status_annunciation_warning_sensor_result_lower_than_the_hypo_level = -1;
+static int hf_btatt_cgm_sensor_status_annunciation_warning_sensor_result_higher_than_the_patient_high_level = -1;
+static int hf_btatt_cgm_sensor_status_annunciation_warning_sensor_result_lower_than_the_patient_low_level = -1;
+static int hf_btatt_cgm_measurement_trend_information = -1;
+static int hf_btatt_cgm_measurement_quality = -1;
+static int hf_btatt_cgm_e2e_crc = -1;
+static int hf_btatt_cgm_feature_feature = -1;
+static int hf_btatt_cgm_feature_feature_reserved = -1;
+static int hf_btatt_cgm_feature_feature_quality = -1;
+static int hf_btatt_cgm_feature_feature_trend_information = -1;
+static int hf_btatt_cgm_feature_feature_multiple_sessions = -1;
+static int hf_btatt_cgm_feature_feature_multiple_bond = -1;
+static int hf_btatt_cgm_feature_feature_e2e_crc = -1;
+static int hf_btatt_cgm_feature_feature_general_device_fault = -1;
+static int hf_btatt_cgm_feature_feature_sensor_type_error_detection = -1;
+static int hf_btatt_cgm_feature_feature_low_battery_detection = -1;
+static int hf_btatt_cgm_feature_feature_sensor_result_high_low_detection = -1;
+static int hf_btatt_cgm_feature_feature_sensor_temperature_high_low_detection = -1;
+static int hf_btatt_cgm_feature_feature_sensor_malfunction_detection = -1;
+static int hf_btatt_cgm_feature_feature_device_specific_alert = -1;
+static int hf_btatt_cgm_feature_feature_rate_of_increase_decrease_alerts = -1;
+static int hf_btatt_cgm_feature_feature_hyper_alerts = -1;
+static int hf_btatt_cgm_feature_feature_hypo_alerts = -1;
+static int hf_btatt_cgm_feature_feature_patient_high_low_alerts = -1;
+static int hf_btatt_cgm_feature_feature_calibration = -1;
+static int hf_btatt_cgm_type_and_sample_location = -1;
+static int hf_btatt_cgm_type = -1;
+static int hf_btatt_cgm_sample_location = -1;
+static int hf_btatt_cgm_time_offset = -1;
+static int hf_btatt_cgm_status = -1;
+static int hf_btatt_cgm_session_start_time = -1;
+static int hf_btatt_cgm_session_run_time = -1;
+static int hf_btatt_cgm_specific_ops_control_point_opcode = -1;
+static int hf_btatt_cgm_specific_ops_control_point_operand = -1;
+static int hf_btatt_cgm_specific_ops_control_point_operand_communication_interval = -1;
+static int hf_btatt_cgm_specific_ops_control_point_calibration_glucose_concentration = -1;
+static int hf_btatt_cgm_specific_ops_control_point_calibration_time = -1;
+static int hf_btatt_cgm_specific_ops_control_point_next_calibration_time = -1;
+static int hf_btatt_cgm_specific_ops_control_point_calibration_data_record_number = -1;
+static int hf_btatt_cgm_specific_ops_control_point_calibration_status = -1;
+static int hf_btatt_cgm_specific_ops_control_point_calibration_status_reserved = -1;
+static int hf_btatt_cgm_specific_ops_control_point_calibration_status_pending = -1;
+static int hf_btatt_cgm_specific_ops_control_point_calibration_status_out_of_range = -1;
+static int hf_btatt_cgm_specific_ops_control_point_calibration_status_rejected = -1;
+static int hf_btatt_cgm_specific_ops_control_point_operand_calibration_data_record_number = -1;
+static int hf_btatt_cgm_specific_ops_control_point_operand_alert_level = -1;
+static int hf_btatt_cgm_specific_ops_control_point_operand_alert_level_rate = -1;
+static int hf_btatt_cgm_specific_ops_control_point_request_opcode = -1;
+static int hf_btatt_cgm_specific_ops_control_point_response_code = -1;
+static int hf_btatt_uri = -1;
+static int hf_btatt_http_headers = -1;
+static int hf_btatt_http_status_code = -1;
+static int hf_btatt_http_data_status = -1;
+static int hf_btatt_http_data_status_reserved = -1;
+static int hf_btatt_http_data_status_body_truncated = -1;
+static int hf_btatt_http_data_status_body_received = -1;
+static int hf_btatt_http_data_status_headers_truncated = -1;
+static int hf_btatt_http_data_status_headers_received = -1;
+static int hf_btatt_http_entity_body = -1;
+static int hf_btatt_http_control_point_opcode = -1;
+static int hf_btatt_https_security = -1;
+static int hf_btatt_tds_opcode = -1;
+static int hf_btatt_tds_result_code = -1;
+static int hf_btatt_tds_organization_id = -1;
+static int hf_btatt_tds_data = -1;
+static int hf_btatt_ots_feature_oacp = -1;
+static int hf_btatt_ots_feature_oacp_reserved = -1;
+static int hf_btatt_ots_feature_oacp_abort = -1;
+static int hf_btatt_ots_feature_oacp_patching_of_object = -1;
+static int hf_btatt_ots_feature_oacp_truncation_of_objects = -1;
+static int hf_btatt_ots_feature_oacp_appending_additional_data_to_object = -1;
+static int hf_btatt_ots_feature_oacp_write = -1;
+static int hf_btatt_ots_feature_oacp_read = -1;
+static int hf_btatt_ots_feature_oacp_execute = -1;
+static int hf_btatt_ots_feature_oacp_calculate_checksum = -1;
+static int hf_btatt_ots_feature_oacp_delete = -1;
+static int hf_btatt_ots_feature_oacp_create = -1;
+static int hf_btatt_ots_feature_olcp = -1;
+static int hf_btatt_ots_feature_olcp_reserved = -1;
+static int hf_btatt_ots_feature_olcp_clear_marking = -1;
+static int hf_btatt_ots_feature_olcp_request_number_of_objects = -1;
+static int hf_btatt_ots_feature_olcp_order = -1;
+static int hf_btatt_ots_feature_olcp_go_to = -1;
+static int hf_btatt_ots_object_name = -1;
+static int hf_btatt_ots_current_size = -1;
+static int hf_btatt_ots_allocated_size = -1;
+static int hf_btatt_ots_object_id = -1;
+static int hf_btatt_ots_properties = -1;
+static int hf_btatt_ots_properties_reserved = -1;
+static int hf_btatt_ots_properties_mark = -1;
+static int hf_btatt_ots_properties_patch = -1;
+static int hf_btatt_ots_properties_truncate = -1;
+static int hf_btatt_ots_properties_append = -1;
+static int hf_btatt_ots_properties_write = -1;
+static int hf_btatt_ots_properties_read = -1;
+static int hf_btatt_ots_properties_execute = -1;
+static int hf_btatt_ots_properties_delete = -1;
+static int hf_btatt_ots_flags = -1;
+static int hf_btatt_ots_flags_reserved = -1;
+static int hf_btatt_ots_flags_object_deletion = -1;
+static int hf_btatt_ots_flags_object_creation = -1;
+static int hf_btatt_ots_flags_change_occured_to_the_object_metadata = -1;
+static int hf_btatt_ots_flags_change_occured_to_the_object_contents = -1;
+static int hf_btatt_ots_flags_source_of_change = -1;
+static int hf_btatt_ots_action_opcode = -1;
+static int hf_btatt_ots_size = -1;
+static int hf_btatt_ots_offset = -1;
+static int hf_btatt_ots_length = -1;
+static int hf_btatt_ots_execute_data = -1;
+static int hf_btatt_ots_action_response_opcode = -1;
+static int hf_btatt_ots_action_result_code = -1;
+static int hf_btatt_ots_checksum = -1;
+static int hf_btatt_ots_list_opcode = -1;
+static int hf_btatt_ots_list_order = -1;
+static int hf_btatt_ots_list_response_opcode = -1;
+static int hf_btatt_ots_list_result_code = -1;
+static int hf_btatt_ots_list_total_number_of_objects = -1;
+static int hf_btatt_ots_filter = -1;
+static int hf_btatt_ots_name_string = -1;
+static int hf_btatt_ots_size_from = -1;
+static int hf_btatt_ots_size_to = -1;
+static int hf_btatt_ots_object_first_created = -1;
+static int hf_btatt_ots_object_last_modified = -1;
+static int hf_gatt_nordic_uart_tx = -1;
+static int hf_gatt_nordic_uart_rx = -1;
+static int hf_gatt_nordic_dfu_packet = -1;
+static int hf_gatt_nordic_dfu_control_point_opcode = -1;
+static int hf_gatt_nordic_dfu_control_point_init_packet = -1;
+static int hf_gatt_nordic_dfu_control_point_number_of_bytes = -1;
+static int hf_gatt_nordic_dfu_control_point_image_type = -1;
+static int hf_gatt_nordic_dfu_control_point_number_of_packets = -1;
+static int hf_gatt_nordic_dfu_control_point_request_opcode = -1;
+static int hf_gatt_nordic_dfu_control_point_response_value = -1;
+static int hf_btatt_valid_range_lower_inclusive_value = -1;
+static int hf_btatt_valid_range_upper_inclusive_value = -1;
 static int hf_request_in_frame = -1;
 static int hf_response_in_frame = -1;
 
@@ -906,6 +1324,306 @@ static const int *hfx_btatt_heart_rate_measurement_flags[] = {
     NULL
 };
 
+static const int *hfx_btatt_uncertainty[] = {
+    &hf_btatt_uncertainty_reserved,
+    &hf_btatt_uncertainty_precision,
+    &hf_btatt_uncertainty_update_time,
+    &hf_btatt_uncertainty_stationary,
+    NULL
+};
+
+static const int *hfx_btatt_indoor_positioning_configuration[] = {
+    &hf_btatt_indoor_positioning_configuration_reserved,
+    &hf_btatt_indoor_positioning_configuration_location_name,
+    &hf_btatt_indoor_positioning_configuration_uncertainty,
+    &hf_btatt_indoor_positioning_configuration_floor_number,
+    &hf_btatt_indoor_positioning_configuration_altitude,
+    &hf_btatt_indoor_positioning_configuration_tx_power,
+    &hf_btatt_indoor_positioning_configuration_coordinate_system,
+    &hf_btatt_indoor_positioning_configuration_coordinates,
+    NULL
+};
+
+static const int *hfx_btatt_rsc_measurement_flags[] = {
+    &hf_btatt_rsc_measurement_flags_reserved,
+    &hf_btatt_rsc_measurement_flags_type_of_movement,
+    &hf_btatt_rsc_measurement_flags_total_distance_present,
+    &hf_btatt_rsc_measurement_flags_instantaneous_stride_length_present,
+    NULL
+};
+
+static const int *hfx_btatt_cycling_power_measurement_flags[] = {
+    &hf_btatt_cycling_power_measurement_flags_reserved,
+    &hf_btatt_cycling_power_measurement_flags_offset_compensation_indicator,
+    &hf_btatt_cycling_power_measurement_flags_accumulated_energy,
+    &hf_btatt_cycling_power_measurement_flags_bottom_dead_spot_angle,
+    &hf_btatt_cycling_power_measurement_flags_top_dead_spot_angle,
+    &hf_btatt_cycling_power_measurement_flags_extreme_angles,
+    &hf_btatt_cycling_power_measurement_flags_extreme_torque_magnitudes,
+    &hf_btatt_cycling_power_measurement_flags_extreme_force_magnitudes,
+    &hf_btatt_cycling_power_measurement_flags_crank_revolution_data,
+    &hf_btatt_cycling_power_measurement_flags_wheel_revolution_data,
+    &hf_btatt_cycling_power_measurement_flags_accumulated_torque_source,
+    &hf_btatt_cycling_power_measurement_flags_accumulated_torque,
+    &hf_btatt_cycling_power_measurement_flags_pedal_power_balance_reference,
+    &hf_btatt_cycling_power_measurement_flags_pedal_power_balance,
+    NULL
+};
+
+static const int *hfx_btatt_cycling_power_measurement_extreme_angles[] = {
+    &hf_btatt_cycling_power_measurement_extreme_angles_maximum,
+    &hf_btatt_cycling_power_measurement_extreme_angles_minimum,
+    NULL
+};
+
+static const int *hfx_btatt_csc_measurement_flags[] = {
+    &hf_btatt_csc_measurement_flags_reserved,
+    &hf_btatt_csc_measurement_flags_crank_revolution_data,
+    &hf_btatt_csc_measurement_flags_wheel_revolution_data,
+    NULL
+};
+
+static const int *hfx_btatt_cycling_power_vector_flags[] = {
+    &hf_btatt_cycling_power_vector_flags_reserved,
+    &hf_btatt_cycling_power_vector_flags_instantaneous_measurement_direction,
+    &hf_btatt_cycling_power_vector_flags_instantaneous_torque_magnitude_array,
+    &hf_btatt_cycling_power_vector_flags_instantaneous_force_magnitude_array,
+    &hf_btatt_cycling_power_vector_flags_first_crank_measurement_angle,
+    &hf_btatt_cycling_power_vector_flags_crank_revolution_data,
+    NULL
+};
+
+static const int *hfx_btatt_cycling_power_control_point_content_mask[] = {
+    &hf_btatt_cycling_power_control_point_content_mask_reserved,
+    &hf_btatt_cycling_power_control_point_content_mask_accumulated_energy,
+    &hf_btatt_cycling_power_control_point_content_mask_bottom_dead_spot_angle,
+    &hf_btatt_cycling_power_control_point_content_mask_top_dead_spot_angle,
+    &hf_btatt_cycling_power_control_point_content_mask_extreme_angles,
+    &hf_btatt_cycling_power_control_point_content_mask_extreme_magnitudes,
+    &hf_btatt_cycling_power_control_point_content_mask_crank_revolution_data,
+    &hf_btatt_cycling_power_control_point_content_mask_wheel_revolution_data,
+    &hf_btatt_cycling_power_control_point_content_mask_accumulated_torque,
+    &hf_btatt_cycling_power_control_point_content_mask_pedal_power_balance,
+    NULL
+};
+
+static const int *hfx_btatt_location_and_speed_flags[] = {
+    &hf_btatt_location_and_speed_flags_reserved,
+    &hf_btatt_location_and_speed_flags_heading_source,
+    &hf_btatt_location_and_speed_flags_elevation_source,
+    &hf_btatt_location_and_speed_flags_speed_and_distance_format,
+    &hf_btatt_location_and_speed_flags_position_status,
+    &hf_btatt_location_and_speed_flags_utc_time,
+    &hf_btatt_location_and_speed_flags_rolling_time,
+    &hf_btatt_location_and_speed_flags_heading,
+    &hf_btatt_location_and_speed_flags_elevation,
+    &hf_btatt_location_and_speed_flags_location,
+    &hf_btatt_location_and_speed_flags_total_distance,
+    &hf_btatt_location_and_speed_flags_instantaneous_speed,
+    NULL
+};
+
+static const int *hfx_btatt_navigation_flags[] = {
+    &hf_btatt_navigation_flags_reserved,
+    &hf_btatt_navigation_flags_destination_reached,
+    &hf_btatt_navigation_flags_waypoint_reached,
+    &hf_btatt_navigation_flags_navigation_indicator_type,
+    &hf_btatt_navigation_flags_heading_source,
+    &hf_btatt_navigation_flags_position_status,
+    &hf_btatt_navigation_flags_estimated_time_of_arrival,
+    &hf_btatt_navigation_flags_remaining_vertical_distance,
+    &hf_btatt_navigation_flags_remaining_distance,
+    NULL
+};
+
+static const int *hfx_btatt_position_quality_flags[] = {
+    &hf_btatt_position_quality_flags_reserved,
+    &hf_btatt_position_quality_flags_position_status,
+    &hf_btatt_position_quality_flags_vdop,
+    &hf_btatt_position_quality_flags_hdop,
+    &hf_btatt_position_quality_flags_evpe,
+    &hf_btatt_position_quality_flags_ehpe,
+    &hf_btatt_position_quality_flags_time_to_first_fix,
+    &hf_btatt_position_quality_flags_number_of_beacons_in_view,
+    &hf_btatt_position_quality_flags_number_of_beacons_in_solution,
+    NULL
+};
+
+static const int *hfx_btatt_ln_control_point_content_mask[] = {
+    &hf_btatt_ln_control_point_content_mask_reserved,
+    &hf_btatt_ln_control_point_content_mask_utc_time,
+    &hf_btatt_ln_control_point_content_mask_rolling_time,
+    &hf_btatt_ln_control_point_content_mask_heading,
+    &hf_btatt_ln_control_point_content_mask_elevation,
+    &hf_btatt_ln_control_point_content_mask_location,
+    &hf_btatt_ln_control_point_content_mask_total_distance,
+    &hf_btatt_ln_control_point_content_mask_instantaneous_speed,
+    NULL
+};
+
+static const int *hfx_btatt_body_composition_measurement_flags[] = {
+    &hf_btatt_body_composition_measurement_flags_reserved,
+    &hf_btatt_body_composition_measurement_flags_multiple_packet_measurement,
+    &hf_btatt_body_composition_measurement_flags_height,
+    &hf_btatt_body_composition_measurement_flags_weight,
+    &hf_btatt_body_composition_measurement_flags_impedance,
+    &hf_btatt_body_composition_measurement_flags_body_water_mass,
+    &hf_btatt_body_composition_measurement_flags_soft_lean_mass,
+    &hf_btatt_body_composition_measurement_flags_fat_free_mass,
+    &hf_btatt_body_composition_measurement_flags_muscle_mass,
+    &hf_btatt_body_composition_measurement_flags_muscle_percentage,
+    &hf_btatt_body_composition_measurement_flags_basal_metabolism,
+    &hf_btatt_body_composition_measurement_flags_user_id,
+    &hf_btatt_body_composition_measurement_flags_timestamp,
+    &hf_btatt_body_composition_measurement_flags_measurement_units,
+    NULL
+};
+
+static const int *hfx_btatt_weight_measurement_flags[] = {
+    &hf_btatt_weight_measurement_flags_reserved,
+    &hf_btatt_weight_measurement_flags_bmi_and_height,
+    &hf_btatt_weight_measurement_flags_user_id,
+    &hf_btatt_weight_measurement_flags_timestamp,
+    &hf_btatt_weight_measurement_flags_measurement_units,
+    NULL
+};
+
+static const int *hfx_btatt_cgm_measurement_flags[] = {
+    &hf_btatt_cgm_measurement_flags_cgm_trend_information,
+    &hf_btatt_cgm_measurement_flags_cgm_quality,
+    &hf_btatt_cgm_measurement_flags_reserved,
+    &hf_btatt_cgm_measurement_flags_sensor_status_annunciation_warning,
+    &hf_btatt_cgm_measurement_flags_sensor_status_annunciation_cal_temp,
+    &hf_btatt_cgm_measurement_flags_sensor_status_annunciation_status,
+    NULL
+};
+
+static const int *hfx_btatt_cgm_sensor_status_annunciation_status[] = {
+    &hf_btatt_cgm_sensor_status_annunciation_status_reserved,
+    &hf_btatt_cgm_sensor_status_annunciation_status_general_device_fault_has_occurred_in_the_sensor,
+    &hf_btatt_cgm_sensor_status_annunciation_status_device_specific_alert,
+    &hf_btatt_cgm_sensor_status_annunciation_status_sensor_malfunction,
+    &hf_btatt_cgm_sensor_status_annunciation_status_sensor_type_incorrect_for_device,
+    &hf_btatt_cgm_sensor_status_annunciation_status_device_battery_low,
+    &hf_btatt_cgm_sensor_status_annunciation_status_session_stopped,
+    NULL
+};
+
+static const int *hfx_btatt_cgm_sensor_status_annunciation_cal_temp[] = {
+    &hf_btatt_cgm_sensor_status_annunciation_cal_temp_reserved,
+    &hf_btatt_cgm_sensor_status_annunciation_cal_temp_sensor_temperature_too_low_for_valid_test_result_at_time_of_measurement,
+    &hf_btatt_cgm_sensor_status_annunciation_cal_temp_sensor_temperature_too_high_for_valid_test_result_at_time_of_measurement,
+    &hf_btatt_cgm_sensor_status_annunciation_cal_temp_calibration_required,
+    &hf_btatt_cgm_sensor_status_annunciation_cal_temp_calibration_recommended,
+    &hf_btatt_cgm_sensor_status_annunciation_cal_temp_calibration_not_allowed,
+    &hf_btatt_cgm_sensor_status_annunciation_cal_temp_time_synchronization_between_sensor_and_collector_required,
+    NULL
+};
+
+static const int *hfx_btatt_cgm_sensor_status_annunciation_warning[] = {
+    &hf_btatt_cgm_sensor_status_annunciation_warning_sensor_result_higher_than_the_device_can_process,
+    &hf_btatt_cgm_sensor_status_annunciation_warning_sensor_result_lower_than_the_device_can_process,
+    &hf_btatt_cgm_sensor_status_annunciation_warning_sensor_rate_of_increase_exceeded,
+    &hf_btatt_cgm_sensor_status_annunciation_warning_sensor_rate_of_decrease_exceeded,
+    &hf_btatt_cgm_sensor_status_annunciation_warning_sensor_result_higher_than_the_hyper_level,
+    &hf_btatt_cgm_sensor_status_annunciation_warning_sensor_result_lower_than_the_hypo_level,
+    &hf_btatt_cgm_sensor_status_annunciation_warning_sensor_result_higher_than_the_patient_high_level,
+    &hf_btatt_cgm_sensor_status_annunciation_warning_sensor_result_lower_than_the_patient_low_level,
+    NULL
+};
+
+static const int *hfx_btatt_cgm_feature_feature[] = {
+    &hf_btatt_cgm_feature_feature_reserved,
+    &hf_btatt_cgm_feature_feature_quality,
+    &hf_btatt_cgm_feature_feature_trend_information,
+    &hf_btatt_cgm_feature_feature_multiple_sessions,
+    &hf_btatt_cgm_feature_feature_multiple_bond,
+    &hf_btatt_cgm_feature_feature_e2e_crc,
+    &hf_btatt_cgm_feature_feature_general_device_fault,
+    &hf_btatt_cgm_feature_feature_sensor_type_error_detection,
+    &hf_btatt_cgm_feature_feature_low_battery_detection,
+    &hf_btatt_cgm_feature_feature_sensor_result_high_low_detection,
+    &hf_btatt_cgm_feature_feature_sensor_temperature_high_low_detection,
+    &hf_btatt_cgm_feature_feature_sensor_malfunction_detection,
+    &hf_btatt_cgm_feature_feature_device_specific_alert,
+    &hf_btatt_cgm_feature_feature_rate_of_increase_decrease_alerts,
+    &hf_btatt_cgm_feature_feature_hyper_alerts,
+    &hf_btatt_cgm_feature_feature_hypo_alerts,
+    &hf_btatt_cgm_feature_feature_patient_high_low_alerts,
+    &hf_btatt_cgm_feature_feature_calibration,
+    NULL
+};
+
+static const int *hfx_btatt_cgm_type_and_sample_location[] = {
+    &hf_btatt_cgm_type,
+    &hf_btatt_cgm_sample_location,
+    NULL
+};
+
+static const int *hfx_btatt_cgm_specific_ops_control_point_calibration_status[] = {
+    &hf_btatt_cgm_specific_ops_control_point_calibration_status_reserved,
+    &hf_btatt_cgm_specific_ops_control_point_calibration_status_pending,
+    &hf_btatt_cgm_specific_ops_control_point_calibration_status_out_of_range,
+    &hf_btatt_cgm_specific_ops_control_point_calibration_status_rejected,
+    NULL
+};
+
+static const int *hfx_btatt_http_data_status[] = {
+    &hf_btatt_http_data_status_reserved,
+    &hf_btatt_http_data_status_body_truncated,
+    &hf_btatt_http_data_status_body_received,
+    &hf_btatt_http_data_status_headers_truncated,
+    &hf_btatt_http_data_status_headers_received,
+    NULL
+};
+
+static const int *hfx_btatt_ots_feature_oacp[] = {
+    &hf_btatt_ots_feature_oacp_reserved,
+    &hf_btatt_ots_feature_oacp_abort,
+    &hf_btatt_ots_feature_oacp_patching_of_object,
+    &hf_btatt_ots_feature_oacp_truncation_of_objects,
+    &hf_btatt_ots_feature_oacp_appending_additional_data_to_object,
+    &hf_btatt_ots_feature_oacp_write,
+    &hf_btatt_ots_feature_oacp_read,
+    &hf_btatt_ots_feature_oacp_execute,
+    &hf_btatt_ots_feature_oacp_calculate_checksum,
+    &hf_btatt_ots_feature_oacp_delete,
+    &hf_btatt_ots_feature_oacp_create,
+    NULL
+};
+
+static const int *hfx_btatt_ots_feature_olcp[] = {
+    &hf_btatt_ots_feature_olcp_reserved,
+    &hf_btatt_ots_feature_olcp_clear_marking,
+    &hf_btatt_ots_feature_olcp_request_number_of_objects,
+    &hf_btatt_ots_feature_olcp_order,
+    &hf_btatt_ots_feature_olcp_go_to,
+    NULL
+};
+
+static const int *hfx_btatt_ots_properties[] = {
+    &hf_btatt_ots_properties_reserved,
+    &hf_btatt_ots_properties_mark,
+    &hf_btatt_ots_properties_patch,
+    &hf_btatt_ots_properties_truncate,
+    &hf_btatt_ots_properties_append,
+    &hf_btatt_ots_properties_write,
+    &hf_btatt_ots_properties_read,
+    &hf_btatt_ots_properties_execute,
+    &hf_btatt_ots_properties_delete,
+    NULL
+};
+
+
+static const int *hfx_btatt_ots_flags[] = {
+    &hf_btatt_ots_flags_reserved,
+    &hf_btatt_ots_flags_object_deletion,
+    &hf_btatt_ots_flags_object_creation,
+    &hf_btatt_ots_flags_change_occured_to_the_object_metadata,
+    &hf_btatt_ots_flags_change_occured_to_the_object_contents,
+    &hf_btatt_ots_flags_source_of_change,
+    NULL
+};
 
 /* Initialize the subtree pointers */
 static gint ett_btatt = -1;
@@ -920,6 +1638,13 @@ static expert_field ei_btatt_uuid_format_unknown = EI_INIT;
 static expert_field ei_btatt_handle_too_few = EI_INIT;
 static expert_field ei_btatt_mtu_exceeded = EI_INIT;
 static expert_field ei_btatt_mtu_full = EI_INIT;
+static expert_field ei_btatt_consent_out_of_bounds = EI_INIT;
+static expert_field ei_btatt_cgm_size_too_small = EI_INIT;
+static expert_field ei_btatt_opcode_invalid_request = EI_INIT;
+static expert_field ei_btatt_opcode_invalid_response = EI_INIT;
+       expert_field ei_btatt_invalid_usage = EI_INIT;
+static expert_field ei_btatt_bad_data = EI_INIT;
+static expert_field ei_btatt_unexpected_data = EI_INIT;
 static expert_field ei_btatt_undecoded = EI_INIT;
 
 static wmem_tree_t *mtus = NULL;
@@ -928,13 +1653,13 @@ static wmem_tree_t *fragments = NULL;
 static wmem_tree_t *handle_to_uuid = NULL;
 
 static dissector_handle_t btatt_handle;
+static dissector_handle_t btgatt_handle;
+static dissector_handle_t http_handle;
 static dissector_handle_t usb_hid_boot_keyboard_input_report_handle;
 static dissector_handle_t usb_hid_boot_keyboard_output_report_handle;
 static dissector_handle_t usb_hid_boot_mouse_input_report_handle;
 
 static dissector_table_t att_handle_dissector_table;
-static dissector_table_t att_uuid16_dissector_table;
-static dissector_table_t att_uuid128_dissector_table;
 
 extern value_string_ext ext_usb_vendors_vals;
 
@@ -970,6 +1695,66 @@ static const value_string opcode_vals[] = {
     {0xD2, "Signed Write Command"},
     {0x0, NULL}
 };
+
+#define ATT_OPCODE_READ_BY_TYPE_REQUEST         0x08
+#define ATT_OPCODE_READ_BY_TYPE_RESPONSE        0x09
+
+#define ATT_OPCODE_READ_REQUEST                 0x0A
+#define ATT_OPCODE_READ_RESPONSE                0x0B
+#define ATT_OPCODE_READ_BLOB_REQUEST            0x0C
+#define ATT_OPCODE_READ_BLOB_RESPONSE           0x0D
+#define ATT_OPCODE_READ_MULTIPLE_REQUEST        0x0E
+#define ATT_OPCODE_READ_MULTIPLE_RESPONSE       0x0F
+
+#define ATT_OPCODE_READ_BY_GROUP_TYPE_REQUEST   0x10
+#define ATT_OPCODE_READ_BY_GROUP_TYPE_RESPONSE  0x11
+
+#define ATT_OPCODE_WRITE_REQUEST                0x12
+#define ATT_OPCODE_WRITE_RESPONSE               0x13
+#define ATT_OPCODE_WRITE_PREPARE_REQUEST        0x16
+#define ATT_OPCODE_WRITE_PREPARE_RESPONSE       0x17
+#define ATT_OPCODE_WRITE_COMMAND                0x52
+#define ATT_OPCODE_WRITE_SIGNED_COMMAND         0xD2
+
+#define ATT_OPCODE_HANDLE_VALUE_NOTIFICATION    0x1B
+#define ATT_OPCODE_HANDLE_VALUE_INDICATION      0x1D
+#define ATT_OPCODE_HANDLE_VALUE_CONFIRMATION    0x1E
+
+#define GATT_SERVICE_GENERIC_ACCESS_PROFILE         0x1800
+#define GATT_SERVICE_GENERIC_ATTRIBUTE_PROFILE      0x1801
+#define GATT_SERVICE_IMMEDIATE_ALERT                0x1802
+#define GATT_SERVICE_LINK_LOSS                      0x1803
+#define GATT_SERVICE_TX_POWER                       0x1804
+#define GATT_SERVICE_CURRENT_TIME_SERVICE           0x1805
+#define GATT_SERVICE_REFERENCE_TIME_UPDATE_SERVICE  0x1806
+#define GATT_SERVICE_NEXT_DST_CHANGE_SERVICE        0x1807
+#define GATT_SERVICE_GLUCOSE                        0x1808
+#define GATT_SERVICE_HEALTH_THERMOMETER             0x1809
+#define GATT_SERVICE_DEVICE_INFORMATION             0x180A
+#define GATT_SERVICE_HEART_RATE                     0x180D
+#define GATT_SERVICE_PHONE_ALERT_STATUS_SERVICE     0x180E
+#define GATT_SERVICE_BATTERY_SERVICE                0x180F
+#define GATT_SERVICE_BLOOD_PRESSURE                 0x1810
+#define GATT_SERVICE_ALERT_NOTIFICATION_SERVICE     0x1811
+#define GATT_SERVICE_HUMAN_INTERFACE_DEVICE         0x1812
+#define GATT_SERVICE_SCAN_PARAMETERS                0x1813
+#define GATT_SERVICE_RUNNING_SPEED_AND_CADENCE      0x1814
+#define GATT_SERVICE_AUTOMATION_IO                  0x1815
+#define GATT_SERVICE_CYCLING_SPEED_AND_CADENCE      0x1816
+#define GATT_SERVICE_CYCLING_POWER                  0x1818
+#define GATT_SERVICE_LOCATION_AND_NAVIGATION        0x1819
+#define GATT_SERVICE_ENVIRONMENTAL_SENSING          0x181A
+#define GATT_SERVICE_BODY_COMPOSITION               0x181B
+#define GATT_SERVICE_USER_DATA                      0x181C
+#define GATT_SERVICE_WEIGHT_SCALE                   0x181D
+#define GATT_SERVICE_BOND_MANAGEMENT                0x181E
+#define GATT_SERVICE_CONTINUOUS_GLUCOSE_MONITORING  0x181F
+#define GATT_SERVICE_INTERNET_PROTOCOL_SUPPORT      0x1820
+#define GATT_SERVICE_INDOOR_POSITIONING             0x1821
+#define GATT_SERVICE_PULSE_OXIMETER                 0x1822
+#define GATT_SERVICE_HTTP_PROXY                     0x1823
+#define GATT_SERVICE_TRANSPORT_DISCOVERY            0x1824
+#define GATT_SERVICE_OBJECT_TRANSFER                0x1825
 
 /* Error codes */
 static const value_string error_vals[] = {
@@ -1430,28 +2215,38 @@ static const value_string appearance_category_vals[] = {
     {0x0, NULL}
 };
 
+static const value_string appearance_subcategory_generic_vals[] = {
+    {0x00, "Generic"},
+    {0x0, NULL}
+};
+
 static const value_string appearance_subcategory_watch_vals[] = {
+    {0x00, "Generic"},
     {0x01, "Sports Watch"},
     {0x0, NULL}
 };
 
 static const value_string appearance_subcategory_thermometer_vals[] = {
+    {0x00, "Generic"},
     {0x01, "Ear"},
     {0x0, NULL}
 };
 
 static const value_string appearance_subcategory_heart_rate_vals[] = {
+    {0x00, "Generic"},
     {0x01, "Heart Rate Belt"},
     {0x0, NULL}
 };
 
 static const value_string appearance_subcategory_blood_pressure_vals[] = {
+    {0x00, "Generic"},
     {0x01, "Arm"},
     {0x02, "Wrist"},
     {0x0, NULL}
 };
 
 static const value_string appearance_subcategory_hid_vals[] = {
+    {0x00, "Generic"},
     {0x01, "Keyboard"},
     {0x02, "Mouse"},
     {0x03, "Joystick"},
@@ -1464,6 +2259,7 @@ static const value_string appearance_subcategory_hid_vals[] = {
 };
 
 static const value_string appearance_subcategory_running_walking_sensor_vals[] = {
+    {0x00, "Generic"},
     {0x01, "In-Shoe"},
     {0x02, "On-Shoe"},
     {0x03, "On-Hip"},
@@ -1471,6 +2267,7 @@ static const value_string appearance_subcategory_running_walking_sensor_vals[] =
 };
 
 static const value_string appearance_subcategory_cycling_vals[] = {
+    {0x00, "Generic"},
     {0x01, "Cycling Computer"},
     {0x02, "Speed Sensor"},
     {0x03, "Cadence Sensor"},
@@ -1480,12 +2277,14 @@ static const value_string appearance_subcategory_cycling_vals[] = {
 };
 
 static const value_string appearance_subcategory_pulse_oximeter_vals[] = {
+    {0x00, "Generic"},
     {0x01, "Fingertip"},
     {0x02, "Wrist Worn"},
     {0x0, NULL}
 };
 
 static const value_string appearance_subcategory_outdoor_sports_activity_vals[] = {
+    {0x00, "Generic"},
     {0x01, "Location Display Device"},
     {0x02, "Location and Navigation Display Device"},
     {0x03, "Location Pod"},
@@ -1941,6 +2740,467 @@ static const value_string record_access_control_point_response_code_vals[] = {
     {0x0, NULL}
 };
 
+static const value_string value_trigger_setting_condition_vals[] = {
+    { 0x00,   "None"},
+    { 0x01,   "Analog - Crossed a boundary"},
+    { 0x02,   "Analog - On the boundary"},
+    { 0x03,   "Analog - Exceeds a boundary"},
+    { 0x04,   "Bitmask"},
+    { 0x05,   "Analog Interval - Inside or outside the boundaries"},
+    { 0x06,   "Analog Interval - On the boundaries"},
+    { 0x07,   "No value trigger"},
+    {0x0, NULL}
+};
+
+
+static const value_string digital_vals[] = {
+    { 0x00,   "Inactive"},
+    { 0x01,   "Active"},
+    { 0x02,   "Tri-state"},
+    { 0x03,   "Output-state"},
+    {0x0, NULL}
+};
+
+
+const value_string btatt_ips_uncertainty_stationary_vals[] = {
+    { 0x00,   "Stationary"},
+    { 0x01,   "Mobile"},
+    {0x0, NULL}
+};
+
+
+const value_string btatt_ips_uncertainty_update_time_vals[] = {
+    { 0x00,   "Up to 3s"},
+    { 0x01,   "Up to 4s"},
+    { 0x02,   "Up to 6s"},
+    { 0x03,   "Up to 12s"},
+    { 0x04,   "Up to 28s"},
+    { 0x05,   "Up to 89s"},
+    { 0x06,   "Up to 426s"},
+    { 0x07,   "3541s"},
+    {0x0, NULL}
+};
+
+
+const value_string btatt_ips_uncertainty_precision_vals[] = {
+    { 0x00,   "Less than 0.1m"},
+    { 0x01,   "0.1-1m"},
+    { 0x02,   "1-2m"},
+    { 0x03,   "2-5m"},
+    { 0x04,   "5-10m"},
+    { 0x05,   "10-50m"},
+    { 0x06,   "Greater than 50m"},
+    { 0x07,   "N/A"},
+    {0x0, NULL}
+};
+
+
+const value_string btatt_ips_coordinate_system[] = {
+    { 0x00,   "WGS84 Coordinate System"},
+    { 0x01,   "Local Coordinate System"},
+    {0x0, NULL}
+};
+
+
+static const value_string time_trigger_setting_condition_vals[] = {
+    { 0x00,   "No time-based triggering used"},
+    { 0x01,   "Indicates or notifies unconditionally after a settable time"},
+    { 0x02,   "Not indicated or notified more often than a settable time"},
+    { 0x03,   "Changed more often than"},
+    {0x0, NULL}
+};
+
+
+static const value_string rsc_measurement_flags_type_of_movement_vals[] = {
+    { 0x00,   "Walking"},
+    { 0x01,   "Running"},
+    {0x0, NULL}
+};
+
+static const value_string sc_control_point_opcode_vals[] = {
+    { 0x01,   "Set Cumulative Value"},
+    { 0x02,   "Start Sensor Calibration"},
+    { 0x03,   "Update Sensor Location"},
+    { 0x04,   "Request Supported Sensor Locations"},
+    { 0x10,   "Response Code"},
+    {0x0, NULL}
+};
+
+static const value_string sc_control_point_response_value_vals[] = {
+    { 0x01,   "Success"},
+    { 0x02,   "Opcode not Supported"},
+    { 0x03,   "Invalid Parameter"},
+    { 0x04,   "Operation Failed"},
+    {0x0, NULL}
+};
+
+static const value_string cycling_power_measurement_flags_accumulated_torque_source_vals[] = {
+    { 0x00,   "Wheel Based"},
+    { 0x01,   "Crank Based"},
+    {0x0, NULL}
+};
+
+static const value_string cycling_power_vector_flags_instantaneous_measurement_direction_vals[] = {
+    { 0x00,   "Unknown"},
+    { 0x01,   "Tangential Component"},
+    { 0x02,   "Radial Component"},
+    { 0x03,   "Lateral Component"},
+    {0x0, NULL}
+};
+
+static const value_string cycling_power_control_point_opcode[] = {
+    { 0x01,   "Set Cumulative Value"},
+    { 0x02,   "Update Sensor Location"},
+    { 0x03,   "Request Supported Sensor Locations"},
+    { 0x04,   "Set Crank Length"},
+    { 0x05,   "Request Crank Length"},
+    { 0x06,   "Set Chain Length"},
+    { 0x07,   "Request Chain Length"},
+    { 0x08,   "Set Chain Weight"},
+    { 0x09,   "Request Chain Weight"},
+    { 0x0A,   "Set Span Length"},
+    { 0x0B,   "Request Span Length"},
+    { 0x0C,   "Start Offset Compensation"},
+    { 0x0D,   "Mask Cycling Power Measurement Characteristic Content"},
+    { 0x0E,   "Request Sampling Rate"},
+    { 0x0F,   "Request Factory Calibration Date"},
+    { 0x20,   "Response Code"},
+    {0x0, NULL}
+};
+
+static const value_string cycling_power_control_point_response_value[] = {
+    { 0x01,   "Success"},
+    { 0x02,   "Opcode not Supported"},
+    { 0x03,   "Invalid Parameter"},
+    { 0x04,   "Operation Failed"},
+    {0x0, NULL}
+};
+
+static const value_string location_and_speed_flags_elevation_source_vals[] = {
+    { 0x00,   "Positioning System"},
+    { 0x01,   "Barometric Air Pressure"},
+    { 0x02,   "Database Service (or similar)"},
+    { 0x03,   "Other"},
+    {0x0, NULL}
+};
+
+static const value_string flags_position_status_vals[] = {
+    { 0x00,   "No Position"},
+    { 0x01,   "Position Ok"},
+    { 0x02,   "Estimated Position"},
+    { 0x03,   "Last Known Position"},
+    {0x0, NULL}
+};
+
+static const value_string ln_control_point_opcode[] = {
+    { 0x01,   "Set Cumulative Value"},
+    { 0x02,   "Mask Location and Speed Characteristic Content"},
+    { 0x03,   "Navigation Control"},
+    { 0x04,   "Request Number of Routes"},
+    { 0x05,   "Request Name of Route"},
+    { 0x06,   "Select Route"},
+    { 0x07,   "Set Fix Rate"},
+    { 0x08,   "Set Elevation"},
+    { 0x20,   "Response Code"},
+    {0x0, NULL}
+};
+
+static const value_string ln_control_point_navigation_control_vals[] = {
+    { 0x00,   "Stop Notification of the Navigation characteristic. Stop Navigation."},
+    { 0x01,   "Start Notification of the Navigation characteristic. Start Navigation to the first waypoint on a route."},
+    { 0x02,   "Stop Notification of the Navigation characteristic. Pause Navigation keeping the next waypoint on the route in the memory for continuing the navigation later."},
+    { 0x03,   "Start Notification of the Navigation characteristic. Continue Navigation from the point where navigation was paused to the next waypoint on the route."},
+    { 0x04,   "Notification of the Navigation characteristic not affected. Skip Waypoint: disregard next waypoint and continue navigation to the waypoint following next waypoint on the route."},
+    { 0x05,   "Start Notification of the Navigation characteristic. Select Nearest Waypoint on a Route: measure the distance to all waypoints on the route, and start navigation to the closest or optimal waypoint on the route (left to the implementation) and from there to waypoints following next waypoint along the route."},
+    {0x0, NULL}
+};
+
+static const value_string ln_control_point_response_value[] = {
+    { 0x01,   "Success"},
+    { 0x02,   "Opcode not Supported"},
+    { 0x03,   "Invalid Parameter"},
+    { 0x04,   "Operation Failed"},
+    {0x0, NULL}
+};
+
+static const value_string body_composition_measurement_flags_measurement_units_vals[] = {
+    { 0,   "SI (kg & m)"},
+    { 1,   "Imperial (lb & in)"},
+    {0x0, NULL}
+};
+
+static const value_string user_control_point_opcode_vals[] = {
+    { 0x01,   "Register New User"},
+    { 0x02,   "Consent"},
+    { 0x03,   "Delete User Data"},
+    { 0x20,   "Response Code"},
+    {0x0, NULL}
+};
+
+static const value_string user_control_point_response_value_vals[] = {
+    { 0x01,   "Success"},
+    { 0x02,   "Opcode not Supported"},
+    { 0x03,   "Invalid Parameter"},
+    { 0x04,   "Operation Failed"},
+    { 0x04,   "User not Authorized"},
+    {0x0, NULL}
+};
+
+static const value_string cgm_feature_type_vals[] = {
+    { 0x01,   "Capillary Whole Blood"},
+    { 0x02,   "Capillary Plasma"},
+    { 0x03,   "Capillary Whole Blood"},
+    { 0x04,   "Venous Plasma"},
+    { 0x05,   "Arterial Whole Blood"},
+    { 0x06,   "Arterial Plasma"},
+    { 0x07,   "Undetermined Whole Blood"},
+    { 0x08,   "Undetermined Plasma"},
+    { 0x09,   "Interstitial Fluid (ISF)"},
+    { 0x0A,   "Control Solution"},
+    {0x0, NULL}
+};
+
+static const value_string cgm_feature_sample_location_vals[] = {
+    { 0x01,   "Finger"},
+    { 0x02,   "Alternate Site Test (AST)"},
+    { 0x03,   "Earlobe"},
+    { 0x04,   "Control Solution"},
+    { 0x05,   "Subcutaneous Tissue"},
+    { 0x0F,   "Sample Location Value not Available"},
+    {0x0, NULL}
+};
+
+static const value_string cgm_specific_ops_control_point_opcode_vals[] = {
+    { 0x01,   "Set CGM Communication Interval"},
+    { 0x02,   "Get CGM Communication Interval"},
+    { 0x03,   "CGM Communication Interval response"},
+    { 0x04,   "Set Glucose Calibration Value"},
+    { 0x05,   "Get Glucose Calibration Value"},
+    { 0x06,   "Glucose Calibration Value response"},
+    { 0x07,   "Set Patient High Alert Level"},
+    { 0x08,   "Get Patient High Alert Level"},
+    { 0x09,   "Patient High Alert Level Response"},
+    { 0x0A,   "Set Patient Low Alert Level"},
+    { 0x0B,   "Get Patient Low Alert Level"},
+    { 0x0C,   "Patient Low Alert Level Response"},
+    { 0x0D,   "Set Hypo Alert Level"},
+    { 0x0E,   "Get Hypo Alert Level"},
+    { 0x0F,   "Hypo Alert Level Response"},
+    { 0x10,   "Set Hyper Alert Level"},
+    { 0x11,   "Get Hyper Alert Level"},
+    { 0x12,   "Hyper Alert Level Response"},
+    { 0x13,   "Set Rate of Decrease Alert Level"},
+    { 0x14,   "Get Rate of Decrease Alert Level"},
+    { 0x15,   "Rate of Decrease Alert Level Response"},
+    { 0x16,   "Set Rate of Increase Alert Level"},
+    { 0x17,   "Get Rate of Increase Alert Level"},
+    { 0x18,   "Rate of Increase Alert Level Response"},
+    { 0x19,   "Reset Device Specific Alert"},
+    { 0x1A,   "Start the Session"},
+    { 0x1B,   "Stop the Session"},
+    { 0x1C,   "Response Code"},
+    {0x0, NULL}
+};
+
+static const value_string cgm_specific_ops_control_point_response_code_vals[] = {
+    { 0x01,   "Success"},
+    { 0x02,   "Op Code not Supported"},
+    { 0x03,   "Invalid Operand"},
+    { 0x04,   "Procedure not Completed"},
+    { 0x05,   "Parameter Out of Range"},
+    {0x0, NULL}
+};
+
+static const value_string nordic_dfu_control_point_opcode_vals[] = {
+    { 0x01,   "Start DFU"},
+    { 0x02,   "Initialize DFU Parameters"},
+    { 0x03,   "Receive Firmware Image"},
+    { 0x04,   "Validate Firmware"},
+    { 0x05,   "Activate Image and Reset"},
+    { 0x06,   "Reset System"},
+    { 0x07,   "Report Received Image Size"},
+    { 0x08,   "Packet Receipt Notification Request"},
+    { 0x10,   "Response Code"},
+    { 0x11,   "Packet Receipt Notification"},
+    {0x0, NULL}
+};
+
+static const value_string nordic_dfu_control_point_image_type_vals[] = {
+    { 0x00,   "No Image"},
+    { 0x01,   "SoftDevice"},
+    { 0x02,   "Bootloader"},
+    { 0x03,   "Bootloader+SoftDevice"},
+    { 0x04,   "Application"},
+    { 0x05,   "Other Image Combination - currently not supported"},
+    { 0x06,   "Other Image Combination - currently not supported"},
+    { 0x07,   "Other Image Combination - currently not supported"},
+    {0x0, NULL}
+};
+
+static const value_string nordic_dfu_control_point_init_packet_vals[] = {
+    { 0x00,   "Receive Init Packet"},
+    { 0x01,   "Init Packet Complete"},
+    {0x0, NULL}
+};
+
+static const value_string nordic_dfu_control_point_response_value_vals[] = {
+    { 0x01,   "Success"},
+    { 0x02,   "Invalid State"},
+    { 0x03,   "Not Supported"},
+    { 0x04,   "Data Size Exceeds Limit"},
+    { 0x05,   "CRC Error"},
+    { 0x06,   "Operation Failed"},
+    {0x0, NULL}
+};
+
+static const value_string https_security_vals[] = {
+    { 0x00,   "False"},
+    { 0x01,   "True"},
+    {0x0, NULL}
+};
+
+static const value_string http_control_point_opcode_vals[] = {
+    { 0x01,   "HTTP GET Request"},
+    { 0x02,   "HTTP HEAD Request"},
+    { 0x03,   "HTTP POST Request"},
+    { 0x04,   "HTTP PUT Request"},
+    { 0x05,   "HTTP DELETE Request"},
+    { 0x06,   "HTTPS GET Request"},
+    { 0x07,   "HTTPS HEAD Request"},
+    { 0x08,   "HTTPS POST Request"},
+    { 0x09,   "HTTPS PUT Request"},
+    { 0x0A,   "HTTPS DELETE Request"},
+    { 0x0B,   "HTTP Request Cancel"},
+    {0x0, NULL}
+};
+
+const value_string tds_organization_id_vals[] = {
+    { 0x00, "RFU" },
+    { 0x01, "Bluetooth SIG" },
+    {0, NULL }
+};
+
+static const value_string tds_opcode_vals[] = {
+    { 0x00, "RFU" },
+    { 0x01, "Activate Transport" },
+    {0, NULL }
+};
+
+static const value_string tds_result_code_vals[] = {
+    { 0x00, "Success" },
+    { 0x01, "Opcode not Supported" },
+    { 0x02, "Invalid Parameter" },
+    { 0x03, "Unsupported Organization ID" },
+    { 0x04, "Operation Failed" },
+    {0, NULL }
+};
+
+static const value_string ots_action_opcode_vals[] = {
+    { 0x00, "Reserved" },
+    { 0x01, "Create" },
+    { 0x02, "Delete" },
+    { 0x03, "Calculate Checksum" },
+    { 0x04, "Execute" },
+    { 0x05, "Read" },
+    { 0x06, "Write" },
+    { 0x07, "Abort" },
+    { 0x60, "Response Code" },
+    {0, NULL }
+};
+
+static const value_string ots_action_result_code_vals[] = {
+    { 0x00, "Reserved" },
+    { 0x01, "Success" },
+    { 0x02, "Opcode not Supported" },
+    { 0x03, "Invalid Parameter" },
+    { 0x04, "Insufficient Resources" },
+    { 0x05, "Invalid Object" },
+    { 0x06, "Channel Unavailable" },
+    { 0x07, "Unsupported Type" },
+    { 0x08, "Procedure not Permitted" },
+    { 0x09, "Object Locked" },
+    { 0x0A, "Operation Failed" },
+    {0, NULL }
+};
+
+static const value_string ots_list_opcode_vals[] = {
+    { 0x00, "Reserved" },
+    { 0x01, "First" },
+    { 0x02, "Last" },
+    { 0x03, "Previous" },
+    { 0x04, "Next" },
+    { 0x05, "Go To" },
+    { 0x06, "Order" },
+    { 0x07, "Request Number of Objects" },
+    { 0x08, "Clear Marking" },
+    { 0x70, "Response Code" },
+    {0, NULL }
+};
+
+static const value_string ots_list_order_vals[] = {
+    { 0x00, "Reserved" },
+    { 0x01, "Name, Ascending" },
+    { 0x02, "Type, Ascending" },
+    { 0x03, "Current Size Ascending" },
+    { 0x04, "First-created Timestamp, Ascending" },
+    { 0x05, "Last-modified Timestamp, Ascending" },
+    { 0x11, "Name, Descending" },
+    { 0x12, "Type, Descending" },
+    { 0x13, "Current Size Descending" },
+    { 0x14, "First-created Timestamp, Descending" },
+    { 0x15, "Last-modified Timestamp, Descending" },
+    {0, NULL }
+};
+
+static const value_string ots_list_result_code_vals[] = {
+    { 0x00, "Reserved" },
+    { 0x01, "Success" },
+    { 0x02, "Opcode not Supported" },
+    { 0x03, "Invalid Parameter" },
+    { 0x04, "Operation Failed" },
+    { 0x05, "Out of Bounds" },
+    { 0x06, "Too Many Objects" },
+    { 0x07, "No Object" },
+    { 0x08, "Object ID not Found" },
+    {0, NULL }
+};
+
+static const value_string ots_filter_vals[] = {
+    { 0x00, "No Filter" },
+    { 0x01, "Name Starts With" },
+    { 0x02, "Name Ends With" },
+    { 0x03, "Name Contains" },
+    { 0x04, "Name is Exactly" },
+    { 0x05, "Object Type" },
+    { 0x06, "Created Between" },
+    { 0x07, "Modified Between" },
+    { 0x08, "Current Size Between" },
+    { 0x09, "Allocated Size Between" },
+    { 0x0A, "Marked Objects" },
+    {0, NULL }
+};
+
+
+static const true_false_string control_point_mask_value_tfs = {
+    "Leave as Default",
+    "Turn Off" };
+
+static const true_false_string flags_heading_source_tfs = {
+    "Magnetic Compass",
+    "Movement" };
+
+static const true_false_string location_and_speed_flags_speed_and_distance_format_tfs = {
+    "3D",
+    "2D" };
+
+static const true_false_string navigation_indicator_type_tfs = {
+    "To Destination",
+    "To Waypoint" };
+
+static const true_false_string weight_measurement_flags_measurement_units_tfs = {
+    "Imperial (lb & in)",
+    "SI (kg & m)" };
+
 
 union request_parameters_union {
     void *data;
@@ -1979,9 +3239,18 @@ typedef struct _request_data_t {
     union request_parameters_union  parameters;
 } request_data_t;
 
+enum attribute_type {
+    ATTRIBUTE_TYPE_SERVICE,
+    ATTRIBUTE_TYPE_CHARACTERISTIC,
+    ATTRIBUTE_TYPE_OTHER
+};
+
 typedef struct _handle_data_t {
     bluetooth_uuid_t uuid;
+
+    enum attribute_type type;
 } handle_data_t;
+
 
 typedef struct _mtu_data_t {
     guint  mtu;
@@ -1998,9 +3267,10 @@ typedef struct _fragment_data_t {
 void proto_register_btatt(void);
 void proto_reg_handoff_btatt(void);
 
+void proto_register_btgatt(void);
+void proto_reg_handoff_btgatt(void);
+
 #define PROTO_DATA_BTATT_HANDLE   0x00
-#define PROTO_DATA_BTATT_UUID16   0x01
-#define PROTO_DATA_BTATT_UUID128  0x02
 
 static void btatt_handle_prompt(packet_info *pinfo, gchar* result)
 {
@@ -2025,50 +3295,39 @@ static gpointer btatt_handle_value(packet_info *pinfo)
     return NULL;
 }
 
-static void btatt_uuid16_prompt(packet_info *pinfo, gchar* result)
+static gboolean is_readable_request(guint8 opcode)
 {
-    guint16 *value_data;
-
-    value_data = (guint16 *) p_get_proto_data(pinfo->pool, pinfo, proto_btatt, PROTO_DATA_BTATT_UUID16);
-    if (value_data)
-        g_snprintf(result, MAX_DECODE_AS_PROMPT_LEN, "ATT UUID16 0x%04x as", (guint) *value_data);
-    else
-        g_snprintf(result, MAX_DECODE_AS_PROMPT_LEN, "Unknown ATT UUID16");
+    return (opcode == ATT_OPCODE_READ_REQUEST ||
+            opcode == ATT_OPCODE_READ_BLOB_REQUEST ||
+            opcode == ATT_OPCODE_READ_BY_TYPE_REQUEST ||
+            opcode == ATT_OPCODE_READ_MULTIPLE_REQUEST);
 }
 
-static gpointer btatt_uuid16_value(packet_info *pinfo)
+static gboolean is_readable_response(guint8 opcode)
 {
-    guint16 *value_data;
-
-    value_data = (guint16 *) p_get_proto_data(pinfo->pool, pinfo, proto_btatt, PROTO_DATA_BTATT_UUID16);
-
-    if (value_data)
-        return GUINT_TO_POINTER((gulong)*value_data);
-
-    return NULL;
+    return (opcode == ATT_OPCODE_READ_RESPONSE ||
+            opcode == ATT_OPCODE_READ_BLOB_RESPONSE ||
+            opcode == ATT_OPCODE_READ_BY_TYPE_RESPONSE ||
+            opcode == ATT_OPCODE_READ_MULTIPLE_RESPONSE);
 }
 
-static void btatt_uuid128_prompt(packet_info *pinfo, gchar* result)
+static gboolean is_writeable_request(guint8 opcode)
 {
-    gchar *value_data;
-
-    value_data = (gchar *) p_get_proto_data(pinfo->pool, pinfo, proto_btatt, PROTO_DATA_BTATT_UUID128);
-    if (value_data)
-        g_snprintf(result, MAX_DECODE_AS_PROMPT_LEN, "ATT UUID128 %s as", (gchar *) value_data);
-    else
-        g_snprintf(result, MAX_DECODE_AS_PROMPT_LEN, "Unknown ATT UUID128");
+    return (opcode == ATT_OPCODE_WRITE_REQUEST ||
+            opcode == ATT_OPCODE_WRITE_PREPARE_REQUEST);
 }
 
-static gpointer btatt_uuid128_value(packet_info *pinfo)
+static gboolean is_writeable_response(guint8 opcode)
 {
-    gchar *value_data;
+    return (opcode == ATT_OPCODE_WRITE_RESPONSE ||
+            opcode == ATT_OPCODE_WRITE_PREPARE_RESPONSE);
+}
 
-    value_data = (gchar *) p_get_proto_data(pinfo->pool, pinfo, proto_btatt, PROTO_DATA_BTATT_UUID128);
-
-    if (value_data)
-        return (gpointer) value_data;
-
-    return NULL;
+gboolean bluetooth_gatt_has_no_parameter(guint8 opcode)
+{
+    return is_readable_request(opcode) ||
+            opcode == ATT_OPCODE_WRITE_RESPONSE ||
+            opcode == ATT_OPCODE_HANDLE_VALUE_CONFIRMATION;
 }
 
 static request_data_t *
@@ -2087,15 +3346,50 @@ get_request(tvbuff_t *tvb, gint offset, packet_info *pinfo, guint8 opcode,
     key[2].length = 0;
     key[2].key    = NULL;
 
-    frame_number = pinfo->fd->num;
+    frame_number = pinfo->num;
 
     sub_wmemtree = (wmem_tree_t *) wmem_tree_lookup32_array(requests, key);
+    request_data = (sub_wmemtree) ? (request_data_t *) wmem_tree_lookup32_le(sub_wmemtree, frame_number) : NULL;
+    if (request_data && request_data->request_in_frame == pinfo->num)
+        return request_data;
+
+    if (request_data) do {
+        frame_number = request_data->request_in_frame - 1;
+
+        if (request_data->request_in_frame == pinfo->num)
+            break;
+
+      switch (opcode) {
+      case 0x01: /* Error Response */
+          if (tvb_captured_length_remaining(tvb, offset) < 1)
+              return NULL;
+          opcode = tvb_get_guint8(tvb, 1) + 1;
+          /* No break */
+      case 0x03: /* Exchange MTU Response */
+      case 0x05: /* Find Information Response */
+      case 0x07: /* Find By Type Value Response */
+      case 0x09: /* Read By Type Response */
+      case 0x0b: /* Read Response */
+      case 0x0d: /* Read Blob Response */
+      case 0x0f: /* Read Multiple Response */
+      case 0x11: /* Read By Group Type Response */
+      case 0x13: /* Write Response */
+      case 0x17: /* Prepare Write Response */
+      case 0x19: /* Execute Write Response */
+      case 0x1E: /* Handle Value Confirmation */
+          if (request_data->opcode == opcode -1)
+              return request_data;
+
+          break;
+      }
+    } while(0);
+
     request_data = (sub_wmemtree) ? (request_data_t *) wmem_tree_lookup32_le(sub_wmemtree, frame_number) : NULL;
 
     if (!request_data)
         return NULL;
 
-    if (request_data->request_in_frame == pinfo->fd->num)
+    if (request_data->request_in_frame == pinfo->num)
         return request_data;
 
     switch (opcode) {
@@ -2153,7 +3447,7 @@ save_request(packet_info *pinfo, guint8 opcode, union request_parameters_union p
     guint32          frame_number;
     request_data_t  *request_data;
 
-    frame_number = pinfo->fd->num;
+    frame_number = pinfo->num;
 
     key[0].length = 1;
     key[0].key    = &bluetooth_data->interface_id;
@@ -2176,7 +3470,7 @@ save_request(packet_info *pinfo, guint8 opcode, union request_parameters_union p
 
 static void
 save_handle(packet_info *pinfo, bluetooth_uuid_t uuid, guint32 handle,
-        bluetooth_data_t *bluetooth_data)
+        enum attribute_type  attribute_type, bluetooth_data_t *bluetooth_data)
 {
     if (!handle && uuid.size != 2 && uuid.size != 16)
         return;
@@ -2195,7 +3489,7 @@ save_handle(packet_info *pinfo, bluetooth_uuid_t uuid, guint32 handle,
         guint32          frame_number;
         handle_data_t   *handle_data;
 
-        frame_number = pinfo->fd->num;
+        frame_number = pinfo->num;
 
         key[0].length = 1;
         key[0].key    = &bluetooth_data->interface_id;
@@ -2210,6 +3504,7 @@ save_handle(packet_info *pinfo, bluetooth_uuid_t uuid, guint32 handle,
 
         handle_data = wmem_new(wmem_file_scope(), handle_data_t);
         handle_data->uuid = uuid;
+        handle_data->type = attribute_type;
 
         wmem_tree_insert32_array(handle_to_uuid, key, handle_data);
     }
@@ -2227,7 +3522,7 @@ get_uuid_from_handle(packet_info *pinfo, guint32 handle,
 
     memset(&uuid, 0, sizeof uuid);
 
-    frame_number = pinfo->fd->num;
+    frame_number = pinfo->num;
 
     key[0].length = 1;
     key[0].key    = &bluetooth_data->interface_id;
@@ -2247,89 +3542,217 @@ get_uuid_from_handle(packet_info *pinfo, guint32 handle,
     return uuid;
 }
 
-static int
-dissect_handle_uint(proto_tree *tree, packet_info *pinfo, gint hf,
-        tvbuff_t *tvb, gint offset, bluetooth_data_t *bluetooth_data,
-        bluetooth_uuid_t *uuid, guint16 handle)
+static bluetooth_uuid_t
+get_service_uuid_from_handle(packet_info *pinfo, guint32 handle,
+        bluetooth_data_t *bluetooth_data)
 {
-    proto_item        *sub_item;
-    proto_tree        *sub_tree;
-    bluetooth_uuid_t   local_uuid;
+    wmem_tree_key_t  key[4];
+    guint32          frame_number;
+    handle_data_t   *handle_data;
+    wmem_tree_t     *sub_wmemtree;
+    bluetooth_uuid_t uuid;
 
-    sub_item = proto_tree_add_uint(tree, hf, tvb, 0, 0, handle);
-    PROTO_ITEM_SET_GENERATED(sub_item);
-    local_uuid = get_uuid_from_handle(pinfo, handle, bluetooth_data);
-    if (local_uuid.size == 2 || local_uuid.size == 16) {
-        proto_item_append_text(sub_item, " (%s)", print_uuid(&local_uuid));
-        sub_tree = proto_item_add_subtree(sub_item, ett_btatt_handle);
+    memset(&uuid, 0, sizeof uuid);
 
-        if (local_uuid.size == 2)
-            sub_item = proto_tree_add_uint(sub_tree, hf_btatt_uuid16, tvb, 0, 0, local_uuid.bt_uuid);
-        else
-            sub_item = proto_tree_add_bytes_with_length(sub_tree, hf_btatt_uuid128, tvb, 0, 0, local_uuid.data, 16);
+    frame_number = pinfo->num;
 
+    key[0].length = 1;
+    key[0].key    = &bluetooth_data->interface_id;
+    key[1].length = 1;
+    key[1].key    = &bluetooth_data->adapter_id;
+    key[2].length = 1;
+    key[2].key    = &handle;
+    key[3].length = 0;
+    key[3].key    = NULL;
 
-        PROTO_ITEM_SET_GENERATED(sub_item);
+    while (handle > 0) {
+        sub_wmemtree = (wmem_tree_t *) wmem_tree_lookup32_array(handle_to_uuid, key);
+        handle_data = (sub_wmemtree) ? (handle_data_t *) wmem_tree_lookup32_le(sub_wmemtree, frame_number) : NULL;
 
-        if (uuid)
-            *uuid = local_uuid;
-    } else {
-        if (uuid) {
-            local_uuid.size = 0;
-            local_uuid.bt_uuid = 0;
-            *uuid = local_uuid;
+        if (handle_data && handle_data->type == ATTRIBUTE_TYPE_SERVICE) {
+            uuid = handle_data->uuid;
+            return uuid;
         }
+
+        handle -= 1;
     }
 
-    return offset + 2;
+    return uuid;
+}
+
+static bluetooth_uuid_t
+get_characteristic_uuid_from_handle(packet_info *pinfo, guint32 handle,
+        bluetooth_data_t *bluetooth_data)
+{
+    wmem_tree_key_t  key[4];
+    guint32          frame_number;
+    handle_data_t   *handle_data;
+    wmem_tree_t     *sub_wmemtree;
+    bluetooth_uuid_t uuid;
+
+    memset(&uuid, 0, sizeof uuid);
+
+    frame_number = pinfo->num;
+
+    key[0].length = 1;
+    key[0].key    = &bluetooth_data->interface_id;
+    key[1].length = 1;
+    key[1].key    = &bluetooth_data->adapter_id;
+    key[2].length = 1;
+    key[2].key    = &handle;
+    key[3].length = 0;
+    key[3].key    = NULL;
+
+    while (handle > 0) {
+        sub_wmemtree = (wmem_tree_t *) wmem_tree_lookup32_array(handle_to_uuid, key);
+        handle_data = (sub_wmemtree) ? (handle_data_t *) wmem_tree_lookup32_le(sub_wmemtree, frame_number) : NULL;
+
+        if (handle_data && handle_data->type == ATTRIBUTE_TYPE_SERVICE)
+            return uuid;
+
+        if (handle_data && handle_data->type == ATTRIBUTE_TYPE_CHARACTERISTIC) {
+            uuid = handle_data->uuid;
+            return uuid;
+        }
+
+        handle -= 1;
+    }
+
+    return uuid;
+}
+
+static void col_append_info_by_handle(packet_info *pinfo, guint16 handle, bluetooth_data_t *bluetooth_data)
+{
+    bluetooth_uuid_t   service_uuid;
+    bluetooth_uuid_t   characteristic_uuid;
+    bluetooth_uuid_t   uuid;
+
+    service_uuid = get_service_uuid_from_handle(pinfo, handle, bluetooth_data);
+    characteristic_uuid = get_characteristic_uuid_from_handle(pinfo, handle, bluetooth_data);
+    uuid = get_uuid_from_handle(pinfo, handle, bluetooth_data);
+
+    if (!memcmp(&service_uuid, &uuid, sizeof(uuid))) {
+        col_append_fstr(pinfo->cinfo, COL_INFO, ", Handle: 0x%04x (%s)",
+                handle, print_uuid(&uuid));
+    } else if (!memcmp(&characteristic_uuid, &uuid, sizeof(uuid))) {
+        col_append_fstr(pinfo->cinfo, COL_INFO, ", Handle: 0x%04x (%s: %s)",
+                handle, print_uuid(&service_uuid), print_uuid(&uuid));
+    } else {
+        col_append_fstr(pinfo->cinfo, COL_INFO, ", Handle: 0x%04x (%s: %s: %s)",
+                handle, print_uuid(&service_uuid), print_uuid(&characteristic_uuid), print_uuid(&uuid));
+    }
+}
+
+static gint dissect_gatt_uuid(proto_tree *tree, packet_info *pinfo, tvbuff_t *tvb, gint offset)
+{
+    proto_item       *sub_item;
+    bluetooth_uuid_t  sub_uuid;
+
+    if (tvb_reported_length_remaining(tvb, offset) == 2) {
+        proto_tree_add_item(tree, hf_btatt_uuid16, tvb, offset, 2, ENC_LITTLE_ENDIAN);
+        sub_uuid = get_uuid(tvb, offset, 2);
+        offset += 2;
+    } else if (tvb_reported_length_remaining(tvb, offset) == 16) {
+        sub_item = proto_tree_add_item(tree, hf_btatt_uuid128, tvb, offset, 16, ENC_NA);
+        sub_uuid = get_uuid(tvb, offset, 16);
+        proto_item_append_text(sub_item, " (%s)", print_uuid(&sub_uuid));
+        offset += 16;
+    } else {
+        sub_item = proto_tree_add_item(tree, hf_btatt_value, tvb, offset, -1, ENC_NA);
+        expert_add_info(pinfo, sub_item, &ei_btatt_bad_data);
+        offset = tvb_captured_length(tvb);
+    }
+
+    return offset;
 }
 
 static int
 dissect_handle(proto_tree *tree, packet_info *pinfo, gint hf,
         tvbuff_t *tvb, gint offset, bluetooth_data_t *bluetooth_data,
-        bluetooth_uuid_t *uuid)
+        bluetooth_uuid_t *uuid, gint32 handle)
 {
+    proto_item        *handle_item;
     proto_item        *sub_item;
     proto_tree        *sub_tree;
-    guint16            handle;
-    bluetooth_uuid_t   local_uuid;
+    bluetooth_uuid_t   service_uuid;
+    bluetooth_uuid_t   characteristic_uuid;
+    bluetooth_uuid_t   attribute_uuid;
 
-    sub_item = proto_tree_add_item(tree, hf, tvb, offset, 2, ENC_LITTLE_ENDIAN);
-    handle = tvb_get_guint16(tvb, offset, ENC_LITTLE_ENDIAN);
-    local_uuid = get_uuid_from_handle(pinfo, handle, bluetooth_data);
-    if (local_uuid.size == 2 || local_uuid.size == 16) {
-        proto_item_append_text(sub_item, " (%s)", print_uuid(&local_uuid));
-        sub_tree = proto_item_add_subtree(sub_item, ett_btatt_handle);
-
-        if (local_uuid.size == 2)
-            sub_item = proto_tree_add_uint(sub_tree, hf_btatt_uuid16, tvb, 0, 0, local_uuid.bt_uuid);
-        else
-            sub_item = proto_tree_add_bytes_with_length(sub_tree, hf_btatt_uuid128, tvb, 0, 0, local_uuid.data, 16);
-
-        PROTO_ITEM_SET_GENERATED(sub_item);
-
-        if (uuid)
-            *uuid = local_uuid;
+    if (handle == HANDLE_TVB) {
+        handle_item = proto_tree_add_item(tree, hf, tvb, offset, 2, ENC_LITTLE_ENDIAN);
+        handle = tvb_get_guint16(tvb, offset, ENC_LITTLE_ENDIAN);
+    } else if (handle >= 0 && handle <= G_MAXUINT16) {
+        handle_item = proto_tree_add_uint(tree, hf, tvb, 0, 0, handle);
+        PROTO_ITEM_SET_GENERATED(handle_item);
     } else {
-        if (uuid) {
-            local_uuid.size = 0;
-            local_uuid.bt_uuid = 0;
-            *uuid = local_uuid;
+        DISSECTOR_ASSERT_NOT_REACHED();
+    }
+
+    service_uuid = get_service_uuid_from_handle(pinfo, (guint16) handle, bluetooth_data);
+    characteristic_uuid = get_characteristic_uuid_from_handle(pinfo, (guint16) handle, bluetooth_data);
+    attribute_uuid = get_uuid_from_handle(pinfo, (guint16) handle, bluetooth_data);
+
+    if (memcmp(&service_uuid, &attribute_uuid, sizeof(attribute_uuid))) {
+        if (service_uuid.size == 2 || service_uuid.size == 16) {
+            proto_item_append_text(handle_item, " (%s", print_uuid(&service_uuid));
+            sub_tree = proto_item_add_subtree(handle_item, ett_btatt_handle);
+
+            if (service_uuid.size == 2)
+                sub_item = proto_tree_add_uint(sub_tree, hf_btatt_service_uuid16, tvb, 0, 0, service_uuid.bt_uuid);
+            else
+                sub_item = proto_tree_add_bytes_with_length(sub_tree, hf_btatt_service_uuid128, tvb, 0, 0, service_uuid.data, 16);
+
+            PROTO_ITEM_SET_GENERATED(sub_item);
+        }
+    } else {
+        proto_item_append_text(handle_item, " (");
+    }
+
+    if (memcmp(&characteristic_uuid, &attribute_uuid, sizeof(attribute_uuid))) {
+        if (characteristic_uuid.size == 2 || characteristic_uuid.size == 16) {
+            proto_item_append_text(handle_item, ": %s", print_uuid(&characteristic_uuid));
+            sub_tree = proto_item_add_subtree(handle_item, ett_btatt_handle);
+
+            if (characteristic_uuid.size == 2)
+                sub_item = proto_tree_add_uint(sub_tree, hf_btatt_characteristic_uuid16, tvb, 0, 0, characteristic_uuid.bt_uuid);
+            else
+                sub_item = proto_tree_add_bytes_with_length(sub_tree, hf_btatt_characteristic_uuid128, tvb, 0, 0, characteristic_uuid.data, 16);
+
+            PROTO_ITEM_SET_GENERATED(sub_item);
         }
     }
+
+    if (memcmp(&service_uuid, &attribute_uuid, sizeof(attribute_uuid)))
+        proto_item_append_text(handle_item, ": %s)", print_uuid(&attribute_uuid));
+    else
+        proto_item_append_text(handle_item, "%s)", print_uuid(&attribute_uuid));
+    if (attribute_uuid.size == 2 || attribute_uuid.size == 16) {
+        sub_tree = proto_item_add_subtree(handle_item, ett_btatt_handle);
+
+        if (attribute_uuid.size == 2)
+            sub_item = proto_tree_add_uint(sub_tree, hf_btatt_uuid16, tvb, 0, 0, attribute_uuid.bt_uuid);
+        else
+            sub_item = proto_tree_add_bytes_with_length(sub_tree, hf_btatt_uuid128, tvb, 0, 0, attribute_uuid.data, 16);
+
+        PROTO_ITEM_SET_GENERATED(sub_item);
+    }
+
+    if (uuid)
+        *uuid = attribute_uuid;
 
     return offset + 2;
 }
 
 static gint
 dissect_attribute_value(proto_tree *tree, proto_item *patron_item, packet_info *pinfo, tvbuff_t *old_tvb,
-        gint old_offset, gint length, guint16 handle, bluetooth_uuid_t uuid, bluetooth_data_t *bluetooth_data)
+        gint old_offset, gint length, guint16 handle, bluetooth_uuid_t uuid, btatt_data_t *att_data)
 {
     proto_item  *sub_item;
-    proto_tree  *sub_tree;
+    proto_tree  *sub_tree = NULL;
     tvbuff_t    *tvb;
     gint         offset = 0;
     bluetooth_uuid_t sub_uuid;
+    bluetooth_uuid_t service_uuid;
     guint16      sub_handle;
     guint32      value;
     guint32      flags;
@@ -2337,8 +3760,13 @@ dissect_attribute_value(proto_tree *tree, proto_item *patron_item, packet_info *
     guint32      opcode;
     guint32      operand_offset;
     const gint  **hfs;
+    bluetooth_data_t *bluetooth_data = NULL;
 
     tvb = tvb_new_subset(old_tvb, old_offset, length, length);
+
+    DISSECTOR_ASSERT(att_data);
+
+    bluetooth_data = att_data->bluetooth_data;
 
     if (p_get_proto_data(pinfo->pool, pinfo, proto_btatt, PROTO_DATA_BTATT_HANDLE) == NULL) {
         guint16 *value_data;
@@ -2349,65 +3777,78 @@ dissect_attribute_value(proto_tree *tree, proto_item *patron_item, packet_info *
         p_add_proto_data(pinfo->pool, pinfo, proto_btatt, PROTO_DATA_BTATT_HANDLE, value_data);
     }
 
-    if (dissector_try_uint_new(att_handle_dissector_table, handle, tvb, pinfo, tree, TRUE, bluetooth_data))
+    if (dissector_try_uint_new(att_handle_dissector_table, handle, tvb, pinfo, tree, TRUE, att_data))
         return old_offset + length;
 
-    if (uuid.size == 2) {
-        if (p_get_proto_data(pinfo->pool, pinfo, proto_btatt, PROTO_DATA_BTATT_UUID16) == NULL) {
-            guint16 *value_data;
+    if (p_get_proto_data(pinfo->pool, pinfo, proto_bluetooth, PROTO_DATA_BLUETOOTH_SERVICE_UUID) == NULL) {
+        guint8 *value_data;
 
-            value_data = wmem_new(wmem_file_scope(), guint16);
-            *value_data = uuid.bt_uuid;
+        value_data = wmem_strdup(wmem_file_scope(), print_numeric_uuid(&uuid));
 
-            p_add_proto_data(pinfo->pool, pinfo, proto_btatt, PROTO_DATA_BTATT_UUID16, value_data);
-        }
-    } else if (uuid.size == 16) {
-        if (p_get_proto_data(pinfo->pool, pinfo, proto_btatt, PROTO_DATA_BTATT_UUID128) == NULL) {
-            guint8 *value_data;
-
-            value_data = wmem_strdup(wmem_file_scope(), print_numeric_uuid(&uuid));
-
-            p_add_proto_data(pinfo->pool, pinfo, proto_btatt, PROTO_DATA_BTATT_UUID128, value_data);
-        }
+        p_add_proto_data(pinfo->pool, pinfo, proto_bluetooth, PROTO_DATA_BLUETOOTH_SERVICE_UUID, value_data);
     }
 
-    if (!uuid.bt_uuid) {
+    if (dissector_try_string(bluetooth_uuid_table, print_numeric_uuid(&uuid), tvb, pinfo, tree, att_data))
+        return old_offset + length;
+    else if (!uuid.bt_uuid) {
+        if (bluetooth_gatt_has_no_parameter(att_data->opcode))
+            return old_offset;
+
         proto_tree_add_item(tree, hf_btatt_value, tvb, offset, -1, ENC_NA);
 
         return old_offset + tvb_captured_length(tvb);
     }
 
-    if (dissector_try_string(att_uuid128_dissector_table, print_uuid(&uuid), tvb, pinfo, tree, bluetooth_data))
-        return old_offset + length;
-
-    if (dissector_try_uint_new(att_uuid16_dissector_table, uuid.bt_uuid, tvb, pinfo, tree, TRUE, bluetooth_data))
-        return old_offset + length;
+    service_uuid = get_service_uuid_from_handle(pinfo, handle, bluetooth_data);
 
     switch (uuid.bt_uuid) {
     case 0x2800: /* GATT Primary Service Declaration */
     case 0x2801: /* GATT Secondary Service Declaration */
+        if (is_readable_request(att_data->opcode) || att_data->opcode == ATT_OPCODE_READ_BY_GROUP_TYPE_REQUEST)
+            break;
+
+        if (!is_readable_response(att_data->opcode) && att_data->opcode != ATT_OPCODE_READ_BY_GROUP_TYPE_RESPONSE)
+            expert_add_info(pinfo, tree, &ei_btatt_invalid_usage);
+
+        if (bluetooth_gatt_has_no_parameter(att_data->opcode))
+            break;
+
         if (tvb_reported_length_remaining(tvb, offset) == 2) {
             proto_tree_add_item(tree, hf_btatt_uuid16, tvb, offset, 2, ENC_LITTLE_ENDIAN);
             sub_uuid = get_uuid(tvb, offset, 2);
             proto_item_append_text(patron_item, ", UUID: %s", print_uuid(&sub_uuid));
             offset += 2;
 
-            save_handle(pinfo, sub_uuid, handle, bluetooth_data);
+            col_append_fstr(pinfo->cinfo, COL_INFO, ", %s", print_uuid(&sub_uuid));
+
+            save_handle(pinfo, sub_uuid, handle, ATTRIBUTE_TYPE_SERVICE, bluetooth_data);
         } else if (tvb_reported_length_remaining(tvb, offset) == 16) {
             proto_tree_add_item(tree, hf_btatt_uuid128, tvb, offset, 16, ENC_NA);
             sub_uuid = get_uuid(tvb, offset, 16);
             proto_item_append_text(patron_item, ", UUID128: %s", print_uuid(&sub_uuid));
             offset += 16;
 
-            save_handle(pinfo, sub_uuid, handle, bluetooth_data);
+            col_append_fstr(pinfo->cinfo, COL_INFO, ", %s", print_uuid(&sub_uuid));
+
+            save_handle(pinfo, sub_uuid, handle, ATTRIBUTE_TYPE_SERVICE, bluetooth_data);
         } else {
-            proto_tree_add_item(tree, hf_btatt_value, tvb, offset, -1, ENC_NA);
+            sub_item = proto_tree_add_item(tree, hf_btatt_value, tvb, offset, -1, ENC_NA);
+            expert_add_info(pinfo, sub_item, &ei_btatt_bad_data);
             offset = tvb_captured_length(tvb);
         }
 
         break;
     case 0x2802: /* GATT Include Declaration */
-        offset = dissect_handle(tree, pinfo, hf_btatt_included_service_handle, tvb, offset, bluetooth_data, NULL);
+        if (is_readable_request(att_data->opcode))
+            break;
+
+        if (!is_readable_response(att_data->opcode))
+            expert_add_info(pinfo, tree, &ei_btatt_invalid_usage);
+
+        if (bluetooth_gatt_has_no_parameter(att_data->opcode))
+            break;
+
+        offset = dissect_handle(tree, pinfo, hf_btatt_included_service_handle, tvb, offset, bluetooth_data, NULL, HANDLE_TVB);
         sub_handle = tvb_get_guint16(tvb, offset - 2, ENC_LITTLE_ENDIAN);
 
         proto_tree_add_item(tree, hf_btatt_ending_handle, tvb, offset, 2, ENC_LITTLE_ENDIAN);
@@ -2418,14 +3859,25 @@ dissect_attribute_value(proto_tree *tree, proto_item *patron_item, packet_info *
         proto_item_append_text(patron_item, ", Included Handle: 0x%04x, UUID: %s", sub_handle, print_uuid(&sub_uuid));
         offset += 2;
 
-        save_handle(pinfo, sub_uuid, sub_handle, bluetooth_data);
+        col_append_fstr(pinfo->cinfo, COL_INFO, ", %s", print_uuid(&sub_uuid));
+
+        save_handle(pinfo, sub_uuid, sub_handle, ATTRIBUTE_TYPE_OTHER, bluetooth_data);
 
         break;
     case 0x2803: /* GATT Characteristic Declaration*/
+        if (is_readable_request(att_data->opcode) || att_data->opcode == ATT_OPCODE_READ_BY_TYPE_REQUEST)
+            break;
+
+        if (!is_readable_response(att_data->opcode) && att_data->opcode != ATT_OPCODE_READ_BY_TYPE_RESPONSE)
+            expert_add_info(pinfo, tree, &ei_btatt_invalid_usage);
+
+        if (bluetooth_gatt_has_no_parameter(att_data->opcode))
+            break;
+
         proto_tree_add_bitmask(tree, tvb, offset, hf_btatt_characteristic_properties, ett_btatt_characteristic_properties,  hfx_btatt_characteristic_properties, ENC_NA);
         offset += 1;
 
-        offset = dissect_handle(tree, pinfo, hf_btatt_characteristic_value_handle, tvb, offset, bluetooth_data, NULL);
+        offset = dissect_handle(tree, pinfo, hf_btatt_characteristic_value_handle, tvb, offset, bluetooth_data, NULL, HANDLE_TVB);
         sub_handle = tvb_get_guint16(tvb, offset - 2, ENC_LITTLE_ENDIAN);
 
         if (tvb_reported_length_remaining(tvb, offset) == 16) {
@@ -2434,41 +3886,242 @@ dissect_attribute_value(proto_tree *tree, proto_item *patron_item, packet_info *
             proto_item_append_text(patron_item, ", Characteristic Handle: 0x%04x, UUID128: %s", tvb_get_guint16(tvb, offset - 2, ENC_LITTLE_ENDIAN), print_uuid(&sub_uuid));
             offset += 16;
 
-            save_handle(pinfo, sub_uuid, sub_handle, bluetooth_data);
+            col_append_fstr(pinfo->cinfo, COL_INFO, ", %s", print_uuid(&sub_uuid));
+
+            save_handle(pinfo, sub_uuid, sub_handle, ATTRIBUTE_TYPE_CHARACTERISTIC, bluetooth_data);
         } else if (tvb_reported_length_remaining(tvb, offset) == 2) {
             proto_tree_add_item(tree, hf_btatt_uuid16, tvb, offset, 2, ENC_LITTLE_ENDIAN);
             sub_uuid = get_uuid(tvb, offset, 2);
             proto_item_append_text(patron_item, ", Characteristic Handle: 0x%04x, UUID: %s", sub_handle, print_uuid(&sub_uuid));
             offset += 2;
 
-            save_handle(pinfo, sub_uuid, sub_handle, bluetooth_data);
+            col_append_fstr(pinfo->cinfo, COL_INFO, ", %s", print_uuid(&sub_uuid));
+
+            save_handle(pinfo, sub_uuid, sub_handle, ATTRIBUTE_TYPE_CHARACTERISTIC, bluetooth_data);
         } else {
-            proto_tree_add_item(tree, hf_btatt_value, tvb, offset, -1, ENC_NA);
+            sub_item = proto_tree_add_item(tree, hf_btatt_value, tvb, offset, -1, ENC_NA);
+            expert_add_info(pinfo, sub_item, &ei_btatt_bad_data);
             offset = tvb_captured_length(tvb);
         }
 
         break;
     case 0x2900: /* Characteristic Extended Properties */
+        if (is_readable_request(att_data->opcode))
+            break;
+
+        if (!is_readable_response(att_data->opcode))
+            expert_add_info(pinfo, tree, &ei_btatt_invalid_usage);
+
+        if (bluetooth_gatt_has_no_parameter(att_data->opcode))
+            break;
+
         proto_tree_add_bitmask(tree, tvb, offset, hf_btatt_characteristic_extended_properties, ett_btatt_value, hfx_btatt_characteristic_extended_properties, ENC_LITTLE_ENDIAN);
         offset += 2;
 
         break;
     case 0x2901: /* Characteristic User Description */
+        if (is_readable_request(att_data->opcode) || is_writeable_response(att_data->opcode))
+            break;
+
+        if (!is_readable_response(att_data->opcode) && !is_writeable_request(att_data->opcode))
+            expert_add_info(pinfo, tree, &ei_btatt_invalid_usage);
+
+        if (bluetooth_gatt_has_no_parameter(att_data->opcode))
+            break;
+
         proto_tree_add_item(tree, hf_btatt_characteristic_user_description, tvb, offset, tvb_captured_length_remaining(tvb, offset), ENC_NA | ENC_UTF_8);
         offset += tvb_captured_length_remaining(tvb, offset);
 
         break;
     case 0x2902: /* GATT: Client Characteristic Configuration */
+        if (is_readable_request(att_data->opcode) || is_writeable_response(att_data->opcode) || att_data->opcode == ATT_OPCODE_HANDLE_VALUE_CONFIRMATION)
+            break;
+
+        if (!is_readable_response(att_data->opcode) && !is_writeable_request(att_data->opcode))
+            expert_add_info(pinfo, tree, &ei_btatt_invalid_usage);
+
+        if (bluetooth_gatt_has_no_parameter(att_data->opcode))
+            break;
+
         proto_tree_add_bitmask(tree, tvb, offset, hf_btatt_characteristic_configuration_client, ett_btatt_value, hfx_btatt_characteristic_configuration_client, ENC_LITTLE_ENDIAN);
+        value = tvb_get_guint16(tvb, offset, ENC_LITTLE_ENDIAN);
         offset += 2;
+
+        {
+        bluetooth_uuid_t   characteristic_uuid;
+
+        characteristic_uuid = get_characteristic_uuid_from_handle(pinfo, handle, bluetooth_data);
+
+        if (value & 0x1) switch (characteristic_uuid.bt_uuid) { /* Notification */
+        case 0x2A05: /* Service Changed */
+        case 0x2A1C: /* Temperature Measurement */
+        case 0x2A21: /* Measurement Interval */
+        case 0x2A35: /* Blood Pressure Measurement */
+        case 0x2A52: /* Record Access Control Point */
+        case 0x2A55: /* SC Control Point */
+        case 0x2A66: /* Cycling Power Control Point */
+        case 0x2A6B: /* LN Control Point */
+        case 0x2A99: /* Database Change Increment */
+        case 0x2A9C: /* Body Composition Measurement */
+        case 0x2A9D: /* Weight Measurement */
+        case 0x2A9F: /* User Control Point */
+        case 0x2ABC: /* TDS Control Point */
+        case 0x2AC5: /* Object Action Control Point */
+        case 0x2AC6: /* Object List Control Point */
+        case 0x2AC8: /* Object Changed */
+            expert_add_info(pinfo, tree, &ei_btatt_invalid_usage);
+            break;
+
+        case 0x2A18: /* Glucose Measurement */
+        case 0x2A19: /* Battery Level */
+        case 0x2A1E: /* Intermediate Temperature */
+        case 0x2A22: /* Boot Keyboard Input Report */
+        case 0x2A2C: /* Magnetic Declination */
+        case 0x2A2B: /* Current Time */
+        case 0x2A31: /* Scan Refresh */
+        case 0x2A33: /* Boot Mouse Input Report */
+        case 0x2A34: /* Glucose Measurement Context */
+        case 0x2A36: /* Intermediate Cuff Pressure */
+        case 0x2A37: /* Heart Rate Measurement */
+        case 0x2A3F: /* Alert Status */
+        case 0x2A45: /* Unread Alert Status */
+        case 0x2A46: /* New Alert */
+        case 0x2A4D: /* Report */
+        case 0x2A53: /* RSC Measurement */
+        case 0x2A56: /* Digital */
+        case 0x2A58: /* Analog */
+        case 0x2A5A: /* Aggregate */
+        case 0x2A5B: /* CSC Measurement */
+        case 0x2A63: /* Cycling Power Measurement */
+        case 0x2A64: /* Cycling Power Vector */
+        case 0x2A67: /* Location and Speed */
+        case 0x2A68: /* Navigation */
+        case 0x2A6C: /* Elevation */
+        case 0x2A6D: /* Pressure */
+        case 0x2A6E: /* Temperature */
+        case 0x2A6F: /* Humidity */
+        case 0x2A70: /* True Wind Speed */
+        case 0x2A71: /* True Wind Direction */
+        case 0x2A72: /* Apparent Wind Speed */
+        case 0x2A73: /* Apparent Wind Direction */
+        case 0x2A74: /* Gust Factor */
+        case 0x2A75: /* Pollen Concentration */
+        case 0x2A76: /* UV Index */
+        case 0x2A77: /* Irradiance */
+        case 0x2A78: /* Rainfall */
+        case 0x2A79: /* Wind Chill */
+        case 0x2A7A: /* Heat Index */
+        case 0x2A7B: /* Dew Point */
+        case 0x2AA0: /* Magnetic Flux Density - 2D */
+        case 0x2AA1: /* Magnetic Flux Density - 3D */
+        case 0x2AA3: /* Barometric Pressure Trend */
+        case 0x2AA7: /* CGM Measurement */
+        case 0x2AB8: /* HTTP Status Code */
+        default:
+            /* Supported */
+            break;
+        }
+
+        if (value & 0x2) switch (characteristic_uuid.bt_uuid) { /* Indication */
+        case 0x2A18: /* Glucose Measurement */
+        case 0x2A19: /* Battery Level */
+        case 0x2A1E: /* Intermediate Temperature */
+        case 0x2A22: /* Boot Keyboard Input Report */
+        case 0x2A2B: /* Current Time */
+        case 0x2A2C: /* Magnetic Declination */
+        case 0x2A31: /* Scan Refresh */
+        case 0x2A33: /* Boot Mouse Input Report */
+        case 0x2A34: /* Glucose Measurement Context */
+        case 0x2A36: /* Intermediate Cuff Pressure */
+        case 0x2A37: /* Heart Rate Measurement */
+        case 0x2A3F: /* Alert Status */
+        case 0x2A45: /* Unread Alert Status */
+        case 0x2A46: /* New Alert */
+        case 0x2A4D: /* Report */
+        case 0x2A53: /* RSC Measurement */
+        case 0x2A5B: /* CSC Measurement */
+        case 0x2A63: /* Cycling Power Measurement */
+        case 0x2A64: /* Cycling Power Vector */
+        case 0x2A67: /* Location and Speed */
+        case 0x2A68: /* Navigation */
+        case 0x2A6C: /* Elevation */
+        case 0x2A6D: /* Pressure */
+        case 0x2A6E: /* Temperature */
+        case 0x2A6F: /* Humidity */
+        case 0x2A70: /* True Wind Speed */
+        case 0x2A71: /* True Wind Direction */
+        case 0x2A72: /* Apparent Wind Speed */
+        case 0x2A73: /* Apparent Wind Direction */
+        case 0x2A74: /* Gust Factor */
+        case 0x2A75: /* Pollen Concentration */
+        case 0x2A76: /* UV Index */
+        case 0x2A77: /* Irradiance */
+        case 0x2A78: /* Rainfall */
+        case 0x2A79: /* Wind Chill */
+        case 0x2A7A: /* Heat Index */
+        case 0x2A7B: /* Dew Point */
+        case 0x2AA0: /* Magnetic Flux Density - 2D */
+        case 0x2AA1: /* Magnetic Flux Density - 3D */
+        case 0x2AA3: /* Barometric Pressure Trend */
+        case 0x2AA7: /* CGM Measurement */
+        case 0x2AB8: /* HTTP Status Code */
+            expert_add_info(pinfo, tree, &ei_btatt_invalid_usage);
+            break;
+
+        case 0x2A05: /* Service Changed */
+        case 0x2A1C: /* Temperature Measurement */
+        case 0x2A21: /* Measurement Interval */
+        case 0x2A35: /* Blood Pressure Measurement */
+        case 0x2A52: /* Record Access Control Point */
+        case 0x2A55: /* SC Control Point */
+        case 0x2A56: /* Digital */
+        case 0x2A58: /* Analog */
+        case 0x2A5A: /* Aggregate */
+        case 0x2A66: /* Cycling Power Control Point */
+        case 0x2A6B: /* LN Control Point */
+        case 0x2A99: /* Database Change Increment */
+        case 0x2A9C: /* Body Composition Measurement */
+        case 0x2A9D: /* Weight Measurement */
+        case 0x2A9F: /* User Control Point */
+        case 0x2ABC: /* TDS Control Point */
+        case 0x2AC5: /* Object Action Control Point */
+        case 0x2AC6: /* Object List Control Point */
+        case 0x2AC8: /* Object Changed */
+        default:
+            /* Supported */
+            break;
+        }
+
+        if (value > 0x3)
+            expert_add_info(pinfo, tree, &ei_btatt_bad_data);
+
+        }
 
         break;
     case 0x2903: /* Server Characteristic Configuration */
+        if (is_readable_request(att_data->opcode) || is_writeable_response(att_data->opcode))
+            break;
+
+        if (!is_readable_response(att_data->opcode) && !is_writeable_request(att_data->opcode))
+            expert_add_info(pinfo, tree, &ei_btatt_invalid_usage);
+
+        if (bluetooth_gatt_has_no_parameter(att_data->opcode))
+            break;
+
         proto_tree_add_bitmask(tree, tvb, offset, hf_btatt_characteristic_configuration_server, ett_btatt_value, hfx_btatt_characteristic_configuration_server, ENC_LITTLE_ENDIAN);
         offset += 2;
 
         break;
     case 0x2904: /* Characteristic Presentation Format */
+        if (is_readable_request(att_data->opcode))
+            break;
+
+        if (!is_readable_response(att_data->opcode))
+            expert_add_info(pinfo, tree, &ei_btatt_invalid_usage);
+
+        if (bluetooth_gatt_has_no_parameter(att_data->opcode))
+            break;
+
         proto_tree_add_item(tree, hf_btatt_characteristic_presentation_format, tvb, offset, 1, ENC_NA);
         offset += 1;
 
@@ -2490,16 +4143,64 @@ dissect_attribute_value(proto_tree *tree, proto_item *patron_item, packet_info *
 
         break;
     case 0x2905: /* Characteristic Aggregate Format */
+        if (is_readable_request(att_data->opcode))
+            break;
+
+        if (!is_readable_response(att_data->opcode))
+            expert_add_info(pinfo, tree, &ei_btatt_invalid_usage);
+
+        if (bluetooth_gatt_has_no_parameter(att_data->opcode))
+            break;
+
         sub_item = proto_tree_add_none_format(tree, hf_btatt_handles_info,
                 tvb, offset, tvb_captured_length(tvb), "Handles (%i items)",
                 tvb_captured_length(tvb) / 2);
         sub_tree = proto_item_add_subtree(sub_item, ett_btatt_list);
 
         while (offset < (gint64) tvb_captured_length(tvb)) {
-            offset = dissect_handle(sub_tree, pinfo, hf_btatt_handle, tvb, offset, bluetooth_data, NULL);
+            offset = dissect_handle(sub_tree, pinfo, hf_btatt_handle, tvb, offset, bluetooth_data, NULL, HANDLE_TVB);
+        }
+        break;
+    case 0x2906: /* Valid Range */ {
+        bluetooth_uuid_t     characteristic_uuid;
+        guint8              *characteristic_dissector_name;
+        dissector_handle_t   characteristic_dissector;
+
+        if (bluetooth_gatt_has_no_parameter(att_data->opcode))
+            break;
+
+        characteristic_uuid = get_characteristic_uuid_from_handle(pinfo, handle, bluetooth_data);
+
+        characteristic_dissector_name = wmem_strdup_printf(wmem_packet_scope(), "btgatt.uuid0x%s", print_numeric_uuid(&characteristic_uuid));
+        characteristic_dissector = find_dissector(characteristic_dissector_name);
+
+        sub_item = proto_tree_add_item(tree, hf_btatt_valid_range_lower_inclusive_value, tvb, offset, tvb_reported_length_remaining(tvb, offset) / 2, ENC_NA);
+        sub_tree = proto_item_add_subtree(sub_item, ett_btatt_list);
+
+        if (characteristic_dissector)
+            call_dissector_with_data(characteristic_dissector, tvb_new_subset(tvb, offset, tvb_reported_length_remaining(tvb, offset) / 2, tvb_reported_length_remaining(tvb, offset) / 2), pinfo, sub_tree, att_data);
+
+        sub_item = proto_tree_add_item(tree, hf_btatt_valid_range_upper_inclusive_value, tvb, offset + tvb_reported_length_remaining(tvb, offset) / 2, tvb_reported_length_remaining(tvb, offset) / 2, ENC_NA);
+        sub_tree = proto_item_add_subtree(sub_item, ett_btatt_list);
+
+        if (characteristic_dissector)
+            call_dissector_with_data(characteristic_dissector, tvb_new_subset(tvb, offset + tvb_reported_length_remaining(tvb, offset) / 2, tvb_reported_length_remaining(tvb, offset) / 2, tvb_reported_length_remaining(tvb, offset) / 2), pinfo, sub_tree, att_data);
+
+        offset += tvb_reported_length_remaining(tvb, offset);
         }
         break;
     case 0x2907: /* External Report Reference */
+        if (service_uuid.bt_uuid == GATT_SERVICE_HUMAN_INTERFACE_DEVICE) {
+            if (is_readable_request(att_data->opcode))
+                break;
+
+            if (!is_readable_response(att_data->opcode))
+                expert_add_info(pinfo, tree, &ei_btatt_invalid_usage);
+        }
+
+        if (bluetooth_gatt_has_no_parameter(att_data->opcode))
+            break;
+
         if (tvb_reported_length_remaining(tvb, offset) == 2) {
             proto_tree_add_item(tree, hf_btatt_uuid16, tvb, offset, 2, ENC_LITTLE_ENDIAN);
             offset += 2;
@@ -2507,11 +4208,23 @@ dissect_attribute_value(proto_tree *tree, proto_item *patron_item, packet_info *
             proto_tree_add_item(tree, hf_btatt_uuid128, tvb, offset, 16, ENC_NA);
             offset += 16;
         } else {
-            proto_tree_add_item(tree, hf_btatt_value, tvb, offset, -1, ENC_NA);
+            sub_item = proto_tree_add_item(tree, hf_btatt_value, tvb, offset, -1, ENC_NA);
+            expert_add_info(pinfo, sub_item, &ei_btatt_bad_data);
             offset = tvb_captured_length(tvb);
         }
         break;
     case 0x2908: /* GATT: Report Reference */
+        if (service_uuid.bt_uuid == GATT_SERVICE_HUMAN_INTERFACE_DEVICE) {
+            if (is_readable_request(att_data->opcode))
+                break;
+
+            if (!is_readable_response(att_data->opcode))
+                expert_add_info(pinfo, tree, &ei_btatt_invalid_usage);
+        }
+
+        if (bluetooth_gatt_has_no_parameter(att_data->opcode))
+            break;
+
         proto_tree_add_item(tree, hf_btatt_report_reference_report_id, tvb, offset, 1, ENC_NA);
         offset += 1;
 
@@ -2519,12 +4232,61 @@ dissect_attribute_value(proto_tree *tree, proto_item *patron_item, packet_info *
         offset += 1;
 
         break;
+    case 0x2909: /* Number of Digitals */
+        if (is_readable_request(att_data->opcode))
+            break;
+
+        if (!is_readable_response(att_data->opcode))
+            expert_add_info(pinfo, tree, &ei_btatt_invalid_usage);
+
+        if (bluetooth_gatt_has_no_parameter(att_data->opcode))
+            break;
+
+        proto_tree_add_item(tree, hf_btatt_number_of_digitals, tvb, offset, 1, ENC_NA);
+        offset += 1;
+
+        break;
+    case 0x290A: /* Value Trigger Setting */
+        if (is_readable_request(att_data->opcode) || is_writeable_response(att_data->opcode))
+            break;
+
+        if (!is_readable_response(att_data->opcode) && !is_writeable_request(att_data->opcode))
+            expert_add_info(pinfo, tree, &ei_btatt_invalid_usage);
+
+        if (bluetooth_gatt_has_no_parameter(att_data->opcode))
+            break;
+
+        proto_tree_add_item(tree, hf_btatt_value_trigger_setting_condition, tvb, offset, 1, ENC_NA);
+        value = tvb_get_guint8(tvb, offset);
+        offset += 1;
+
+        if (value >= 1 && value <= 3) {
+            proto_tree_add_item(tree, hf_btatt_value_trigger_setting_analog, tvb, offset, 2, ENC_LITTLE_ENDIAN);
+            offset += 2;
+        } else if (value == 4) {
+            call_dissector_with_data(find_dissector("btgatt.uuid0x2a56"), tvb_new_subset(tvb, offset, 1, 1), pinfo, tree, att_data);
+            offset += 1;
+        } else if (value == 5 || value == 6) {
+            proto_tree_add_item(tree, hf_btatt_value_trigger_setting_analog_one, tvb, offset, 2, ENC_LITTLE_ENDIAN);
+            offset += 2;
+
+            proto_tree_add_item(tree, hf_btatt_value_trigger_setting_analog_two, tvb, offset, 2, ENC_LITTLE_ENDIAN);
+            offset += 2;
+        }
+
+        break;
     case 0x290B: /* Environmental Sensing Configuration */
+        if (bluetooth_gatt_has_no_parameter(att_data->opcode))
+            break;
+
         proto_tree_add_item(tree, hf_btatt_esp_trigger_logic, tvb, offset, 1, ENC_NA);
         offset += 1;
 
         break;
     case 0x290C: /* Environmental Sensing Measurement */
+        if (bluetooth_gatt_has_no_parameter(att_data->opcode))
+            break;
+
         proto_tree_add_item(tree, hf_btatt_esp_flags, tvb, offset, 2, ENC_LITTLE_ENDIAN);
         offset += 2;
 
@@ -2545,39 +4307,69 @@ dissect_attribute_value(proto_tree *tree, proto_item *patron_item, packet_info *
 
         break;
     case 0x290D: /* Environmental Sensing Trigger Setting */
+        if (bluetooth_gatt_has_no_parameter(att_data->opcode))
+            break;
+
         proto_tree_add_item(tree, hf_btatt_esp_condition, tvb, offset, 1, ENC_NA);
         offset += 1;
 
         proto_tree_add_item(tree, hf_btatt_esp_operand, tvb, offset, tvb_captured_length_remaining(tvb, offset), ENC_NA);
         offset += tvb_captured_length_remaining(tvb, offset);
         break;
-    case 0x2A4A: /* HOGP: HID Information */
-        proto_tree_add_item(tree, hf_btatt_hogp_bcd_hid, tvb, offset, 2, ENC_LITTLE_ENDIAN);
-        offset += 2;
+    case 0x290E: /* Time Trigger Setting */
+        if (is_readable_request(att_data->opcode) || is_writeable_response(att_data->opcode))
+            break;
 
-        proto_tree_add_item(tree, hf_btatt_hogp_b_country_code, tvb, offset, 1, ENC_NA);
+        if (!is_readable_response(att_data->opcode) && !is_writeable_request(att_data->opcode))
+            expert_add_info(pinfo, tree, &ei_btatt_invalid_usage);
+
+        if (bluetooth_gatt_has_no_parameter(att_data->opcode))
+            break;
+
+        proto_tree_add_item(tree, hf_btatt_time_trigger_setting_condition, tvb, offset, 1, ENC_NA);
+        value = tvb_get_guint8(tvb, offset);
         offset += 1;
 
-        proto_tree_add_bitmask(tree, tvb, offset, hf_btatt_hogp_flags, ett_btatt_value, hfx_btatt_hogp_flags, ENC_NA);
-        offset += 1;
+        if (value == 0) {
+            proto_tree_add_item(tree, hf_btatt_time_trigger_setting_value, tvb, offset, 1, ENC_NA);
+            offset += 1;
+        } else if (value == 1 || value == 2) {
+            proto_tree_add_item(tree, hf_btatt_time_trigger_setting_value_time_interval, tvb, offset, 3, ENC_LITTLE_ENDIAN);
+            offset += 3;
+        } else if (value == 3) {
+            proto_tree_add_item(tree, hf_btatt_time_trigger_setting_value_count, tvb, offset, 2, ENC_LITTLE_ENDIAN);
+            offset += 2;
+        }
 
         break;
-    case 0x2A4B: /* HOGP: Report Map */
-        offset = dissect_usb_hid_get_report_descriptor(pinfo, tree, tvb, offset, NULL);
-
-        break;
-    case 0x2A4E: /* HOGP: Protocol Mode */
-        proto_tree_add_item(tree, hf_btatt_hogp_protocol_mode, tvb, offset, 1, ENC_NA);
-        offset += 1;
-
-        break;
-
     case 0x2A00: /* Device Name */
+        if (service_uuid.bt_uuid == GATT_SERVICE_GENERIC_ACCESS_PROFILE) {
+            if (is_readable_request(att_data->opcode) || is_writeable_response(att_data->opcode))
+                break;
+
+            if (!is_readable_response(att_data->opcode) && !is_writeable_request(att_data->opcode))
+                expert_add_info(pinfo, tree, &ei_btatt_invalid_usage);
+        }
+
+        if (bluetooth_gatt_has_no_parameter(att_data->opcode))
+            break;
+
         proto_tree_add_item(tree, hf_btatt_device_name, tvb, offset, tvb_captured_length_remaining(tvb, offset), ENC_NA | ENC_UTF_8);
         offset += tvb_captured_length_remaining(tvb, offset);
 
         break;
     case 0x2A01: /* Appearance */
+        if (service_uuid.bt_uuid == GATT_SERVICE_GENERIC_ACCESS_PROFILE) {
+            if (is_readable_request(att_data->opcode))
+                break;
+
+            if (!is_readable_response(att_data->opcode))
+                expert_add_info(pinfo, tree, &ei_btatt_invalid_usage);
+        }
+
+        if (bluetooth_gatt_has_no_parameter(att_data->opcode))
+            break;
+
         switch ((tvb_get_guint16(tvb, offset, ENC_LITTLE_ENDIAN) & 0xFFC0) >> 6) {
         case 0x003: /* Watch */
             hfs = hfx_btatt_appearance_watch;
@@ -2623,15 +4415,48 @@ dissect_attribute_value(proto_tree *tree, proto_item *patron_item, packet_info *
 
         break;
     case 0x2A02: /* Peripheral Privacy Flag */
+        if (service_uuid.bt_uuid == GATT_SERVICE_GENERIC_ACCESS_PROFILE) {
+            if (is_readable_request(att_data->opcode) || is_writeable_response(att_data->opcode))
+                break;
+
+            if (!is_readable_response(att_data->opcode) && !is_writeable_request(att_data->opcode))
+                expert_add_info(pinfo, tree, &ei_btatt_invalid_usage);
+        }
+
+        if (bluetooth_gatt_has_no_parameter(att_data->opcode))
+            break;
+
         proto_tree_add_item(tree, hf_btatt_peripheral_privacy_flag, tvb, offset, 1, ENC_NA);
         offset += 1;
 
         break;
     case 0x2A03: /* Reconnection Address */
+        if (service_uuid.bt_uuid == GATT_SERVICE_GENERIC_ACCESS_PROFILE) {
+            if (is_writeable_response(att_data->opcode))
+                break;
+
+            if (!is_writeable_request(att_data->opcode))
+                expert_add_info(pinfo, tree, &ei_btatt_invalid_usage);
+        }
+
+        if (bluetooth_gatt_has_no_parameter(att_data->opcode))
+            break;
+
         offset = dissect_bd_addr(hf_btatt_reconnection_address, pinfo, tree, tvb, offset, FALSE, bluetooth_data->interface_id, bluetooth_data->adapter_id, NULL);
 
         break;
     case 0x2A04: /* Peripheral Preferred Connection Parameters */
+        if (service_uuid.bt_uuid == GATT_SERVICE_GENERIC_ACCESS_PROFILE) {
+            if (is_readable_request(att_data->opcode))
+                break;
+
+            if (!is_readable_response(att_data->opcode))
+                expert_add_info(pinfo, tree, &ei_btatt_invalid_usage);
+        }
+
+        if (bluetooth_gatt_has_no_parameter(att_data->opcode))
+            break;
+
         proto_tree_add_item(tree, hf_btatt_minimum_connection_interval, tvb, offset, 2, ENC_LITTLE_ENDIAN);
         offset += 2;
 
@@ -2646,6 +4471,17 @@ dissect_attribute_value(proto_tree *tree, proto_item *patron_item, packet_info *
 
         break;
     case 0x2A05: /* Service Changed */
+        if (service_uuid.bt_uuid == GATT_SERVICE_GENERIC_ATTRIBUTE_PROFILE) {
+            if (att_data->opcode == ATT_OPCODE_HANDLE_VALUE_CONFIRMATION)
+                break;
+
+            if (att_data->opcode != ATT_OPCODE_HANDLE_VALUE_INDICATION)
+                expert_add_info(pinfo, tree, &ei_btatt_invalid_usage);
+        }
+
+        if (bluetooth_gatt_has_no_parameter(att_data->opcode))
+            break;
+
         proto_tree_add_item(tree, hf_btatt_starting_handle, tvb, offset, 2, ENC_LITTLE_ENDIAN);
         offset += 2;
 
@@ -2654,16 +4490,45 @@ dissect_attribute_value(proto_tree *tree, proto_item *patron_item, packet_info *
 
         break;
     case 0x2A06: /* Alert Level */
+        if (service_uuid.bt_uuid == GATT_SERVICE_IMMEDIATE_ALERT) {
+            if (att_data->opcode != ATT_OPCODE_WRITE_COMMAND)
+                expert_add_info(pinfo, tree, &ei_btatt_invalid_usage);
+        } else if (service_uuid.bt_uuid == GATT_SERVICE_LINK_LOSS) {
+            if (is_readable_request(att_data->opcode) || is_writeable_response(att_data->opcode))
+                break;
+
+            if (!is_readable_response(att_data->opcode) &&
+                    !is_writeable_request(att_data->opcode))
+                expert_add_info(pinfo, tree, &ei_btatt_invalid_usage);
+        }
+
+        if (bluetooth_gatt_has_no_parameter(att_data->opcode))
+            break;
+
         proto_tree_add_item(tree, hf_btatt_alert_level, tvb, offset, 1, ENC_NA);
         offset += 1;
 
         break;
     case 0x2A07: /* Tx Power Level */
+        if (service_uuid.bt_uuid == GATT_SERVICE_TX_POWER) {
+            if (is_readable_request(att_data->opcode))
+                break;
+
+            if (!is_readable_response(att_data->opcode))
+                expert_add_info(pinfo, tree, &ei_btatt_invalid_usage);
+        }
+
+        if (bluetooth_gatt_has_no_parameter(att_data->opcode))
+            break;
+
         proto_tree_add_item(tree, hf_btatt_tx_power_level, tvb, offset, 1, ENC_NA);
         offset += 1;
 
         break;
     case 0x2A08: /* Date Time */
+        if (bluetooth_gatt_has_no_parameter(att_data->opcode))
+            break;
+
         proto_tree_add_item(tree, hf_btatt_year, tvb, offset, 2, ENC_LITTLE_ENDIAN);
         offset += 2;
 
@@ -2684,6 +4549,9 @@ dissect_attribute_value(proto_tree *tree, proto_item *patron_item, packet_info *
 
         break;
     case 0x2A09: /* Day of Week */
+        if (bluetooth_gatt_has_no_parameter(att_data->opcode))
+            break;
+
         proto_tree_add_item(tree, hf_btatt_day_of_week, tvb, offset, 1, ENC_NA);
         offset += 1;
 
@@ -2691,6 +4559,20 @@ dissect_attribute_value(proto_tree *tree, proto_item *patron_item, packet_info *
     case 0x2A0A: /* Day Date Time */
     case 0x2A0C: /* Exact Time 256 */
     case 0x2A2B: /* Current Time */
+        if (uuid.bt_uuid == 0x2A2B) {/* Current Time */
+            if (service_uuid.bt_uuid == GATT_SERVICE_CURRENT_TIME_SERVICE) {
+                if (is_readable_request(att_data->opcode) || is_writeable_response(att_data->opcode))
+                    break;
+
+                if (!is_readable_response(att_data->opcode) && !is_writeable_request(att_data->opcode) &&
+                        att_data->opcode != ATT_OPCODE_HANDLE_VALUE_NOTIFICATION)
+                    expert_add_info(pinfo, tree, &ei_btatt_invalid_usage);
+            }
+        }
+
+        if (bluetooth_gatt_has_no_parameter(att_data->opcode))
+            break;
+
         proto_tree_add_item(tree, hf_btatt_year, tvb, offset, 2, ENC_LITTLE_ENDIAN);
         offset += 2;
 
@@ -2724,16 +4606,34 @@ dissect_attribute_value(proto_tree *tree, proto_item *patron_item, packet_info *
 
         break;
     case 0x2A0D: /* DST Offset */
+        if (bluetooth_gatt_has_no_parameter(att_data->opcode))
+            break;
+
         proto_tree_add_item(tree, hf_btatt_dst_offset, tvb, offset, 1, ENC_NA);
         offset += 1;
 
         break;
     case 0x2A0E: /* Time Zone */
+        if (bluetooth_gatt_has_no_parameter(att_data->opcode))
+            break;
+
         proto_tree_add_item(tree, hf_btatt_timezone, tvb, offset, 1, ENC_NA);
         offset += 1;
 
         break;
     case 0x2A0F: /* Local Time Information */
+        if (service_uuid.bt_uuid == GATT_SERVICE_CURRENT_TIME_SERVICE) {
+            if (is_readable_request(att_data->opcode) || is_writeable_response(att_data->opcode))
+                break;
+
+            if (!is_readable_response(att_data->opcode) &&
+                    !is_writeable_request(att_data->opcode))
+                expert_add_info(pinfo, tree, &ei_btatt_invalid_usage);
+        }
+
+        if (bluetooth_gatt_has_no_parameter(att_data->opcode))
+            break;
+
         proto_tree_add_item(tree, hf_btatt_timezone, tvb, offset, 1, ENC_NA);
         offset += 1;
 
@@ -2742,6 +4642,17 @@ dissect_attribute_value(proto_tree *tree, proto_item *patron_item, packet_info *
 
         break;
     case 0x2A11: /* Time with DST */
+        if (service_uuid.bt_uuid == GATT_SERVICE_NEXT_DST_CHANGE_SERVICE) {
+            if (is_readable_request(att_data->opcode))
+                break;
+
+            if (!is_readable_response(att_data->opcode))
+                expert_add_info(pinfo, tree, &ei_btatt_invalid_usage);
+        }
+
+        if (bluetooth_gatt_has_no_parameter(att_data->opcode))
+            break;
+
         proto_tree_add_item(tree, hf_btatt_year, tvb, offset, 2, ENC_LITTLE_ENDIAN);
         offset += 2;
 
@@ -2765,16 +4676,33 @@ dissect_attribute_value(proto_tree *tree, proto_item *patron_item, packet_info *
 
         break;
     case 0x2A12: /* Time Accuracy */
+        if (bluetooth_gatt_has_no_parameter(att_data->opcode))
+            break;
+
         proto_tree_add_item(tree, hf_btatt_time_accuracy, tvb, offset, 1, ENC_NA);
         offset += 1;
 
         break;
     case 0x2A13: /* Time Source */
+        if (bluetooth_gatt_has_no_parameter(att_data->opcode))
+            break;
+
         proto_tree_add_item(tree, hf_btatt_time_source, tvb, offset, 1, ENC_NA);
         offset += 1;
 
         break;
     case 0x2A14: /* Reference Time Information */
+        if (service_uuid.bt_uuid == GATT_SERVICE_CURRENT_TIME_SERVICE) {
+            if (is_readable_request(att_data->opcode))
+                break;
+
+            if (!is_readable_response(att_data->opcode))
+                expert_add_info(pinfo, tree, &ei_btatt_invalid_usage);
+        }
+
+        if (bluetooth_gatt_has_no_parameter(att_data->opcode))
+            break;
+
         proto_tree_add_item(tree, hf_btatt_time_source, tvb, offset, 1, ENC_NA);
         offset += 1;
 
@@ -2789,11 +4717,30 @@ dissect_attribute_value(proto_tree *tree, proto_item *patron_item, packet_info *
 
         break;
     case 0x2A16: /* Time Update Control Point */
+        if (service_uuid.bt_uuid == GATT_SERVICE_REFERENCE_TIME_UPDATE_SERVICE) {
+            if (att_data->opcode != ATT_OPCODE_WRITE_COMMAND)
+                expert_add_info(pinfo, tree, &ei_btatt_invalid_usage);
+        }
+
+        if (bluetooth_gatt_has_no_parameter(att_data->opcode))
+            break;
+
         proto_tree_add_item(tree, hf_btatt_time_update_control_point, tvb, offset, 1, ENC_NA);
         offset += 1;
 
         break;
     case 0x2A17: /* Time Update State */
+        if (service_uuid.bt_uuid == GATT_SERVICE_REFERENCE_TIME_UPDATE_SERVICE) {
+            if (is_readable_request(att_data->opcode))
+                break;
+
+            if (!is_readable_response(att_data->opcode))
+                expert_add_info(pinfo, tree, &ei_btatt_invalid_usage);
+        }
+
+        if (bluetooth_gatt_has_no_parameter(att_data->opcode))
+            break;
+
         proto_tree_add_item(tree, hf_btatt_time_current_state, tvb, offset, 1, ENC_NA);
         offset += 1;
 
@@ -2802,6 +4749,14 @@ dissect_attribute_value(proto_tree *tree, proto_item *patron_item, packet_info *
 
         break;
     case 0x2A18: /* Glucose Measurement */
+        if (service_uuid.bt_uuid == GATT_SERVICE_GLUCOSE) {
+            if (att_data->opcode != ATT_OPCODE_HANDLE_VALUE_NOTIFICATION)
+                expert_add_info(pinfo, tree, &ei_btatt_invalid_usage);
+        }
+
+        if (bluetooth_gatt_has_no_parameter(att_data->opcode))
+            break;
+
         proto_tree_add_bitmask(tree, tvb, offset, hf_btatt_glucose_measurement_flags, ett_btatt_value, hfx_btatt_glucose_measurement_flags, ENC_NA);
         flags = tvb_get_guint8(tvb, offset);
         offset += 1;
@@ -2857,12 +4812,41 @@ dissect_attribute_value(proto_tree *tree, proto_item *patron_item, packet_info *
 
         break;
     case 0x2A19: /* Battery Level */
+        if (service_uuid.bt_uuid == GATT_SERVICE_BATTERY_SERVICE) {
+            if (is_readable_request(att_data->opcode))
+                break;
+
+            if (!is_readable_response(att_data->opcode) && att_data->opcode != ATT_OPCODE_HANDLE_VALUE_NOTIFICATION)
+                expert_add_info(pinfo, tree, &ei_btatt_invalid_usage);
+        }
+
+        if (bluetooth_gatt_has_no_parameter(att_data->opcode))
+            break;
+
         proto_tree_add_item(tree, hf_btatt_battery_level, tvb, offset, 1, ENC_NA);
         offset += 1;
 
         break;
     case 0x2A1C: /* Temperature Measurement */
     case 0x2A1E: /* Intermediate Temperature */
+        if (uuid.bt_uuid == 0x2A1C) {/* Temperature Measurement */
+            if (service_uuid.bt_uuid == GATT_SERVICE_HEALTH_THERMOMETER) {
+                if (att_data->opcode == ATT_OPCODE_HANDLE_VALUE_CONFIRMATION)
+                    break;
+
+                if (att_data->opcode != ATT_OPCODE_HANDLE_VALUE_INDICATION)
+                    expert_add_info(pinfo, tree, &ei_btatt_invalid_usage);
+            }
+        } else if (uuid.bt_uuid == 0x2A1E) {/* Intermediate Temperature */
+            if (service_uuid.bt_uuid == GATT_SERVICE_HEALTH_THERMOMETER) {
+                if (att_data->opcode != ATT_OPCODE_HANDLE_VALUE_NOTIFICATION)
+                    expert_add_info(pinfo, tree, &ei_btatt_invalid_usage);
+            }
+        }
+
+        if (bluetooth_gatt_has_no_parameter(att_data->opcode))
+            break;
+
         proto_tree_add_bitmask(tree, tvb, offset, hf_btatt_temperature_measurement_flags, ett_btatt_value, hfx_btatt_temperature_measurement_flags, ENC_NA);
         flags = tvb_get_guint8(tvb, offset);
         offset += 1;
@@ -2905,21 +4889,65 @@ dissect_attribute_value(proto_tree *tree, proto_item *patron_item, packet_info *
 
         break;
     case 0x2A1D: /* Temperature Type */
+        if (service_uuid.bt_uuid == GATT_SERVICE_HEALTH_THERMOMETER) {
+            if (is_readable_request(att_data->opcode))
+                break;
+
+            if (!is_readable_response(att_data->opcode))
+                expert_add_info(pinfo, tree, &ei_btatt_invalid_usage);
+        }
+
+        if (bluetooth_gatt_has_no_parameter(att_data->opcode))
+            break;
+
         proto_tree_add_item(tree, hf_btatt_temperature_type, tvb, offset, 1, ENC_NA);
         offset += 1;
 
         break;
     case 0x2A21: /* Measurement Interval */
+        if (service_uuid.bt_uuid == GATT_SERVICE_HEALTH_THERMOMETER) {
+            if (is_readable_request(att_data->opcode) || is_writeable_response(att_data->opcode) || att_data->opcode == ATT_OPCODE_HANDLE_VALUE_CONFIRMATION)
+                break;
+
+            if (!is_readable_response(att_data->opcode) && !is_writeable_request(att_data->opcode) && att_data->opcode != ATT_OPCODE_HANDLE_VALUE_INDICATION)
+                expert_add_info(pinfo, tree, &ei_btatt_invalid_usage);
+        }
+
+        if (bluetooth_gatt_has_no_parameter(att_data->opcode))
+            break;
+
         proto_tree_add_item(tree, hf_btatt_measurement_interval, tvb, offset, 2, ENC_LITTLE_ENDIAN);
         offset += 2;
 
         break;
     case 0x2A22: /* Boot Keyboard Input Report */
+        if (service_uuid.bt_uuid == GATT_SERVICE_HUMAN_INTERFACE_DEVICE) {
+            if (is_readable_request(att_data->opcode) || is_writeable_response(att_data->opcode))
+                break;
+
+            if (!is_readable_response(att_data->opcode) && !is_writeable_request(att_data->opcode) && att_data->opcode != ATT_OPCODE_HANDLE_VALUE_NOTIFICATION)
+                expert_add_info(pinfo, tree, &ei_btatt_invalid_usage);
+        }
+
+        if (bluetooth_gatt_has_no_parameter(att_data->opcode))
+            break;
+
         call_dissector_with_data(usb_hid_boot_keyboard_input_report_handle, tvb_new_subset_remaining(tvb, offset), pinfo, tree, NULL);
         offset += tvb_reported_length_remaining(tvb, offset);
 
         break;
     case 0x2A23: /* System ID */
+        if (service_uuid.bt_uuid == GATT_SERVICE_DEVICE_INFORMATION) {
+            if (is_readable_request(att_data->opcode))
+                break;
+
+            if (!is_readable_response(att_data->opcode))
+                expert_add_info(pinfo, tree, &ei_btatt_invalid_usage);
+        }
+
+        if (bluetooth_gatt_has_no_parameter(att_data->opcode))
+            break;
+
         proto_tree_add_item(tree, hf_btatt_system_id_manufacturer_identifier, tvb, offset, 5, ENC_LITTLE_ENDIAN);
         offset += 5;
 
@@ -2927,56 +4955,189 @@ dissect_attribute_value(proto_tree *tree, proto_item *patron_item, packet_info *
         offset += 3;
         break;
     case 0x2A24: /* Model Number String */
+        if (service_uuid.bt_uuid == GATT_SERVICE_DEVICE_INFORMATION) {
+            if (is_readable_request(att_data->opcode))
+                break;
+
+            if (!is_readable_response(att_data->opcode))
+                expert_add_info(pinfo, tree, &ei_btatt_invalid_usage);
+        }
+
+        if (bluetooth_gatt_has_no_parameter(att_data->opcode))
+            break;
+
         proto_tree_add_item(tree, hf_btatt_model_number_string, tvb, offset, tvb_captured_length_remaining(tvb, offset), ENC_NA | ENC_UTF_8);
         offset += tvb_captured_length_remaining(tvb, offset);
 
         break;
     case 0x2A25: /* Serial Number String */
+        if (service_uuid.bt_uuid == GATT_SERVICE_DEVICE_INFORMATION) {
+            if (is_readable_request(att_data->opcode))
+                break;
+
+            if (!is_readable_response(att_data->opcode))
+                expert_add_info(pinfo, tree, &ei_btatt_invalid_usage);
+        }
+
+        if (bluetooth_gatt_has_no_parameter(att_data->opcode))
+            break;
+
         proto_tree_add_item(tree, hf_btatt_serial_number_string, tvb, offset, tvb_captured_length_remaining(tvb, offset), ENC_NA | ENC_UTF_8);
         offset += tvb_captured_length_remaining(tvb, offset);
 
         break;
     case 0x2A26: /* Firmware Revision String */
+        if (service_uuid.bt_uuid == GATT_SERVICE_DEVICE_INFORMATION) {
+            if (is_readable_request(att_data->opcode))
+                break;
+
+            if (!is_readable_response(att_data->opcode))
+                expert_add_info(pinfo, tree, &ei_btatt_invalid_usage);
+        }
+
+        if (bluetooth_gatt_has_no_parameter(att_data->opcode))
+            break;
+
         proto_tree_add_item(tree, hf_btatt_firmware_revision_string, tvb, offset, tvb_captured_length_remaining(tvb, offset), ENC_NA | ENC_UTF_8);
         offset += tvb_captured_length_remaining(tvb, offset);
 
         break;
     case 0x2A27: /* Hardware Revision String */
+        if (service_uuid.bt_uuid == GATT_SERVICE_DEVICE_INFORMATION) {
+            if (is_readable_request(att_data->opcode))
+                break;
+
+            if (!is_readable_response(att_data->opcode))
+                expert_add_info(pinfo, tree, &ei_btatt_invalid_usage);
+        }
+
+        if (bluetooth_gatt_has_no_parameter(att_data->opcode))
+            break;
+
         proto_tree_add_item(tree, hf_btatt_hardware_revision_string, tvb, offset, tvb_captured_length_remaining(tvb, offset), ENC_NA | ENC_UTF_8);
         offset += tvb_captured_length_remaining(tvb, offset);
 
         break;
     case 0x2A28: /* Software Revision String */
+        if (service_uuid.bt_uuid == GATT_SERVICE_DEVICE_INFORMATION) {
+            if (is_readable_request(att_data->opcode))
+                break;
+
+            if (!is_readable_response(att_data->opcode))
+                expert_add_info(pinfo, tree, &ei_btatt_invalid_usage);
+        }
+
+        if (bluetooth_gatt_has_no_parameter(att_data->opcode))
+            break;
+
         proto_tree_add_item(tree, hf_btatt_software_revision_string, tvb, offset, tvb_captured_length_remaining(tvb, offset), ENC_NA | ENC_UTF_8);
         offset += tvb_captured_length_remaining(tvb, offset);
 
         break;
     case 0x2A29: /* Manufacturer Name String */
+        if (service_uuid.bt_uuid == GATT_SERVICE_DEVICE_INFORMATION) {
+            if (is_readable_request(att_data->opcode))
+                break;
+
+            if (!is_readable_response(att_data->opcode))
+                expert_add_info(pinfo, tree, &ei_btatt_invalid_usage);
+        }
+
+        if (bluetooth_gatt_has_no_parameter(att_data->opcode))
+            break;
+
         proto_tree_add_item(tree, hf_btatt_manufacturer_string, tvb, offset, tvb_captured_length_remaining(tvb, offset), ENC_NA | ENC_UTF_8);
         offset += tvb_captured_length_remaining(tvb, offset);
 
         break;
+    case 0x2A2A: /* IEEE 11073-20601 Regulatory Certification Data List */
+        if (service_uuid.bt_uuid == GATT_SERVICE_DEVICE_INFORMATION) {
+            if (is_readable_request(att_data->opcode))
+                break;
+
+            if (!is_readable_response(att_data->opcode))
+                expert_add_info(pinfo, tree, &ei_btatt_invalid_usage);
+        }
+
+        if (bluetooth_gatt_has_no_parameter(att_data->opcode))
+            break;
+
+        sub_item = proto_tree_add_item(tree, hf_btatt_value, tvb, offset, -1, ENC_NA);
+        expert_add_info(pinfo, sub_item, &ei_btatt_undecoded);
+        offset = tvb_captured_length(tvb);
+
+        break;
     case 0x2A2C: /* Magnetic Declination */
+        if (service_uuid.bt_uuid == GATT_SERVICE_ENVIRONMENTAL_SENSING) {
+            if (is_readable_request(att_data->opcode))
+                break;
+
+            if (!is_readable_response(att_data->opcode) &&
+                    att_data->opcode != ATT_OPCODE_HANDLE_VALUE_NOTIFICATION)
+                expert_add_info(pinfo, tree, &ei_btatt_invalid_usage);
+        }
+
+        if (bluetooth_gatt_has_no_parameter(att_data->opcode))
+            break;
+
         proto_tree_add_item(tree, hf_btatt_magnetic_declination, tvb, offset, 2, ENC_LITTLE_ENDIAN);
         offset += 2;
 
         break;
     case 0x2A31: /* Scan Refresh */
+        if (service_uuid.bt_uuid == GATT_SERVICE_SCAN_PARAMETERS) {
+            if (att_data->opcode != ATT_OPCODE_HANDLE_VALUE_NOTIFICATION)
+                expert_add_info(pinfo, tree, &ei_btatt_invalid_usage);
+        }
+
+        if (bluetooth_gatt_has_no_parameter(att_data->opcode))
+            break;
+
         proto_tree_add_item(tree, hf_btatt_scan_refresh, tvb, offset, 1, ENC_NA);
         offset += 1;
 
         break;
     case 0x2A32: /* Boot Keyboard Output Report */
+        if (service_uuid.bt_uuid == GATT_SERVICE_HUMAN_INTERFACE_DEVICE) {
+            if (is_readable_request(att_data->opcode) || is_writeable_response(att_data->opcode))
+                break;
+
+            if (!is_readable_response(att_data->opcode) && !is_writeable_request(att_data->opcode) && att_data->opcode != ATT_OPCODE_WRITE_COMMAND)
+                expert_add_info(pinfo, tree, &ei_btatt_invalid_usage);
+        }
+
+        if (bluetooth_gatt_has_no_parameter(att_data->opcode))
+            break;
+
         call_dissector_with_data(usb_hid_boot_keyboard_output_report_handle, tvb_new_subset_remaining(tvb, offset), pinfo, tree, NULL);
         offset += tvb_reported_length_remaining(tvb, offset);
 
         break;
     case 0x2A33: /* Boot Mouse Input Report */
+        if (service_uuid.bt_uuid == GATT_SERVICE_HUMAN_INTERFACE_DEVICE) {
+            if (is_readable_request(att_data->opcode) || is_writeable_response(att_data->opcode))
+                break;
+
+            if (!is_readable_response(att_data->opcode) && !is_writeable_request(att_data->opcode) && att_data->opcode != ATT_OPCODE_HANDLE_VALUE_NOTIFICATION)
+                expert_add_info(pinfo, tree, &ei_btatt_invalid_usage);
+        }
+
+        if (bluetooth_gatt_has_no_parameter(att_data->opcode))
+            break;
+
         call_dissector_with_data(usb_hid_boot_mouse_input_report_handle, tvb_new_subset_remaining(tvb, offset), pinfo, tree, NULL);
         offset += tvb_reported_length_remaining(tvb, offset);
 
         break;
     case 0x2A34: /* Glucose Measurement Context */
+        if (service_uuid.bt_uuid == GATT_SERVICE_GLUCOSE) {
+            if (att_data->opcode != ATT_OPCODE_HANDLE_VALUE_NOTIFICATION)
+                expert_add_info(pinfo, tree, &ei_btatt_invalid_usage);
+        }
+
+        if (bluetooth_gatt_has_no_parameter(att_data->opcode))
+            break;
+
         proto_tree_add_bitmask(tree, tvb, offset, hf_btatt_glucose_measurement_context_flags, ett_btatt_value, hfx_btatt_glucose_measurement_context_flags, ENC_NA);
         flags = tvb_get_guint8(tvb, offset);
         offset += 1;
@@ -3036,6 +5197,24 @@ dissect_attribute_value(proto_tree *tree, proto_item *patron_item, packet_info *
         break;
     case 0x2A35: /* Blood Pressure Measurement */
     case 0x2A36: /* Intermediate Cuff Pressure */
+        if (uuid.bt_uuid == 0x2A35) {/* Blood Pressure Measurement */
+            if (service_uuid.bt_uuid == GATT_SERVICE_BLOOD_PRESSURE) {
+                if (att_data->opcode == ATT_OPCODE_HANDLE_VALUE_CONFIRMATION)
+                    break;
+
+                if (att_data->opcode != ATT_OPCODE_HANDLE_VALUE_INDICATION)
+                    expert_add_info(pinfo, tree, &ei_btatt_invalid_usage);
+            }
+        } else if (uuid.bt_uuid == 0x2A36) {/* Intermediate Cuff Pressure */
+            if (service_uuid.bt_uuid == GATT_SERVICE_BLOOD_PRESSURE) {
+                if (att_data->opcode != ATT_OPCODE_HANDLE_VALUE_NOTIFICATION)
+                    expert_add_info(pinfo, tree, &ei_btatt_invalid_usage);
+            }
+        }
+
+        if (bluetooth_gatt_has_no_parameter(att_data->opcode))
+            break;
+
         proto_tree_add_bitmask(tree, tvb, offset, hf_btatt_blood_pressure_measurement_flags, ett_btatt_value, hfx_btatt_blood_pressure_measurement_flags, ENC_NA);
         flags = tvb_get_guint8(tvb, offset);
         offset += 1;
@@ -3100,6 +5279,14 @@ dissect_attribute_value(proto_tree *tree, proto_item *patron_item, packet_info *
 
         break;
     case 0x2A37: /* Heart Rate Measurement */
+        if (service_uuid.bt_uuid == GATT_SERVICE_HEART_RATE) {
+            if (att_data->opcode != ATT_OPCODE_HANDLE_VALUE_NOTIFICATION)
+                expert_add_info(pinfo, tree, &ei_btatt_invalid_usage);
+        }
+
+        if (bluetooth_gatt_has_no_parameter(att_data->opcode))
+            break;
+
         proto_tree_add_bitmask(tree, tvb, offset, hf_btatt_heart_rate_measurement_flags, ett_btatt_value, hfx_btatt_heart_rate_measurement_flags, ENC_NA);
         flags = tvb_get_guint8(tvb, offset);
         offset += 1;
@@ -3118,32 +5305,93 @@ dissect_attribute_value(proto_tree *tree, proto_item *patron_item, packet_info *
         }
 
         if (flags & 0x10) {
-            proto_tree_add_item(tree, hf_btatt_heart_rate_measurement_rr_interval, tvb, offset, 2, ENC_LITTLE_ENDIAN);
-            offset += 2;
+            guint interval_count = 0;
+
+            sub_item = proto_tree_add_item(tree, hf_btatt_heart_rate_measurement_rr_intervals, tvb, offset, tvb_captured_length_remaining(tvb, offset), ENC_NA);
+            sub_tree = proto_item_add_subtree(sub_item, ett_btatt_list);
+            while (tvb_reported_length_remaining(tvb, offset)) {
+                proto_tree_add_item(sub_tree, hf_btatt_heart_rate_measurement_rr_interval, tvb, offset, 2, ENC_LITTLE_ENDIAN);
+                offset += 2;
+                interval_count += 1;
+            }
+
+            proto_item_append_text(sub_item, " [count = %2u]", interval_count);
         }
 
         break;
     case 0x2A38: /* Body Sensor Location */
+        if (service_uuid.bt_uuid == GATT_SERVICE_HEART_RATE) {
+            if (is_readable_request(att_data->opcode))
+                break;
+
+            if (!is_readable_response(att_data->opcode))
+                expert_add_info(pinfo, tree, &ei_btatt_invalid_usage);
+        }
+
+        if (bluetooth_gatt_has_no_parameter(att_data->opcode))
+            break;
+
         proto_tree_add_item(tree, hf_btatt_body_sensor_location, tvb, offset, 1, ENC_NA);
         offset += 1;
 
         break;
     case 0x2A39: /* Heart Rate Control Point */
+        if (service_uuid.bt_uuid == GATT_SERVICE_HEART_RATE) {
+            if (is_writeable_response(att_data->opcode))
+                break;
+
+            if (!is_writeable_request(att_data->opcode))
+                expert_add_info(pinfo, tree, &ei_btatt_invalid_usage);
+        }
+
+        if (bluetooth_gatt_has_no_parameter(att_data->opcode))
+            break;
+
         proto_tree_add_item(tree, hf_btatt_heart_rate_control_point, tvb, offset, 1, ENC_NA);
         offset += 1;
 
         break;
     case 0x2A3F: /* Alert Status */
+        if (service_uuid.bt_uuid == GATT_SERVICE_PHONE_ALERT_STATUS_SERVICE) {
+            if (is_readable_request(att_data->opcode))
+                break;
+
+            if (!is_readable_response(att_data->opcode) && att_data->opcode != ATT_OPCODE_HANDLE_VALUE_NOTIFICATION)
+                expert_add_info(pinfo, tree, &ei_btatt_invalid_usage);
+        }
+
+        if (bluetooth_gatt_has_no_parameter(att_data->opcode))
+            break;
+
         proto_tree_add_bitmask(tree, tvb, offset, hf_btatt_alert_status, ett_btatt_value, hfx_btatt_alert_status, ENC_NA);
         offset += 1;
 
         break;
     case 0x2A40: /* Ringer Control Point */
+        if (service_uuid.bt_uuid == GATT_SERVICE_PHONE_ALERT_STATUS_SERVICE) {
+            if (att_data->opcode != ATT_OPCODE_WRITE_COMMAND)
+                expert_add_info(pinfo, tree, &ei_btatt_invalid_usage);
+        }
+
+        if (bluetooth_gatt_has_no_parameter(att_data->opcode))
+            break;
+
         proto_tree_add_item(tree, hf_btatt_ringer_control_point, tvb, offset, 1, ENC_NA);
         offset += 1;
 
         break;
     case 0x2A41: /* Ringer Setting */
+        if (service_uuid.bt_uuid == GATT_SERVICE_PHONE_ALERT_STATUS_SERVICE) {
+            if (is_readable_request(att_data->opcode))
+                break;
+
+            if (!is_readable_response(att_data->opcode) && att_data->opcode != ATT_OPCODE_HANDLE_VALUE_NOTIFICATION)
+                expert_add_info(pinfo, tree, &ei_btatt_invalid_usage);
+        }
+
+        if (bluetooth_gatt_has_no_parameter(att_data->opcode))
+            break;
+
         proto_tree_add_item(tree, hf_btatt_ringer_setting, tvb, offset, 1, ENC_NA);
         offset += 1;
 
@@ -3151,6 +5399,19 @@ dissect_attribute_value(proto_tree *tree, proto_item *patron_item, packet_info *
     case 0x2A42: /* Alert Category ID Bit Mask */
     case 0x2A47: /* Supported New Alert Category */
     case 0x2A48: /* Supported Unread Alert Category */
+        if (uuid.bt_uuid == 0x2A47 || uuid.bt_uuid == 0x2A48) {/* Supported New Alert Category || Supported Unread Alert Category*/
+            if (service_uuid.bt_uuid == GATT_SERVICE_ALERT_NOTIFICATION_SERVICE) {
+                if (is_readable_request(att_data->opcode))
+                    break;
+
+                if (!is_readable_response(att_data->opcode))
+                    expert_add_info(pinfo, tree, &ei_btatt_invalid_usage);
+            }
+        }
+
+        if (bluetooth_gatt_has_no_parameter(att_data->opcode))
+            break;
+
         proto_tree_add_bitmask(tree, tvb, offset, hf_btatt_alert_category_id_bitmask_1, ett_btatt_value, hfx_btatt_alert_category_id_bitmask_1, ENC_NA);
         offset += 1;
 
@@ -3161,11 +5422,25 @@ dissect_attribute_value(proto_tree *tree, proto_item *patron_item, packet_info *
 
         break;
     case 0x2A43: /* Alert Category ID */
+        if (bluetooth_gatt_has_no_parameter(att_data->opcode))
+            break;
+
         proto_tree_add_item(tree, hf_btatt_alert_category_id, tvb, offset, 1, ENC_NA);
         offset += 1;
 
         break;
     case 0x2A44: /* Alert Notification Control Point */
+        if (service_uuid.bt_uuid == GATT_SERVICE_ALERT_NOTIFICATION_SERVICE) {
+            if (is_writeable_response(att_data->opcode))
+                break;
+
+            if (!is_writeable_request(att_data->opcode))
+                expert_add_info(pinfo, tree, &ei_btatt_invalid_usage);
+        }
+
+        if (bluetooth_gatt_has_no_parameter(att_data->opcode))
+            break;
+
         proto_tree_add_item(tree, hf_btatt_alert_command_id, tvb, offset, 1, ENC_NA);
         offset += 1;
 
@@ -3174,6 +5449,14 @@ dissect_attribute_value(proto_tree *tree, proto_item *patron_item, packet_info *
 
         break;
     case 0x2A45: /* Unread Alert Status */
+        if (service_uuid.bt_uuid == GATT_SERVICE_ALERT_NOTIFICATION_SERVICE) {
+            if (att_data->opcode != ATT_OPCODE_HANDLE_VALUE_NOTIFICATION)
+                expert_add_info(pinfo, tree, &ei_btatt_invalid_usage);
+        }
+
+        if (bluetooth_gatt_has_no_parameter(att_data->opcode))
+            break;
+
         proto_tree_add_item(tree, hf_btatt_alert_category_id, tvb, offset, 1, ENC_NA);
         offset += 1;
 
@@ -3182,6 +5465,14 @@ dissect_attribute_value(proto_tree *tree, proto_item *patron_item, packet_info *
 
         break;
     case 0x2A46: /* New Alert */
+        if (service_uuid.bt_uuid == GATT_SERVICE_ALERT_NOTIFICATION_SERVICE) {
+            if (att_data->opcode != ATT_OPCODE_HANDLE_VALUE_NOTIFICATION)
+                expert_add_info(pinfo, tree, &ei_btatt_invalid_usage);
+        }
+
+        if (bluetooth_gatt_has_no_parameter(att_data->opcode))
+            break;
+
         proto_tree_add_item(tree, hf_btatt_alert_category_id, tvb, offset, 1, ENC_NA);
         offset += 1;
 
@@ -3195,16 +5486,117 @@ dissect_attribute_value(proto_tree *tree, proto_item *patron_item, packet_info *
 
         break;
     case 0x2A49: /* Blood Pressure Feature */
+        if (service_uuid.bt_uuid == GATT_SERVICE_BLOOD_PRESSURE) {
+            if (is_readable_request(att_data->opcode))
+                break;
+
+            if (!is_readable_response(att_data->opcode))
+                expert_add_info(pinfo, tree, &ei_btatt_invalid_usage);
+        }
+
+        if (bluetooth_gatt_has_no_parameter(att_data->opcode))
+            break;
+
         proto_tree_add_bitmask(tree, tvb, offset, hf_btatt_blood_pressure_feature, ett_btatt_value, hfx_btatt_blood_pressure_feature, ENC_LITTLE_ENDIAN);
         offset += 2;
 
         break;
+    case 0x2A4A: /* HOGP: HID Information */
+        if (service_uuid.bt_uuid == GATT_SERVICE_HUMAN_INTERFACE_DEVICE) {
+            if (is_readable_request(att_data->opcode))
+                break;
+
+            if (!is_readable_response(att_data->opcode))
+                expert_add_info(pinfo, tree, &ei_btatt_invalid_usage);
+        }
+
+        if (bluetooth_gatt_has_no_parameter(att_data->opcode))
+            break;
+
+        proto_tree_add_item(tree, hf_btatt_hogp_bcd_hid, tvb, offset, 2, ENC_LITTLE_ENDIAN);
+        offset += 2;
+
+        proto_tree_add_item(tree, hf_btatt_hogp_b_country_code, tvb, offset, 1, ENC_NA);
+        offset += 1;
+
+        proto_tree_add_bitmask(tree, tvb, offset, hf_btatt_hogp_flags, ett_btatt_value, hfx_btatt_hogp_flags, ENC_NA);
+        offset += 1;
+
+        break;
+    case 0x2A4B: /* HOGP: Report Map */
+        if (service_uuid.bt_uuid == GATT_SERVICE_HUMAN_INTERFACE_DEVICE) {
+            if (is_readable_request(att_data->opcode))
+                break;
+
+            if (!is_readable_response(att_data->opcode))
+                expert_add_info(pinfo, tree, &ei_btatt_invalid_usage);
+        }
+
+        if (bluetooth_gatt_has_no_parameter(att_data->opcode))
+            break;
+
+        offset = dissect_usb_hid_get_report_descriptor(pinfo, tree, tvb, offset, NULL);
+
+        break;
     case 0x2A4C: /* HID Control Point */
+        if (service_uuid.bt_uuid == GATT_SERVICE_HUMAN_INTERFACE_DEVICE) {
+            if (att_data->opcode != ATT_OPCODE_WRITE_COMMAND)
+                expert_add_info(pinfo, tree, &ei_btatt_invalid_usage);
+        }
+
+        if (bluetooth_gatt_has_no_parameter(att_data->opcode))
+            break;
+
         proto_tree_add_item(tree, hf_btatt_hogp_hid_control_point_command, tvb, offset, 1, ENC_NA);
         offset += 1;
 
         break;
+    case 0x2A4D: /* Report */
+        if (service_uuid.bt_uuid == GATT_SERVICE_HUMAN_INTERFACE_DEVICE) {
+            if (is_readable_request(att_data->opcode) || is_writeable_response(att_data->opcode))
+                break;
+
+            if (!is_readable_response(att_data->opcode) &&
+                    !is_writeable_request(att_data->opcode) &&
+                    att_data->opcode != ATT_OPCODE_WRITE_COMMAND &&
+                    att_data->opcode != ATT_OPCODE_HANDLE_VALUE_NOTIFICATION)
+                expert_add_info(pinfo, tree, &ei_btatt_invalid_usage);
+        }
+
+        if (bluetooth_gatt_has_no_parameter(att_data->opcode))
+            break;
+
+/* TODO: Implement */
+        sub_item = proto_tree_add_item(tree, hf_btatt_value, tvb, offset, -1, ENC_NA);
+        expert_add_info(pinfo, sub_item, &ei_btatt_undecoded);
+        offset = tvb_captured_length(tvb);
+
+        break;
+    case 0x2A4E: /* HOGP: Protocol Mode */
+        if (service_uuid.bt_uuid == GATT_SERVICE_HUMAN_INTERFACE_DEVICE) {
+            if (is_readable_request(att_data->opcode))
+                break;
+
+            if (!is_readable_response(att_data->opcode) && att_data->opcode != ATT_OPCODE_WRITE_COMMAND)
+                expert_add_info(pinfo, tree, &ei_btatt_invalid_usage);
+        }
+
+        if (bluetooth_gatt_has_no_parameter(att_data->opcode))
+            break;
+
+        proto_tree_add_item(tree, hf_btatt_hogp_protocol_mode, tvb, offset, 1, ENC_NA);
+        offset += 1;
+
+        break;
     case 0x2A4F: /* Scan Interval Window */
+        if (service_uuid.bt_uuid == GATT_SERVICE_SCAN_PARAMETERS) {
+            if (att_data->opcode != ATT_OPCODE_WRITE_COMMAND)
+                expert_add_info(pinfo, tree, &ei_btatt_invalid_usage);
+        }
+
+        if (bluetooth_gatt_has_no_parameter(att_data->opcode))
+            break;
+
         proto_tree_add_item(tree, hf_btatt_le_scan_interval, tvb, offset, 2, ENC_LITTLE_ENDIAN);
         offset += 2;
 
@@ -3213,6 +5605,17 @@ dissect_attribute_value(proto_tree *tree, proto_item *patron_item, packet_info *
 
         break;
     case 0x2A50: /* PnP ID */
+        if (service_uuid.bt_uuid == GATT_SERVICE_DEVICE_INFORMATION) {
+            if (is_readable_request(att_data->opcode))
+                break;
+
+            if (!is_readable_response(att_data->opcode))
+                expert_add_info(pinfo, tree, &ei_btatt_invalid_usage);
+        }
+
+        if (bluetooth_gatt_has_no_parameter(att_data->opcode))
+            break;
+
         proto_tree_add_item(tree, hf_btatt_pnp_id_vendor_id_source, tvb, offset, 1, ENC_NA);
         value = tvb_get_guint8(tvb, offset);
         offset += 1;
@@ -3233,11 +5636,33 @@ dissect_attribute_value(proto_tree *tree, proto_item *patron_item, packet_info *
 
         break;
     case 0x2A51: /* Glucose Feature */
+        if (service_uuid.bt_uuid == GATT_SERVICE_GLUCOSE) {
+            if (is_readable_request(att_data->opcode))
+                break;
+
+            if (!is_readable_response(att_data->opcode))
+                expert_add_info(pinfo, tree, &ei_btatt_invalid_usage);
+        }
+
+        if (bluetooth_gatt_has_no_parameter(att_data->opcode))
+            break;
+
         proto_tree_add_bitmask(tree, tvb, offset, hf_btatt_glucose_feature, ett_btatt_value, hfx_btatt_glucose_feature, ENC_LITTLE_ENDIAN);
         offset += 2;
 
         break;
     case 0x2A52: /* Record Access Control Point */
+        if (service_uuid.bt_uuid == GATT_SERVICE_GLUCOSE || service_uuid.bt_uuid == GATT_SERVICE_CONTINUOUS_GLUCOSE_MONITORING) {
+            if (is_writeable_response(att_data->opcode) || att_data->opcode == ATT_OPCODE_HANDLE_VALUE_CONFIRMATION)
+                break;
+
+            if (!is_writeable_request(att_data->opcode) && att_data->opcode != ATT_OPCODE_HANDLE_VALUE_INDICATION)
+                expert_add_info(pinfo, tree, &ei_btatt_invalid_usage);
+        }
+
+        if (bluetooth_gatt_has_no_parameter(att_data->opcode))
+            break;
+
         proto_tree_add_item(tree, hf_btatt_record_access_control_point_opcode, tvb, offset, 1, ENC_NA);
         opcode = tvb_get_guint8(tvb, offset);
         offset += 1;
@@ -3333,112 +5758,1078 @@ dissect_attribute_value(proto_tree *tree, proto_item *patron_item, packet_info *
         proto_item_set_len(sub_item, offset - operand_offset);
 
         break;
+    case 0x2A53: /* RSC Measurement */
+        if (service_uuid.bt_uuid == GATT_SERVICE_RUNNING_SPEED_AND_CADENCE) {
+            if (att_data->opcode != ATT_OPCODE_HANDLE_VALUE_NOTIFICATION)
+                expert_add_info(pinfo, tree, &ei_btatt_invalid_usage);
+        }
+
+        if (bluetooth_gatt_has_no_parameter(att_data->opcode))
+            break;
+
+        proto_tree_add_bitmask(tree, tvb, offset, hf_btatt_rsc_measurement_flags, ett_btatt_value, hfx_btatt_rsc_measurement_flags, ENC_NA);
+        flags = tvb_get_guint8(tvb, offset);
+        offset += 1;
+
+        proto_tree_add_item(tree, hf_btatt_rsc_measurement_instantaneous_speed, tvb, offset, 2, ENC_LITTLE_ENDIAN);
+        offset += 2;
+
+        proto_tree_add_item(tree, hf_btatt_rsc_measurement_instantaneous_cadence, tvb, offset, 1, ENC_NA);
+        offset += 1;
+
+        if (flags & 0x01) {
+            proto_tree_add_item(tree, hf_btatt_rsc_measurement_instantaneous_stride_length, tvb, offset, 2, ENC_LITTLE_ENDIAN);
+            offset += 2;
+        }
+
+        if (flags & 0x02) {
+            proto_tree_add_item(tree, hf_btatt_rsc_measurement_total_distance, tvb, offset, 4, ENC_LITTLE_ENDIAN);
+            offset += 4;
+        }
+
+        break;
     case 0x2A54: /* RSC Feature */
+        if (service_uuid.bt_uuid == GATT_SERVICE_RUNNING_SPEED_AND_CADENCE) {
+            if (is_readable_request(att_data->opcode))
+                break;
+
+            if (!is_readable_response(att_data->opcode))
+                expert_add_info(pinfo, tree, &ei_btatt_invalid_usage);
+        }
+
+        if (bluetooth_gatt_has_no_parameter(att_data->opcode))
+            break;
+
         proto_tree_add_bitmask(tree, tvb, offset, hf_btatt_rsc_feature, ett_btatt_value, hfx_btatt_rsc_feature, ENC_LITTLE_ENDIAN);
         offset += 2;
 
         break;
+    case 0x2A55: /* SC Control Point */
+        if (service_uuid.bt_uuid == GATT_SERVICE_RUNNING_SPEED_AND_CADENCE || service_uuid.bt_uuid == GATT_SERVICE_CYCLING_SPEED_AND_CADENCE) {
+            if (is_writeable_response(att_data->opcode) || att_data->opcode == ATT_OPCODE_HANDLE_VALUE_CONFIRMATION)
+                break;
+
+            if (!is_writeable_request(att_data->opcode) && att_data->opcode != ATT_OPCODE_HANDLE_VALUE_INDICATION)
+                expert_add_info(pinfo, tree, &ei_btatt_invalid_usage);
+        }
+
+        if (bluetooth_gatt_has_no_parameter(att_data->opcode))
+            break;
+
+        proto_tree_add_item(tree, hf_btatt_sc_control_point_opcode, tvb, offset, 1, ENC_NA);
+        opcode = tvb_get_guint8(tvb, offset);
+        offset += 1;
+
+        switch (opcode) {
+        case  1: /* Set Cumulative Value */
+            proto_tree_add_item(tree, hf_btatt_sc_control_point_cumulative_value, tvb, offset, 4, ENC_LITTLE_ENDIAN);
+            offset += 4;
+
+            break;
+        case  3: /* Update Sensor Location */
+            proto_tree_add_item(tree, hf_btatt_sensor_location, tvb, offset, 1, ENC_NA);
+            offset += 1;
+
+            break;
+        case 16: /* Response Code */
+            proto_tree_add_item(tree, hf_btatt_sc_control_point_request_opcode, tvb, offset, 1, ENC_NA);
+            value = tvb_get_guint8(tvb, offset);
+            offset += 1;
+
+            proto_tree_add_item(tree, hf_btatt_sc_control_point_response_value, tvb, offset, 1, ENC_NA);
+            offset += 1;
+
+            if (value == 0x04 && tvb_get_guint8(tvb, offset) == 0x01) { /* Request Supported Sensor Locations */
+                while (tvb_captured_length_remaining(tvb, offset)) {
+                    proto_tree_add_item(tree, hf_btatt_sensor_location, tvb, offset, 1, ENC_NA);
+                    offset += 1;
+                }
+            }
+
+            break;
+        case  2: /* Start Sensor Calibration */
+        case  4: /* Request Supported Sensor Locations */
+            /* N/A */
+            break;
+        }
+
+        break;
+    case 0x2A56: /* Digital */
+        if (service_uuid.bt_uuid == GATT_SERVICE_AUTOMATION_IO) {
+            if (is_readable_request(att_data->opcode) || is_writeable_response(att_data->opcode) || att_data->opcode == ATT_OPCODE_HANDLE_VALUE_CONFIRMATION)
+                break;
+
+            if (!is_readable_response(att_data->opcode) && !is_writeable_request(att_data->opcode) &&
+                    att_data->opcode != ATT_OPCODE_WRITE_COMMAND && att_data->opcode != ATT_OPCODE_HANDLE_VALUE_NOTIFICATION)
+                expert_add_info(pinfo, tree, &ei_btatt_invalid_usage);
+        }
+
+        if (bluetooth_gatt_has_no_parameter(att_data->opcode))
+            break;
+
+        proto_tree_add_item(tree, hf_btatt_digital, tvb, offset, 1, ENC_NA);
+        offset += 1;
+
+        break;
+    case 0x2A58: /* Analog */
+        if (service_uuid.bt_uuid == GATT_SERVICE_AUTOMATION_IO) {
+            if (is_readable_request(att_data->opcode) || is_writeable_response(att_data->opcode) || att_data->opcode == ATT_OPCODE_HANDLE_VALUE_CONFIRMATION)
+                break;
+
+            if (!is_readable_response(att_data->opcode) && !is_writeable_request(att_data->opcode) &&
+                    att_data->opcode != ATT_OPCODE_WRITE_COMMAND && att_data->opcode != ATT_OPCODE_HANDLE_VALUE_NOTIFICATION)
+                expert_add_info(pinfo, tree, &ei_btatt_invalid_usage);
+        }
+
+        if (bluetooth_gatt_has_no_parameter(att_data->opcode))
+            break;
+
+        proto_tree_add_item(tree, hf_btatt_analog, tvb, offset, 2, ENC_LITTLE_ENDIAN);
+        offset += 2;
+
+        break;
+    case 0x2A5A: /* Aggregate */
+        if (service_uuid.bt_uuid == GATT_SERVICE_AUTOMATION_IO) {
+            if (is_readable_request(att_data->opcode) || att_data->opcode == ATT_OPCODE_HANDLE_VALUE_CONFIRMATION)
+                break;
+
+            if (!is_readable_response(att_data->opcode) &&
+                    att_data->opcode != ATT_OPCODE_HANDLE_VALUE_NOTIFICATION)
+                expert_add_info(pinfo, tree, &ei_btatt_invalid_usage);
+        }
+
+        if (bluetooth_gatt_has_no_parameter(att_data->opcode))
+            break;
+
+        call_dissector_with_data(find_dissector("btgatt.uuid0x2a56"), tvb_new_subset(tvb, offset, 1, 1), pinfo, tree, att_data);
+        offset += 1;
+
+        call_dissector_with_data(find_dissector("btgatt.uuid0x2a58"), tvb_new_subset(tvb, offset, 2, 2), pinfo, tree, att_data);
+        offset += 2;
+
+        break;
+    case 0x2A5B: /* CSC Measurement */
+        if (service_uuid.bt_uuid == GATT_SERVICE_CYCLING_SPEED_AND_CADENCE) {
+            if (att_data->opcode != ATT_OPCODE_HANDLE_VALUE_NOTIFICATION)
+                expert_add_info(pinfo, tree, &ei_btatt_invalid_usage);
+        }
+
+        if (bluetooth_gatt_has_no_parameter(att_data->opcode))
+            break;
+
+        proto_tree_add_bitmask(tree, tvb, offset, hf_btatt_csc_measurement_flags, ett_btatt_value, hfx_btatt_csc_measurement_flags, ENC_NA);
+        flags = tvb_get_guint8(tvb, offset);
+        offset += 1;
+
+        if (flags & 0x01) {
+            proto_tree_add_item(tree, hf_btatt_csc_measurement_cumulative_wheel_revolutions, tvb, offset, 4, ENC_LITTLE_ENDIAN);
+            offset += 4;
+
+            proto_tree_add_item(tree, hf_btatt_csc_measurement_last_event_time, tvb, offset, 2, ENC_LITTLE_ENDIAN);
+            offset += 2;
+        }
+
+        if (flags & 0x02) {
+            proto_tree_add_item(tree, hf_btatt_csc_measurement_cumulative_crank_revolutions, tvb, offset, 2, ENC_LITTLE_ENDIAN);
+            offset += 2;
+
+            proto_tree_add_item(tree, hf_btatt_csc_measurement_last_event_time, tvb, offset, 2, ENC_LITTLE_ENDIAN);
+            offset += 2;
+        }
+
+        break;
     case 0x2A5C: /* CSC Feature */
+        if (service_uuid.bt_uuid == GATT_SERVICE_CYCLING_SPEED_AND_CADENCE) {
+            if (is_readable_request(att_data->opcode))
+                break;
+
+            if (!is_readable_response(att_data->opcode))
+                expert_add_info(pinfo, tree, &ei_btatt_invalid_usage);
+        }
+
+        if (bluetooth_gatt_has_no_parameter(att_data->opcode))
+            break;
+
         proto_tree_add_bitmask(tree, tvb, offset, hf_btatt_csc_feature, ett_btatt_value, hfx_btatt_csc_feature, ENC_LITTLE_ENDIAN);
         offset += 2;
 
         break;
     case 0x2A5D: /* Sensor Location */
+        if (service_uuid.bt_uuid == GATT_SERVICE_RUNNING_SPEED_AND_CADENCE ||
+                service_uuid.bt_uuid == GATT_SERVICE_CYCLING_SPEED_AND_CADENCE ||
+                service_uuid.bt_uuid == GATT_SERVICE_CYCLING_POWER) {
+            if (is_readable_request(att_data->opcode))
+                break;
+
+            if (!is_readable_response(att_data->opcode))
+                expert_add_info(pinfo, tree, &ei_btatt_invalid_usage);
+        }
+
+        if (bluetooth_gatt_has_no_parameter(att_data->opcode))
+            break;
+
         proto_tree_add_item(tree, hf_btatt_sensor_location, tvb, offset, 1, ENC_NA);
         offset += 1;
 
         break;
+    case 0x2A63: /* Cycling Power Measurement */
+        if (service_uuid.bt_uuid == GATT_SERVICE_CYCLING_POWER) {
+            if (att_data->opcode != ATT_OPCODE_HANDLE_VALUE_NOTIFICATION)
+                expert_add_info(pinfo, tree, &ei_btatt_invalid_usage);
+        }
+
+        if (bluetooth_gatt_has_no_parameter(att_data->opcode))
+            break;
+
+        proto_tree_add_bitmask(tree, tvb, offset, hf_btatt_cycling_power_measurement_flags, ett_btatt_value, hfx_btatt_cycling_power_measurement_flags, ENC_LITTLE_ENDIAN);
+        flags = tvb_get_guint16(tvb, offset, ENC_LITTLE_ENDIAN);
+        offset += 2;
+
+        proto_tree_add_item(tree, hf_btatt_cycling_power_measurement_instantaneous_power, tvb, offset, 2, ENC_LITTLE_ENDIAN);
+        offset += 2;
+
+        if (flags & 0x01) {
+            proto_tree_add_item(tree, hf_btatt_cycling_power_measurement_pedal_power_balance, tvb, offset, 1, ENC_NA);
+            offset += 1;
+        }
+
+        if (flags & 0x04) {
+            proto_tree_add_item(tree, hf_btatt_cycling_power_measurement_accumulated_torque, tvb, offset, 2, ENC_LITTLE_ENDIAN);
+            offset += 2;
+        }
+
+        if (flags & 0x10) {
+            proto_tree_add_item(tree, hf_btatt_cycling_power_measurement_wheel_revolution_data_cumulative_wheel_revolutions, tvb, offset, 4, ENC_LITTLE_ENDIAN);
+            offset += 4;
+
+            proto_tree_add_item(tree, hf_btatt_cycling_power_measurement_wheel_revolution_data_last_wheel_event_time, tvb, offset, 2, ENC_LITTLE_ENDIAN);
+            offset += 2;
+        }
+
+        if (flags & 0x20) {
+            proto_tree_add_item(tree, hf_btatt_cycling_power_measurement_crank_revolution_data_cumulative_crank_revolutions, tvb, offset, 2, ENC_LITTLE_ENDIAN);
+            offset += 2;
+
+            proto_tree_add_item(tree, hf_btatt_cycling_power_measurement_crank_revolution_data_last_crank_event_time, tvb, offset, 2, ENC_LITTLE_ENDIAN);
+            offset += 2;
+        }
+
+        if (flags & 0x40) {
+            proto_tree_add_item(tree, hf_btatt_cycling_power_measurement_extreme_force_magnitudes_maximum_force_magnitude, tvb, offset, 2, ENC_LITTLE_ENDIAN);
+            offset += 2;
+
+            proto_tree_add_item(tree, hf_btatt_cycling_power_measurement_extreme_force_magnitudes_minimum_force_magnitude, tvb, offset, 2, ENC_LITTLE_ENDIAN);
+            offset += 2;
+        }
+
+        if (flags & 0x80) {
+            proto_tree_add_item(tree, hf_btatt_cycling_power_measurement_extreme_torque_magnitudes_maximum_torque_magnitude, tvb, offset, 2, ENC_LITTLE_ENDIAN);
+            offset += 2;
+
+            proto_tree_add_item(tree, hf_btatt_cycling_power_measurement_extreme_torque_magnitudes_minimum_torque_magnitude, tvb, offset, 2, ENC_LITTLE_ENDIAN);
+            offset += 2;
+        }
+
+        if (flags & 0x100) {
+            proto_tree_add_bitmask(tree, tvb, offset, hf_btatt_cycling_power_measurement_extreme_angles, ett_btatt_value, hfx_btatt_cycling_power_measurement_extreme_angles, ENC_NA);
+            offset += 3;
+        }
+
+        if (flags & 0x200) {
+            proto_tree_add_item(tree, hf_btatt_cycling_power_measurement_top_dead_spot_angle, tvb, offset, 2, ENC_LITTLE_ENDIAN);
+            offset += 2;
+        }
+
+        if (flags & 0x400) {
+            proto_tree_add_item(tree, hf_btatt_cycling_power_measurement_bottom_dead_spot_angle, tvb, offset, 2, ENC_LITTLE_ENDIAN);
+            offset += 2;
+        }
+
+        if (flags & 0x800) {
+            proto_tree_add_item(tree, hf_btatt_cycling_power_measurement_accumulated_energy, tvb, offset, 2, ENC_LITTLE_ENDIAN);
+            offset += 2;
+        }
+
+        break;
+    case 0x2A64: /* Cycling Power Vector */
+        if (service_uuid.bt_uuid == GATT_SERVICE_CYCLING_POWER) {
+            if (att_data->opcode != ATT_OPCODE_HANDLE_VALUE_NOTIFICATION)
+                expert_add_info(pinfo, tree, &ei_btatt_invalid_usage);
+        }
+
+        if (bluetooth_gatt_has_no_parameter(att_data->opcode))
+            break;
+
+        proto_tree_add_bitmask(tree, tvb, offset, hf_btatt_cycling_power_vector_flags, ett_btatt_value, hfx_btatt_cycling_power_vector_flags, ENC_NA);
+        flags = tvb_get_guint8(tvb, offset);
+        offset += 1;
+
+        if (flags & 0x01) {
+            proto_tree_add_item(tree, hf_btatt_cycling_power_vector_crank_revolution_data_cumulative_crank_revolutions, tvb, offset, 2, ENC_LITTLE_ENDIAN);
+            offset += 2;
+
+            proto_tree_add_item(tree, hf_btatt_cycling_power_vector_crank_revolution_data_last_crank_event_time, tvb, offset, 2, ENC_LITTLE_ENDIAN);
+            offset += 2;
+        }
+
+        if (flags & 0x02) {
+            proto_tree_add_item(tree, hf_btatt_cycling_power_vector_first_crank_measurement_angle, tvb, offset, 2, ENC_LITTLE_ENDIAN);
+            offset += 2;
+        }
+
+        if (flags & 0x04) {
+            while (tvb_reported_length_remaining(tvb, offset) > 0) {
+                proto_tree_add_item(tree, hf_btatt_cycling_power_vector_instantaneous_force_magnitude_array, tvb, offset, 2, ENC_LITTLE_ENDIAN);
+                offset += 2;
+            }
+        }
+
+        if (flags & 0x08) {
+            while (tvb_reported_length_remaining(tvb, offset) > 0) {
+                proto_tree_add_item(tree, hf_btatt_cycling_power_vector_instantaneous_torque_magnitude_array, tvb, offset, 2, ENC_LITTLE_ENDIAN);
+                offset += 2;
+            }
+        }
+
+        break;
     case 0x2A65: /* Cycling Power Feature */
+        if (service_uuid.bt_uuid == GATT_SERVICE_CYCLING_POWER) {
+            if (is_readable_request(att_data->opcode))
+                break;
+
+            if (!is_readable_response(att_data->opcode))
+                expert_add_info(pinfo, tree, &ei_btatt_invalid_usage);
+        }
+
+        if (bluetooth_gatt_has_no_parameter(att_data->opcode))
+            break;
+
         proto_tree_add_bitmask(tree, tvb, offset, hf_btatt_cycling_power_feature, ett_btatt_value, hfx_btatt_cycling_power_feature, ENC_LITTLE_ENDIAN);
         offset += 4;
 
         break;
+    case 0x2A66: /* Cycling Power Control Point */
+        if (service_uuid.bt_uuid == GATT_SERVICE_CYCLING_POWER) {
+            if (is_writeable_response(att_data->opcode) || att_data->opcode == ATT_OPCODE_HANDLE_VALUE_CONFIRMATION)
+                break;
+
+            if (!is_writeable_request(att_data->opcode) && att_data->opcode != ATT_OPCODE_HANDLE_VALUE_INDICATION)
+                expert_add_info(pinfo, tree, &ei_btatt_invalid_usage);
+        }
+
+        if (bluetooth_gatt_has_no_parameter(att_data->opcode))
+            break;
+
+        proto_tree_add_item(tree, hf_btatt_cycling_power_control_point_opcode, tvb, offset, 1, ENC_NA);
+        opcode = tvb_get_guint8(tvb, offset);
+        offset += 1;
+
+        switch (opcode) {
+        case  1: /* Set Cumulative Value */
+            proto_tree_add_item(tree, hf_btatt_cycling_power_control_point_cumulative_value, tvb, offset, 4, ENC_LITTLE_ENDIAN);
+            offset += 4;
+
+            break;
+        case  2: /* Update Sensor Location */
+            proto_tree_add_item(tree, hf_btatt_cycling_power_control_point_sensor_location, tvb, offset, 1, ENC_NA);
+            offset += 1;
+
+            break;
+        case  4: /* Set Crank Length */
+            proto_tree_add_item(tree, hf_btatt_cycling_power_control_point_crank_length, tvb, offset, 2, ENC_LITTLE_ENDIAN);
+            offset += 2;
+
+            break;
+        case  6: /* Set Chain Length */
+            proto_tree_add_item(tree, hf_btatt_cycling_power_control_point_chain_length, tvb, offset, 2, ENC_LITTLE_ENDIAN);
+            offset += 2;
+
+            break;
+        case  8: /* Set Chain Weight */
+            proto_tree_add_item(tree, hf_btatt_cycling_power_control_point_chain_weight, tvb, offset, 2, ENC_LITTLE_ENDIAN);
+            offset += 2;
+
+            break;
+        case 10: /* Set Span Length */
+            proto_tree_add_item(tree, hf_btatt_cycling_power_control_point_span_length, tvb, offset, 2, ENC_LITTLE_ENDIAN);
+            offset += 2;
+
+            break;
+        case 13: /* Mask Cycling Power Measurement Characteristic Content */
+            proto_tree_add_bitmask(tree, tvb, offset, hf_btatt_cycling_power_control_point_content_mask, ett_btatt_value, hfx_btatt_cycling_power_control_point_content_mask, ENC_LITTLE_ENDIAN);
+            offset += 2;
+
+            break;
+        case  3: /* Request Supported Sensor Locations */
+        case  5: /* Request Crank Length */
+        case  7: /* Request Chain Length */
+        case  9: /* Request Chain Weight */
+        case 11: /* Request Span Length */
+        case 12: /* Start Offset Compensation */
+        case 14: /* Request Sampling Rate */
+        case 15: /* Request Factory Calibration Date */
+            /* N/A */
+
+            break;
+        case 32: /* Response Code */
+            proto_tree_add_item(tree, hf_btatt_cycling_power_control_point_request_opcode, tvb, offset, 1, ENC_NA);
+            offset += 1;
+
+            proto_tree_add_item(tree, hf_btatt_cycling_power_control_point_response_value, tvb, offset, 1, ENC_NA);
+            offset += 1;
+
+            switch (tvb_get_guint8(tvb, offset - 2)) {
+            case  1: /* Set Cumulative Value */
+            case  2: /* Update Sensor Location */
+            case  4: /* Set Crank Length */
+            case  6: /* Set Chain Length */
+            case  8: /* Set Chain Weight */
+            case 10: /* Set Span Length */
+            case 13: /* Mask Cycling Power Measurement Characteristic Content */
+                /* N/A */
+
+                break;
+            case  3: /* Request Supported Sensor Locations */
+                if (tvb_get_guint8(tvb, offset - 1) == 0x01) /* Success */ {
+                    while (tvb_captured_length_remaining(tvb, offset)) {
+                        proto_tree_add_item(tree, hf_btatt_sensor_location, tvb, offset, 1, ENC_NA);
+                        offset += 1;
+                    }
+                }
+
+                break;
+            case  5: /* Request Crank Length */
+                if (tvb_get_guint8(tvb, offset - 1) == 0x01) /* Success */ {
+                    proto_tree_add_item(tree, hf_btatt_cycling_power_control_point_crank_length, tvb, offset, 2, ENC_LITTLE_ENDIAN);
+                    offset += 2;
+                }
+
+                break;
+            case  7: /* Request Chain Length */
+                if (tvb_get_guint8(tvb, offset - 1) == 0x01) /* Success */ {
+                    proto_tree_add_item(tree, hf_btatt_cycling_power_control_point_chain_length, tvb, offset, 2, ENC_LITTLE_ENDIAN);
+                    offset += 2;
+                }
+
+                break;
+            case  9: /* Request Chain Weight */
+                if (tvb_get_guint8(tvb, offset - 1) == 0x01) /* Success */ {
+                    proto_tree_add_item(tree, hf_btatt_cycling_power_control_point_chain_weight, tvb, offset, 2, ENC_LITTLE_ENDIAN);
+                    offset += 2;
+                }
+
+                break;
+            case 11: /* Request Span Length */
+                if (tvb_get_guint8(tvb, offset - 1) == 0x01) /* Success */ {
+                    proto_tree_add_item(tree, hf_btatt_cycling_power_control_point_span_length, tvb, offset, 2, ENC_LITTLE_ENDIAN);
+                    offset += 2;
+                }
+
+                break;
+            case 12: /* Start Offset Compensation */
+                if (tvb_get_guint8(tvb, offset - 1) == 0x01) /* Success */ {
+                    proto_tree_add_item(tree, hf_btatt_cycling_power_control_point_start_offset_compensation, tvb, offset, 2, ENC_LITTLE_ENDIAN);
+                    offset += 2;
+                }
+
+                break;
+            case 14: /* Request Sampling Rate */
+                if (tvb_get_guint8(tvb, offset - 1) == 0x01) /* Success */ {
+                    proto_tree_add_item(tree, hf_btatt_cycling_power_control_point_sampling_rate, tvb, offset, 1, ENC_NA);
+                    offset += 1;
+                }
+
+                break;
+            case 15: /* Request Factory Calibration Date */
+                if (tvb_get_guint8(tvb, offset - 1) == 0x01) /* Success */ {
+                    sub_item = proto_tree_add_item(tree, hf_btatt_cycling_power_control_point_factory_calibration_date, tvb, offset, 7, ENC_NA);
+                    sub_tree = proto_item_add_subtree(sub_item, ett_btatt_list);
+
+                    proto_tree_add_item(sub_tree, hf_btatt_year, tvb, offset, 2, ENC_LITTLE_ENDIAN);
+                    offset += 2;
+
+                    proto_tree_add_item(sub_tree, hf_btatt_month, tvb, offset, 1, ENC_NA);
+                    offset += 1;
+
+                    proto_tree_add_item(sub_tree, hf_btatt_day, tvb, offset, 1, ENC_NA);
+                    offset += 1;
+
+                    proto_tree_add_item(sub_tree, hf_btatt_hours, tvb, offset, 1, ENC_NA);
+                    offset += 1;
+
+                    proto_tree_add_item(sub_tree, hf_btatt_minutes, tvb, offset, 1, ENC_NA);
+                    offset += 1;
+
+                    proto_tree_add_item(sub_tree, hf_btatt_seconds, tvb, offset, 1, ENC_NA);
+                    offset += 1;
+                }
+
+                break;
+            }
+            break;
+        }
+
+        break;
+    case 0x2A67: /* Location and Speed */
+        if (service_uuid.bt_uuid == GATT_SERVICE_LOCATION_AND_NAVIGATION) {
+            if (att_data->opcode != ATT_OPCODE_HANDLE_VALUE_NOTIFICATION)
+                expert_add_info(pinfo, tree, &ei_btatt_invalid_usage);
+        }
+
+        if (bluetooth_gatt_has_no_parameter(att_data->opcode))
+            break;
+
+        proto_tree_add_bitmask(tree, tvb, offset, hf_btatt_location_and_speed_flags, ett_btatt_value, hfx_btatt_location_and_speed_flags, ENC_LITTLE_ENDIAN);
+        flags = tvb_get_guint16(tvb, offset, ENC_LITTLE_ENDIAN);
+        offset += 2;
+
+        if (flags & 0x01) {
+            proto_tree_add_item(tree, hf_btatt_location_and_speed_instantaneous_speed, tvb, offset, 2, ENC_LITTLE_ENDIAN);
+            offset += 2;
+        }
+
+        if (flags & 0x02) {
+            proto_tree_add_item(tree, hf_btatt_location_and_speed_total_distance, tvb, offset, 3, ENC_LITTLE_ENDIAN);
+            offset += 3;
+        }
+
+        if (flags & 0x04) {
+            proto_tree_add_item(tree, hf_btatt_location_and_speed_location_latitude, tvb, offset, 4, ENC_LITTLE_ENDIAN);
+            offset += 4;
+
+            proto_tree_add_item(tree, hf_btatt_location_and_speed_location_longitude, tvb, offset, 4, ENC_LITTLE_ENDIAN);
+            offset += 4;
+        }
+
+        if (flags & 0x08) {
+            proto_tree_add_item(tree, hf_btatt_location_and_speed_elevation, tvb, offset, 3, ENC_LITTLE_ENDIAN);
+            offset += 3;
+        }
+
+        if (flags & 0x10) {
+            proto_tree_add_item(tree, hf_btatt_location_and_speed_heading, tvb, offset, 2, ENC_LITTLE_ENDIAN);
+            offset += 2;
+        }
+
+        if (flags & 0x20) {
+            proto_tree_add_item(tree, hf_btatt_location_and_speed_rolling_time, tvb, offset, 1, ENC_NA);
+            offset += 1;
+        }
+
+        if (flags & 0x40) {
+            sub_item = proto_tree_add_item(tree, hf_btatt_location_and_speed_utc_time, tvb, offset, 7, ENC_NA);
+            sub_tree = proto_item_add_subtree(sub_item, ett_btatt_list);
+
+            proto_tree_add_item(sub_tree, hf_btatt_year, tvb, offset, 2, ENC_LITTLE_ENDIAN);
+            offset += 2;
+
+            proto_tree_add_item(sub_tree, hf_btatt_month, tvb, offset, 1, ENC_NA);
+            offset += 1;
+
+            proto_tree_add_item(sub_tree, hf_btatt_day, tvb, offset, 1, ENC_NA);
+            offset += 1;
+
+            proto_tree_add_item(sub_tree, hf_btatt_hours, tvb, offset, 1, ENC_NA);
+            offset += 1;
+
+            proto_tree_add_item(sub_tree, hf_btatt_minutes, tvb, offset, 1, ENC_NA);
+            offset += 1;
+
+            proto_tree_add_item(sub_tree, hf_btatt_seconds, tvb, offset, 1, ENC_NA);
+            offset += 1;
+        }
+
+        break;
+    case 0x2A68: /* Navigation */
+        if (service_uuid.bt_uuid == GATT_SERVICE_LOCATION_AND_NAVIGATION) {
+            if (att_data->opcode != ATT_OPCODE_HANDLE_VALUE_NOTIFICATION)
+                expert_add_info(pinfo, tree, &ei_btatt_invalid_usage);
+        }
+
+        if (bluetooth_gatt_has_no_parameter(att_data->opcode))
+            break;
+
+        proto_tree_add_bitmask(tree, tvb, offset, hf_btatt_navigation_flags, ett_btatt_value, hfx_btatt_navigation_flags, ENC_LITTLE_ENDIAN);
+        flags = tvb_get_guint16(tvb, offset, ENC_LITTLE_ENDIAN);
+        offset += 2;
+
+        proto_tree_add_item(tree, hf_btatt_navigation_bearing, tvb, offset, 2, ENC_LITTLE_ENDIAN);
+        offset += 2;
+
+        proto_tree_add_item(tree, hf_btatt_navigation_heading, tvb, offset, 2, ENC_LITTLE_ENDIAN);
+        offset += 2;
+
+        if (flags & 0x01) {
+            proto_tree_add_item(tree, hf_btatt_navigation_remaining_distance, tvb, offset, 3, ENC_LITTLE_ENDIAN);
+            offset += 3;
+        }
+
+        if (flags & 0x02) {
+            proto_tree_add_item(tree, hf_btatt_navigation_remaining_vertical_distance, tvb, offset, 3, ENC_LITTLE_ENDIAN);
+            offset += 3;
+        }
+
+        if (flags & 0x04) {
+            sub_item = proto_tree_add_item(tree, hf_btatt_navigation_estimated_time_of_arrival, tvb, offset, 7, ENC_NA);
+            sub_tree = proto_item_add_subtree(sub_item, ett_btatt_list);
+
+            proto_tree_add_item(sub_tree, hf_btatt_year, tvb, offset, 2, ENC_LITTLE_ENDIAN);
+            offset += 2;
+
+            proto_tree_add_item(sub_tree, hf_btatt_month, tvb, offset, 1, ENC_NA);
+            offset += 1;
+
+            proto_tree_add_item(sub_tree, hf_btatt_day, tvb, offset, 1, ENC_NA);
+            offset += 1;
+
+            proto_tree_add_item(sub_tree, hf_btatt_hours, tvb, offset, 1, ENC_NA);
+            offset += 1;
+
+            proto_tree_add_item(sub_tree, hf_btatt_minutes, tvb, offset, 1, ENC_NA);
+            offset += 1;
+
+            proto_tree_add_item(sub_tree, hf_btatt_seconds, tvb, offset, 1, ENC_NA);
+            offset += 1;
+        }
+
+        break;
+    case 0x2A69: /* Position Quality */
+        if (service_uuid.bt_uuid == GATT_SERVICE_LOCATION_AND_NAVIGATION) {
+            if (is_readable_request(att_data->opcode))
+                break;
+
+            if (!is_readable_response(att_data->opcode))
+                expert_add_info(pinfo, tree, &ei_btatt_invalid_usage);
+        }
+
+        if (bluetooth_gatt_has_no_parameter(att_data->opcode))
+            break;
+
+        proto_tree_add_bitmask(tree, tvb, offset, hf_btatt_position_quality_flags, ett_btatt_value, hfx_btatt_position_quality_flags, ENC_LITTLE_ENDIAN);
+        flags = tvb_get_guint16(tvb, offset, ENC_LITTLE_ENDIAN);
+        offset += 2;
+
+        if (flags & 0x01) {
+            proto_tree_add_item(tree, hf_btatt_position_quality_number_of_beacons_in_solution, tvb, offset, 1, ENC_NA);
+            offset += 1;
+        }
+
+        if (flags & 0x02) {
+            proto_tree_add_item(tree, hf_btatt_position_quality_number_of_beacons_in_view, tvb, offset, 1, ENC_NA);
+            offset += 1;
+        }
+
+        if (flags & 0x04) {
+            proto_tree_add_item(tree, hf_btatt_position_quality_time_to_first_fix, tvb, offset, 2, ENC_LITTLE_ENDIAN);
+            offset += 2;
+        }
+
+        if (flags & 0x08) {
+            proto_tree_add_item(tree, hf_btatt_position_quality_ehpe, tvb, offset, 4, ENC_LITTLE_ENDIAN);
+            offset += 4;
+        }
+
+        if (flags & 0x10) {
+            proto_tree_add_item(tree, hf_btatt_position_quality_evpe, tvb, offset, 4, ENC_LITTLE_ENDIAN);
+            offset += 4;
+        }
+
+        if (flags & 0x20) {
+            proto_tree_add_item(tree, hf_btatt_position_quality_hdop, tvb, offset, 1, ENC_NA);
+            offset += 1;
+        }
+
+        if (flags & 0x40) {
+            proto_tree_add_item(tree, hf_btatt_position_quality_vdop, tvb, offset, 1, ENC_NA);
+            offset += 1;
+        }
+
+        break;
     case 0x2A6A: /* LN Feature */
+        if (service_uuid.bt_uuid == GATT_SERVICE_LOCATION_AND_NAVIGATION) {
+            if (is_readable_request(att_data->opcode))
+                break;
+
+            if (!is_readable_response(att_data->opcode))
+                expert_add_info(pinfo, tree, &ei_btatt_invalid_usage);
+        }
+
+        if (bluetooth_gatt_has_no_parameter(att_data->opcode))
+            break;
+
         proto_tree_add_bitmask(tree, tvb, offset, hf_btatt_ln_feature, ett_btatt_value, hfx_btatt_ln_feature, ENC_LITTLE_ENDIAN);
         offset += 4;
 
         break;
+    case 0x2A6B: /* LN Control Point */
+        if (service_uuid.bt_uuid == GATT_SERVICE_LOCATION_AND_NAVIGATION) {
+            if (is_writeable_response(att_data->opcode) || att_data->opcode == ATT_OPCODE_HANDLE_VALUE_CONFIRMATION)
+                break;
+
+            if (!is_writeable_request(att_data->opcode) && att_data->opcode != ATT_OPCODE_HANDLE_VALUE_INDICATION)
+                expert_add_info(pinfo, tree, &ei_btatt_invalid_usage);
+        }
+
+        if (bluetooth_gatt_has_no_parameter(att_data->opcode))
+            break;
+
+        proto_tree_add_item(tree, hf_btatt_ln_control_point_opcode, tvb, offset, 1, ENC_NA);
+        opcode = tvb_get_guint8(tvb, offset);
+        offset += 1;
+
+        switch (opcode) {
+        case  1: /* Set Cumulative Value */
+            proto_tree_add_item(tree, hf_btatt_ln_control_point_cumulative_value, tvb, offset, 3, ENC_LITTLE_ENDIAN);
+            offset += 3;
+
+            break;
+        case  2: /* Mask Location and Speed Characteristic Content */
+            proto_tree_add_bitmask(tree, tvb, offset, hf_btatt_ln_control_point_content_mask, ett_btatt_value, hfx_btatt_ln_control_point_content_mask, ENC_LITTLE_ENDIAN);
+            offset += 2;
+
+            break;
+        case  3: /* Navigation Control */
+            proto_tree_add_item(tree, hf_btatt_ln_control_point_navigation_control, tvb, offset, 1, ENC_NA);
+            offset += 1;
+
+            break;
+        case  4: /* Request Number of Routes */
+            /* N/A */
+
+            break;
+        case  5: /* Request Name of Route */
+        case  6: /* Select Route */
+            proto_tree_add_item(tree, hf_btatt_ln_control_point_route_number, tvb, offset, 2, ENC_LITTLE_ENDIAN);
+            offset += 2;
+
+            break;
+        case  7: /* Set Fix Rate */
+            proto_tree_add_item(tree, hf_btatt_ln_control_point_fix_rate, tvb, offset, 1, ENC_NA);
+            offset += 1;
+
+            break;
+        case  8: /* Set Elevation */
+            proto_tree_add_item(tree, hf_btatt_ln_control_point_elevation, tvb, offset, 3, ENC_LITTLE_ENDIAN);
+            offset += 3;
+
+            break;
+        case 32: /* Response Code */
+            proto_tree_add_item(tree, hf_btatt_ln_control_point_request_opcode, tvb, offset, 1, ENC_NA);
+            offset += 1;
+
+            proto_tree_add_item(tree, hf_btatt_ln_control_point_response_value, tvb, offset, 1, ENC_NA);
+            offset += 1;
+
+            switch (tvb_get_guint8(tvb, offset - 2)) {
+            case  1: /* Set Cumulative Value */
+            case  2: /* Mask Location and Speed Characteristic Content */
+            case  3: /* Navigation Control */
+            case  6: /* Select Route */
+            case  7: /* Set Fix Rate */
+            case  8: /* Set Elevation */
+                /* N/A */
+
+                break;
+            case  4: /* Request Number of Routes */
+                proto_tree_add_item(tree, hf_btatt_ln_control_point_response_value_number_of_routes, tvb, offset, 2, ENC_LITTLE_ENDIAN);
+                offset += 2;
+
+                break;
+            case  5: /* Request Name of Route */
+                proto_tree_add_item(tree, hf_btatt_ln_control_point_response_value_name_of_route, tvb, offset, tvb_captured_length_remaining(tvb, offset), ENC_NA | ENC_UTF_8);
+                offset += tvb_captured_length_remaining(tvb, offset);
+
+                break;
+            }
+
+            break;
+        }
+
+        break;
     case 0x2A6C: /* Elevation */
+        if (service_uuid.bt_uuid == GATT_SERVICE_ENVIRONMENTAL_SENSING) {
+            if (is_readable_request(att_data->opcode))
+                break;
+
+            if (!is_readable_response(att_data->opcode) &&
+                    att_data->opcode != ATT_OPCODE_HANDLE_VALUE_NOTIFICATION)
+                expert_add_info(pinfo, tree, &ei_btatt_invalid_usage);
+        }
+
+        if (bluetooth_gatt_has_no_parameter(att_data->opcode))
+            break;
+
         proto_tree_add_item(tree, hf_btatt_elevation, tvb, offset, 3, ENC_LITTLE_ENDIAN);
         offset += 3;
 
         break;
     case 0x2A6D: /* Pressure */
+        if (service_uuid.bt_uuid == GATT_SERVICE_ENVIRONMENTAL_SENSING) {
+            if (is_readable_request(att_data->opcode))
+                break;
+
+            if (!is_readable_response(att_data->opcode) &&
+                    att_data->opcode != ATT_OPCODE_HANDLE_VALUE_NOTIFICATION)
+                expert_add_info(pinfo, tree, &ei_btatt_invalid_usage);
+        }
+
+        if (bluetooth_gatt_has_no_parameter(att_data->opcode))
+            break;
+
         proto_tree_add_item(tree, hf_btatt_pressure, tvb, offset, 4, ENC_LITTLE_ENDIAN);
         offset += 4;
 
         break;
     case 0x2A6E: /* Temperature */
+        if (service_uuid.bt_uuid == GATT_SERVICE_ENVIRONMENTAL_SENSING) {
+            if (is_readable_request(att_data->opcode))
+                break;
+
+            if (!is_readable_response(att_data->opcode) &&
+                    att_data->opcode != ATT_OPCODE_HANDLE_VALUE_NOTIFICATION)
+                expert_add_info(pinfo, tree, &ei_btatt_invalid_usage);
+        }
+
+        if (bluetooth_gatt_has_no_parameter(att_data->opcode))
+            break;
+
         proto_tree_add_item(tree, hf_btatt_temperature, tvb, offset, 2, ENC_LITTLE_ENDIAN);
         offset += 2;
 
         break;
     case 0x2A6F: /* Humidity */
+        if (service_uuid.bt_uuid == GATT_SERVICE_ENVIRONMENTAL_SENSING) {
+            if (is_readable_request(att_data->opcode))
+                break;
+
+            if (!is_readable_response(att_data->opcode) &&
+                    att_data->opcode != ATT_OPCODE_HANDLE_VALUE_NOTIFICATION)
+                expert_add_info(pinfo, tree, &ei_btatt_invalid_usage);
+        }
+
+        if (bluetooth_gatt_has_no_parameter(att_data->opcode))
+            break;
+
         proto_tree_add_item(tree, hf_btatt_humidity, tvb, offset, 2, ENC_LITTLE_ENDIAN);
         offset += 2;
 
         break;
     case 0x2A70: /* True Wind Speed */
+        if (service_uuid.bt_uuid == GATT_SERVICE_ENVIRONMENTAL_SENSING) {
+            if (is_readable_request(att_data->opcode))
+                break;
+
+            if (!is_readable_response(att_data->opcode) &&
+                    att_data->opcode != ATT_OPCODE_HANDLE_VALUE_NOTIFICATION)
+                expert_add_info(pinfo, tree, &ei_btatt_invalid_usage);
+        }
+
+        if (bluetooth_gatt_has_no_parameter(att_data->opcode))
+            break;
+
         proto_tree_add_item(tree, hf_btatt_true_wind_speed, tvb, offset, 2, ENC_LITTLE_ENDIAN);
         offset += 2;
 
         break;
     case 0x2A71: /* True Wind Direction */
+        if (service_uuid.bt_uuid == GATT_SERVICE_ENVIRONMENTAL_SENSING) {
+            if (is_readable_request(att_data->opcode))
+                break;
+
+            if (!is_readable_response(att_data->opcode) &&
+                    att_data->opcode != ATT_OPCODE_HANDLE_VALUE_NOTIFICATION)
+                expert_add_info(pinfo, tree, &ei_btatt_invalid_usage);
+        }
+
+        if (bluetooth_gatt_has_no_parameter(att_data->opcode))
+            break;
+
         proto_tree_add_item(tree, hf_btatt_true_wind_direction, tvb, offset, 2, ENC_LITTLE_ENDIAN);
         offset += 2;
 
         break;
     case 0x2A72: /* Apparent Wind Speed */
+        if (service_uuid.bt_uuid == GATT_SERVICE_ENVIRONMENTAL_SENSING) {
+            if (is_readable_request(att_data->opcode))
+                break;
+
+            if (!is_readable_response(att_data->opcode) &&
+                    att_data->opcode != ATT_OPCODE_HANDLE_VALUE_NOTIFICATION)
+                expert_add_info(pinfo, tree, &ei_btatt_invalid_usage);
+        }
+
+        if (bluetooth_gatt_has_no_parameter(att_data->opcode))
+            break;
+
         proto_tree_add_item(tree, hf_btatt_apparent_wind_speed, tvb, offset, 2, ENC_LITTLE_ENDIAN);
         offset += 2;
 
         break;
     case 0x2A73: /* Apparent Wind Direction */
+        if (service_uuid.bt_uuid == GATT_SERVICE_ENVIRONMENTAL_SENSING) {
+            if (is_readable_request(att_data->opcode))
+                break;
+
+            if (!is_readable_response(att_data->opcode) &&
+                    att_data->opcode != ATT_OPCODE_HANDLE_VALUE_NOTIFICATION)
+                expert_add_info(pinfo, tree, &ei_btatt_invalid_usage);
+        }
+
+        if (bluetooth_gatt_has_no_parameter(att_data->opcode))
+            break;
+
         proto_tree_add_item(tree, hf_btatt_apparent_wind_direction, tvb, offset, 2, ENC_LITTLE_ENDIAN);
         offset += 2;
 
         break;
     case 0x2A74: /* Gust Factor */
+        if (service_uuid.bt_uuid == GATT_SERVICE_ENVIRONMENTAL_SENSING) {
+            if (is_readable_request(att_data->opcode))
+                break;
+
+            if (!is_readable_response(att_data->opcode) &&
+                    att_data->opcode != ATT_OPCODE_HANDLE_VALUE_NOTIFICATION)
+                expert_add_info(pinfo, tree, &ei_btatt_invalid_usage);
+        }
+
+        if (bluetooth_gatt_has_no_parameter(att_data->opcode))
+            break;
+
         proto_tree_add_item(tree, hf_btatt_gust_factor, tvb, offset, 1, ENC_NA);
         offset += 1;
 
         break;
     case 0x2A75: /* Pollen Concentration */
+        if (service_uuid.bt_uuid == GATT_SERVICE_ENVIRONMENTAL_SENSING) {
+            if (is_readable_request(att_data->opcode))
+                break;
+
+            if (!is_readable_response(att_data->opcode) &&
+                    att_data->opcode != ATT_OPCODE_HANDLE_VALUE_NOTIFICATION)
+                expert_add_info(pinfo, tree, &ei_btatt_invalid_usage);
+        }
+
+        if (bluetooth_gatt_has_no_parameter(att_data->opcode))
+            break;
+
         proto_tree_add_item(tree, hf_btatt_pollen_concentration, tvb, offset, 3, ENC_LITTLE_ENDIAN);
         offset += 3;
 
         break;
     case 0x2A76: /* UV Index */
+        if (service_uuid.bt_uuid == GATT_SERVICE_ENVIRONMENTAL_SENSING) {
+            if (is_readable_request(att_data->opcode))
+                break;
+
+            if (!is_readable_response(att_data->opcode) &&
+                    att_data->opcode != ATT_OPCODE_HANDLE_VALUE_NOTIFICATION)
+                expert_add_info(pinfo, tree, &ei_btatt_invalid_usage);
+        }
+
+        if (bluetooth_gatt_has_no_parameter(att_data->opcode))
+            break;
+
         proto_tree_add_item(tree, hf_btatt_uv_index, tvb, offset, 1, ENC_NA);
         offset += 1;
 
         break;
     case 0x2A77: /* Irradiance */
+        if (service_uuid.bt_uuid == GATT_SERVICE_ENVIRONMENTAL_SENSING) {
+            if (is_readable_request(att_data->opcode))
+                break;
+
+            if (!is_readable_response(att_data->opcode) &&
+                    att_data->opcode != ATT_OPCODE_HANDLE_VALUE_NOTIFICATION)
+                expert_add_info(pinfo, tree, &ei_btatt_invalid_usage);
+        }
+
+        if (bluetooth_gatt_has_no_parameter(att_data->opcode))
+            break;
+
         proto_tree_add_item(tree, hf_btatt_irradiance, tvb, offset, 2, ENC_LITTLE_ENDIAN);
         offset += 2;
 
         break;
     case 0x2A78: /* Rainfall */
+        if (service_uuid.bt_uuid == GATT_SERVICE_ENVIRONMENTAL_SENSING) {
+            if (is_readable_request(att_data->opcode))
+                break;
+
+            if (!is_readable_response(att_data->opcode) &&
+                    att_data->opcode != ATT_OPCODE_HANDLE_VALUE_NOTIFICATION)
+                expert_add_info(pinfo, tree, &ei_btatt_invalid_usage);
+        }
+
+        if (bluetooth_gatt_has_no_parameter(att_data->opcode))
+            break;
+
         proto_tree_add_item(tree, hf_btatt_rainfall, tvb, offset, 2, ENC_LITTLE_ENDIAN);
         offset += 2;
 
         break;
     case 0x2A79: /* Wind Chill */
+        if (service_uuid.bt_uuid == GATT_SERVICE_ENVIRONMENTAL_SENSING) {
+            if (is_readable_request(att_data->opcode))
+                break;
+
+            if (!is_readable_response(att_data->opcode) &&
+                    att_data->opcode != ATT_OPCODE_HANDLE_VALUE_NOTIFICATION)
+                expert_add_info(pinfo, tree, &ei_btatt_invalid_usage);
+        }
+
+        if (bluetooth_gatt_has_no_parameter(att_data->opcode))
+            break;
+
         proto_tree_add_item(tree, hf_btatt_wind_chill, tvb, offset, 1, ENC_NA);
         offset += 1;
 
         break;
     case 0x2A7A: /* Heat Index */
+        if (service_uuid.bt_uuid == GATT_SERVICE_ENVIRONMENTAL_SENSING) {
+            if (is_readable_request(att_data->opcode))
+                break;
+
+            if (!is_readable_response(att_data->opcode) &&
+                    att_data->opcode != ATT_OPCODE_HANDLE_VALUE_NOTIFICATION)
+                expert_add_info(pinfo, tree, &ei_btatt_invalid_usage);
+        }
+
+        if (bluetooth_gatt_has_no_parameter(att_data->opcode))
+            break;
+
         proto_tree_add_item(tree, hf_btatt_heart_index, tvb, offset, 1, ENC_NA);
         offset += 1;
 
         break;
     case 0x2A7B: /* Dew Point */
+        if (service_uuid.bt_uuid == GATT_SERVICE_ENVIRONMENTAL_SENSING) {
+            if (is_readable_request(att_data->opcode))
+                break;
+
+            if (!is_readable_response(att_data->opcode) &&
+                    att_data->opcode != ATT_OPCODE_HANDLE_VALUE_NOTIFICATION)
+                expert_add_info(pinfo, tree, &ei_btatt_invalid_usage);
+        }
+
+        if (bluetooth_gatt_has_no_parameter(att_data->opcode))
+            break;
+
         proto_tree_add_item(tree, hf_btatt_dew_point, tvb, offset, 1, ENC_NA);
         offset += 1;
 
         break;
     case 0x2A7D: /* Descriptor Value Changed */
+        if (service_uuid.bt_uuid == GATT_SERVICE_ENVIRONMENTAL_SENSING) {
+            if (att_data->opcode == ATT_OPCODE_HANDLE_VALUE_CONFIRMATION)
+                break;
+
+            if (att_data->opcode != ATT_OPCODE_HANDLE_VALUE_INDICATION)
+                expert_add_info(pinfo, tree, &ei_btatt_invalid_usage);
+        }
+
+        if (bluetooth_gatt_has_no_parameter(att_data->opcode))
+            break;
+
         proto_tree_add_bitmask(tree, tvb, offset, hf_btatt_descriptor_value_changed_flags , ett_btatt_value, hfx_btatt_descriptor_value_changed_flags, ENC_LITTLE_ENDIAN);
         offset += 2;
 
@@ -3449,48 +6840,136 @@ dissect_attribute_value(proto_tree *tree, proto_item *patron_item, packet_info *
             proto_tree_add_item(tree, hf_btatt_uuid128, tvb, offset, 16, ENC_NA);
             offset += 16;
         } else {
-            proto_tree_add_item(tree, hf_btatt_value, tvb, offset, -1, ENC_NA);
+            sub_item = proto_tree_add_item(tree, hf_btatt_value, tvb, offset, -1, ENC_NA);
+            expert_add_info(pinfo, sub_item, &ei_btatt_bad_data);
             offset = tvb_captured_length(tvb);
         }
 
         break;
     case 0x2A7E: /* Aerobic Heart Rate Lower Limit */
+        if (bluetooth_gatt_has_no_parameter(att_data->opcode))
+            break;
+
         proto_tree_add_item(tree, hf_btatt_aerobic_heart_rate_lower_limit, tvb, offset, 1, ENC_NA);
         offset += 1;
 
         break;
     case 0x2A7F: /* Aerobic Threshold */
+        if (service_uuid.bt_uuid == GATT_SERVICE_USER_DATA) {
+            if (is_readable_request(att_data->opcode) || is_writeable_response(att_data->opcode))
+                break;
+
+            if (!is_readable_response(att_data->opcode) &&
+                    !is_writeable_request(att_data->opcode))
+                expert_add_info(pinfo, tree, &ei_btatt_invalid_usage);
+        }
+
+        if (bluetooth_gatt_has_no_parameter(att_data->opcode))
+            break;
+
         proto_tree_add_item(tree, hf_btatt_aerobic_threshold, tvb, offset, 1, ENC_NA);
         offset += 1;
 
         break;
     case 0x2A80: /* Age */
+        if (service_uuid.bt_uuid == GATT_SERVICE_USER_DATA) {
+            if (is_readable_request(att_data->opcode) || is_writeable_response(att_data->opcode))
+                break;
+
+            if (!is_readable_response(att_data->opcode) &&
+                    !is_writeable_request(att_data->opcode))
+                expert_add_info(pinfo, tree, &ei_btatt_invalid_usage);
+        }
+
+        if (bluetooth_gatt_has_no_parameter(att_data->opcode))
+            break;
+
         proto_tree_add_item(tree, hf_btatt_age, tvb, offset, 1, ENC_NA);
         offset += 1;
 
         break;
     case 0x2A81: /* Anaerobic Heart Rate Lower Limit */
+        if (service_uuid.bt_uuid == GATT_SERVICE_USER_DATA) {
+            if (is_readable_request(att_data->opcode) || is_writeable_response(att_data->opcode))
+                break;
+
+            if (!is_readable_response(att_data->opcode) &&
+                    !is_writeable_request(att_data->opcode))
+                expert_add_info(pinfo, tree, &ei_btatt_invalid_usage);
+        }
+
+        if (bluetooth_gatt_has_no_parameter(att_data->opcode))
+            break;
+
         proto_tree_add_item(tree, hf_btatt_anaerobic_heart_rate_lower_limit, tvb, offset, 1, ENC_NA);
         offset += 1;
 
         break;
     case 0x2A82: /* Anaerobic Heart Rate Upper Limit */
+        if (service_uuid.bt_uuid == GATT_SERVICE_USER_DATA) {
+            if (is_readable_request(att_data->opcode) || is_writeable_response(att_data->opcode))
+                break;
+
+            if (!is_readable_response(att_data->opcode) &&
+                    !is_writeable_request(att_data->opcode))
+                expert_add_info(pinfo, tree, &ei_btatt_invalid_usage);
+        }
+
+        if (bluetooth_gatt_has_no_parameter(att_data->opcode))
+            break;
+
         proto_tree_add_item(tree, hf_btatt_anaerobic_heart_rate_upper_limit, tvb, offset, 1, ENC_NA);
         offset += 1;
 
         break;
     case 0x2A83: /* Anaerobic Threshold */
+        if (service_uuid.bt_uuid == GATT_SERVICE_USER_DATA) {
+            if (is_readable_request(att_data->opcode) || is_writeable_response(att_data->opcode))
+                break;
+
+            if (!is_readable_response(att_data->opcode) &&
+                    !is_writeable_request(att_data->opcode))
+                expert_add_info(pinfo, tree, &ei_btatt_invalid_usage);
+        }
+
+        if (bluetooth_gatt_has_no_parameter(att_data->opcode))
+            break;
+
         proto_tree_add_item(tree, hf_btatt_anaerobic_threshold, tvb, offset, 1, ENC_NA);
         offset += 1;
 
         break;
     case 0x2A84: /* Aerobic Heart Rate Upper Limit */
+        if (service_uuid.bt_uuid == GATT_SERVICE_USER_DATA) {
+            if (is_readable_request(att_data->opcode) || is_writeable_response(att_data->opcode))
+                break;
+
+            if (!is_readable_response(att_data->opcode) &&
+                    !is_writeable_request(att_data->opcode))
+                expert_add_info(pinfo, tree, &ei_btatt_invalid_usage);
+        }
+
+        if (bluetooth_gatt_has_no_parameter(att_data->opcode))
+            break;
+
         proto_tree_add_item(tree, hf_btatt_aerobic_heart_rate_upper_limit, tvb, offset, 1, ENC_NA);
         offset += 1;
 
         break;
     case 0x2A85: /* Date of Birth */
     case 0x2A86: /* Date of Threshold Assessment */
+        if (service_uuid.bt_uuid == GATT_SERVICE_USER_DATA) {
+            if (is_readable_request(att_data->opcode) || is_writeable_response(att_data->opcode))
+                break;
+
+            if (!is_readable_response(att_data->opcode) &&
+                    !is_writeable_request(att_data->opcode))
+                expert_add_info(pinfo, tree, &ei_btatt_invalid_usage);
+        }
+
+        if (bluetooth_gatt_has_no_parameter(att_data->opcode))
+            break;
+
         proto_tree_add_item(tree, hf_btatt_year, tvb, offset, 2, ENC_LITTLE_ENDIAN);
         offset += 2;
 
@@ -3502,26 +6981,86 @@ dissect_attribute_value(proto_tree *tree, proto_item *patron_item, packet_info *
 
         break;
     case 0x2A87: /* Email Address */
+        if (service_uuid.bt_uuid == GATT_SERVICE_USER_DATA) {
+            if (is_readable_request(att_data->opcode) || is_writeable_response(att_data->opcode))
+                break;
+
+            if (!is_readable_response(att_data->opcode) &&
+                    !is_writeable_request(att_data->opcode))
+                expert_add_info(pinfo, tree, &ei_btatt_invalid_usage);
+        }
+
+        if (bluetooth_gatt_has_no_parameter(att_data->opcode))
+            break;
+
         proto_tree_add_item(tree, hf_btatt_email_address, tvb, offset, tvb_captured_length_remaining(tvb, offset), ENC_NA | ENC_UTF_8);
         offset += tvb_captured_length_remaining(tvb, offset);
 
         break;
     case 0x2A88: /* Fat Burn Heart Rate Lower Limit */
+        if (service_uuid.bt_uuid == GATT_SERVICE_USER_DATA) {
+            if (is_readable_request(att_data->opcode) || is_writeable_response(att_data->opcode))
+                break;
+
+            if (!is_readable_response(att_data->opcode) &&
+                    !is_writeable_request(att_data->opcode))
+                expert_add_info(pinfo, tree, &ei_btatt_invalid_usage);
+        }
+
+        if (bluetooth_gatt_has_no_parameter(att_data->opcode))
+            break;
+
         proto_tree_add_item(tree, hf_btatt_fat_burn_heart_rate_lower_limit, tvb, offset, 1, ENC_NA);
         offset += 1;
 
         break;
     case 0x2A89: /* Fat Burn Heart Rate Upper Limit */
+        if (service_uuid.bt_uuid == GATT_SERVICE_USER_DATA) {
+            if (is_readable_request(att_data->opcode) || is_writeable_response(att_data->opcode))
+                break;
+
+            if (!is_readable_response(att_data->opcode) &&
+                    !is_writeable_request(att_data->opcode))
+                expert_add_info(pinfo, tree, &ei_btatt_invalid_usage);
+        }
+
+        if (bluetooth_gatt_has_no_parameter(att_data->opcode))
+            break;
+
         proto_tree_add_item(tree, hf_btatt_fat_burn_heart_rate_upper_limit, tvb, offset, 1, ENC_NA);
         offset += 1;
 
         break;
     case 0x2A8A: /* First Name */
+        if (service_uuid.bt_uuid == GATT_SERVICE_USER_DATA) {
+            if (is_readable_request(att_data->opcode) || is_writeable_response(att_data->opcode))
+                break;
+
+            if (!is_readable_response(att_data->opcode) &&
+                    !is_writeable_request(att_data->opcode))
+                expert_add_info(pinfo, tree, &ei_btatt_invalid_usage);
+        }
+
+        if (bluetooth_gatt_has_no_parameter(att_data->opcode))
+            break;
+
         proto_tree_add_item(tree, hf_btatt_first_name, tvb, offset, tvb_captured_length_remaining(tvb, offset), ENC_NA | ENC_UTF_8);
         offset += tvb_captured_length_remaining(tvb, offset);
 
         break;
     case 0x2A8B: /* Five Zone Heart Rate Limits */
+        if (service_uuid.bt_uuid == GATT_SERVICE_USER_DATA) {
+            if (is_readable_request(att_data->opcode) || is_writeable_response(att_data->opcode))
+                break;
+
+            if (!is_readable_response(att_data->opcode) &&
+                    !is_writeable_request(att_data->opcode))
+                expert_add_info(pinfo, tree, &ei_btatt_invalid_usage);
+        }
+
+        if (bluetooth_gatt_has_no_parameter(att_data->opcode))
+            break;
+
         proto_tree_add_item(tree, hf_btatt_five_zone_heart_rate_limits_very_light_light_limit, tvb, offset, 1, ENC_NA);
         offset += 1;
 
@@ -3536,46 +7075,154 @@ dissect_attribute_value(proto_tree *tree, proto_item *patron_item, packet_info *
 
         break;
     case 0x2A8C: /* Gender */
+        if (service_uuid.bt_uuid == GATT_SERVICE_USER_DATA) {
+            if (is_readable_request(att_data->opcode) || is_writeable_response(att_data->opcode))
+                break;
+
+            if (!is_readable_response(att_data->opcode) &&
+                    !is_writeable_request(att_data->opcode))
+                expert_add_info(pinfo, tree, &ei_btatt_invalid_usage);
+        }
+
+        if (bluetooth_gatt_has_no_parameter(att_data->opcode))
+            break;
+
         proto_tree_add_item(tree, hf_btatt_gender, tvb, offset, 1, ENC_NA);
         offset += 1;
 
         break;
     case 0x2A8D: /* Heart Rate Max */
+        if (service_uuid.bt_uuid == GATT_SERVICE_USER_DATA) {
+            if (is_readable_request(att_data->opcode) || is_writeable_response(att_data->opcode))
+                break;
+
+            if (!is_readable_response(att_data->opcode) &&
+                    !is_writeable_request(att_data->opcode))
+                expert_add_info(pinfo, tree, &ei_btatt_invalid_usage);
+        }
+
+        if (bluetooth_gatt_has_no_parameter(att_data->opcode))
+            break;
+
         proto_tree_add_item(tree, hf_btatt_heart_rate_max, tvb, offset, 1, ENC_NA);
         offset += 1;
 
         break;
     case 0x2A8E: /* Height */
+        if (service_uuid.bt_uuid == GATT_SERVICE_USER_DATA) {
+            if (is_readable_request(att_data->opcode) || is_writeable_response(att_data->opcode))
+                break;
+
+            if (!is_readable_response(att_data->opcode) &&
+                    !is_writeable_request(att_data->opcode))
+                expert_add_info(pinfo, tree, &ei_btatt_invalid_usage);
+        }
+
+        if (bluetooth_gatt_has_no_parameter(att_data->opcode))
+            break;
+
         proto_tree_add_item(tree, hf_btatt_height, tvb, offset, 2, ENC_LITTLE_ENDIAN);
         offset += 2;
 
         break;
     case 0x2A8F: /* Hip Circumference */
+        if (service_uuid.bt_uuid == GATT_SERVICE_USER_DATA) {
+            if (is_readable_request(att_data->opcode) || is_writeable_response(att_data->opcode))
+                break;
+
+            if (!is_readable_response(att_data->opcode) &&
+                    !is_writeable_request(att_data->opcode))
+                expert_add_info(pinfo, tree, &ei_btatt_invalid_usage);
+        }
+
+        if (bluetooth_gatt_has_no_parameter(att_data->opcode))
+            break;
+
         proto_tree_add_item(tree, hf_btatt_hip_circumference, tvb, offset, 2, ENC_LITTLE_ENDIAN);
         offset += 2;
 
         break;
     case 0x2A90: /* Last Name */
+        if (service_uuid.bt_uuid == GATT_SERVICE_USER_DATA) {
+            if (is_readable_request(att_data->opcode) || is_writeable_response(att_data->opcode))
+                break;
+
+            if (!is_readable_response(att_data->opcode) &&
+                    !is_writeable_request(att_data->opcode))
+                expert_add_info(pinfo, tree, &ei_btatt_invalid_usage);
+        }
+
+        if (bluetooth_gatt_has_no_parameter(att_data->opcode))
+            break;
+
         proto_tree_add_item(tree, hf_btatt_last_name, tvb, offset, tvb_captured_length_remaining(tvb, offset), ENC_NA | ENC_UTF_8);
         offset += tvb_captured_length_remaining(tvb, offset);
 
         break;
     case 0x2A91: /* Maximum Recommended Heart Rate */
+        if (service_uuid.bt_uuid == GATT_SERVICE_USER_DATA) {
+            if (is_readable_request(att_data->opcode) || is_writeable_response(att_data->opcode))
+                break;
+
+            if (!is_readable_response(att_data->opcode) &&
+                    !is_writeable_request(att_data->opcode))
+                expert_add_info(pinfo, tree, &ei_btatt_invalid_usage);
+        }
+
+        if (bluetooth_gatt_has_no_parameter(att_data->opcode))
+            break;
+
         proto_tree_add_item(tree, hf_btatt_maximum_recommended_heart_rate, tvb, offset, 1, ENC_NA);
         offset += 1;
 
         break;
     case 0x2A92: /* Resting Heart Rate */
+        if (service_uuid.bt_uuid == GATT_SERVICE_USER_DATA) {
+            if (is_readable_request(att_data->opcode) || is_writeable_response(att_data->opcode))
+                break;
+
+            if (!is_readable_response(att_data->opcode) &&
+                    !is_writeable_request(att_data->opcode))
+                expert_add_info(pinfo, tree, &ei_btatt_invalid_usage);
+        }
+
+        if (bluetooth_gatt_has_no_parameter(att_data->opcode))
+            break;
+
         proto_tree_add_item(tree, hf_btatt_resting_heart_rate, tvb, offset, 1, ENC_NA);
         offset += 1;
 
         break;
     case 0x2A93: /* Sport Type for Aerobic and Anaerobic Thresholds */
+        if (service_uuid.bt_uuid == GATT_SERVICE_USER_DATA) {
+            if (is_readable_request(att_data->opcode) || is_writeable_response(att_data->opcode))
+                break;
+
+            if (!is_readable_response(att_data->opcode) &&
+                    !is_writeable_request(att_data->opcode))
+                expert_add_info(pinfo, tree, &ei_btatt_invalid_usage);
+        }
+
+        if (bluetooth_gatt_has_no_parameter(att_data->opcode))
+            break;
+
         proto_tree_add_item(tree, hf_btatt_sport_type_for_aerobic_and_anaerobic_thresholds, tvb, offset, 1, ENC_NA);
         offset += 1;
 
         break;
     case 0x2A94: /* Three Zone Heart Rate Limits */
+        if (service_uuid.bt_uuid == GATT_SERVICE_USER_DATA) {
+            if (is_readable_request(att_data->opcode) || is_writeable_response(att_data->opcode))
+                break;
+
+            if (!is_readable_response(att_data->opcode) &&
+                    !is_writeable_request(att_data->opcode))
+                expert_add_info(pinfo, tree, &ei_btatt_invalid_usage);
+        }
+
+        if (bluetooth_gatt_has_no_parameter(att_data->opcode))
+            break;
+
         proto_tree_add_item(tree, hf_btatt_three_zone_heart_rate_limits_light_moderate, tvb, offset, 1, ENC_NA);
         offset += 1;
 
@@ -3584,47 +7231,382 @@ dissect_attribute_value(proto_tree *tree, proto_item *patron_item, packet_info *
 
         break;
     case 0x2A95: /* Two Zone Heart Rate Limit */
+        if (service_uuid.bt_uuid == GATT_SERVICE_USER_DATA) {
+            if (is_readable_request(att_data->opcode) || is_writeable_response(att_data->opcode))
+                break;
+
+            if (!is_readable_response(att_data->opcode) &&
+                    !is_writeable_request(att_data->opcode))
+                expert_add_info(pinfo, tree, &ei_btatt_invalid_usage);
+        }
+
+        if (bluetooth_gatt_has_no_parameter(att_data->opcode))
+            break;
+
         proto_tree_add_item(tree, hf_btatt_two_zone_heart_rate_limit_fat_burn_fitness, tvb, offset, 1, ENC_NA);
         offset += 1;
 
         break;
     case 0x2A96: /* VO2 Max */
+        if (service_uuid.bt_uuid == GATT_SERVICE_USER_DATA) {
+            if (is_readable_request(att_data->opcode) || is_writeable_response(att_data->opcode))
+                break;
+
+            if (!is_readable_response(att_data->opcode) &&
+                    !is_writeable_request(att_data->opcode))
+                expert_add_info(pinfo, tree, &ei_btatt_invalid_usage);
+        }
+
+        if (bluetooth_gatt_has_no_parameter(att_data->opcode))
+            break;
+
         proto_tree_add_item(tree, hf_btatt_vo2_max, tvb, offset, 1, ENC_NA);
         offset += 1;
 
         break;
     case 0x2A97: /* Waist Circumference */
+        if (service_uuid.bt_uuid == GATT_SERVICE_USER_DATA) {
+            if (is_readable_request(att_data->opcode) || is_writeable_response(att_data->opcode))
+                break;
+
+            if (!is_readable_response(att_data->opcode) &&
+                    !is_writeable_request(att_data->opcode))
+                expert_add_info(pinfo, tree, &ei_btatt_invalid_usage);
+        }
+
+        if (bluetooth_gatt_has_no_parameter(att_data->opcode))
+            break;
+
         proto_tree_add_item(tree, hf_btatt_waist_circumference, tvb, offset, 2, ENC_LITTLE_ENDIAN);
         offset += 2;
 
         break;
     case 0x2A98: /* Weight */
+        if (service_uuid.bt_uuid == GATT_SERVICE_USER_DATA) {
+            if (is_readable_request(att_data->opcode) || is_writeable_response(att_data->opcode))
+                break;
+
+            if (!is_readable_response(att_data->opcode) &&
+                    !is_writeable_request(att_data->opcode))
+                expert_add_info(pinfo, tree, &ei_btatt_invalid_usage);
+        }
+
+        if (bluetooth_gatt_has_no_parameter(att_data->opcode))
+            break;
+
         proto_tree_add_item(tree, hf_btatt_weight, tvb, offset, 2, ENC_LITTLE_ENDIAN);
         offset += 2;
 
         break;
     case 0x2A99: /* Database Change Increment */
+        if (service_uuid.bt_uuid == GATT_SERVICE_USER_DATA) {
+            if (is_readable_request(att_data->opcode) || is_writeable_response(att_data->opcode))
+                break;
+
+            if (!is_readable_response(att_data->opcode) &&
+                    !is_writeable_request(att_data->opcode) && att_data->opcode != ATT_OPCODE_HANDLE_VALUE_NOTIFICATION)
+                expert_add_info(pinfo, tree, &ei_btatt_invalid_usage);
+        }
+
+        if (bluetooth_gatt_has_no_parameter(att_data->opcode))
+            break;
+
         proto_tree_add_item(tree, hf_btatt_database_change_increment, tvb, offset, 4, ENC_LITTLE_ENDIAN);
         offset += 4;
 
         break;
     case 0x2A9A: /* User Index */
+        if (service_uuid.bt_uuid == GATT_SERVICE_USER_DATA) {
+            if (is_readable_request(att_data->opcode))
+                break;
+
+            if (!is_readable_response(att_data->opcode))
+                expert_add_info(pinfo, tree, &ei_btatt_invalid_usage);
+        }
+
+        if (bluetooth_gatt_has_no_parameter(att_data->opcode))
+            break;
+
         proto_tree_add_item(tree, hf_btatt_user_index, tvb, offset, 1, ENC_NA);
         offset += 1;
 
         break;
     case 0x2A9B: /* Body Composition Feature */
+        if (service_uuid.bt_uuid == GATT_SERVICE_BODY_COMPOSITION) {
+            if (is_readable_request(att_data->opcode))
+                break;
+
+            if (!is_readable_response(att_data->opcode))
+                expert_add_info(pinfo, tree, &ei_btatt_invalid_usage);
+        }
+
+        if (bluetooth_gatt_has_no_parameter(att_data->opcode))
+            break;
+
         proto_tree_add_bitmask(tree, tvb, offset, hf_btatt_body_composition_feature, ett_btatt_value, hfx_btatt_body_composition_feature, ENC_LITTLE_ENDIAN);
         offset += 4;
 
         break;
+    case 0x2A9C: /* Body Composition Measurement */
+        if (service_uuid.bt_uuid == GATT_SERVICE_BODY_COMPOSITION) {
+            if (att_data->opcode == ATT_OPCODE_HANDLE_VALUE_CONFIRMATION)
+                break;
+
+            if (att_data->opcode != ATT_OPCODE_HANDLE_VALUE_INDICATION)
+                expert_add_info(pinfo, tree, &ei_btatt_invalid_usage);
+        }
+
+        if (bluetooth_gatt_has_no_parameter(att_data->opcode))
+            break;
+
+        proto_tree_add_bitmask(tree, tvb, offset, hf_btatt_body_composition_measurement_flags, ett_btatt_value, hfx_btatt_body_composition_measurement_flags, ENC_LITTLE_ENDIAN);
+        flags = tvb_get_guint16(tvb, offset, ENC_LITTLE_ENDIAN);
+        offset += 2;
+
+        proto_tree_add_item(tree, hf_btatt_body_composition_measurement_body_fat_percentage, tvb, offset, 2, ENC_LITTLE_ENDIAN);
+        offset += 2;
+
+        if (flags & 0x02) {
+            sub_item = proto_tree_add_item(tree, hf_btatt_body_composition_measurement_timestamp, tvb, offset, 7, ENC_NA);
+            sub_tree = proto_item_add_subtree(sub_item, ett_btatt_list);
+
+            proto_tree_add_item(sub_tree, hf_btatt_year, tvb, offset, 2, ENC_LITTLE_ENDIAN);
+            offset += 2;
+
+            proto_tree_add_item(sub_tree, hf_btatt_month, tvb, offset, 1, ENC_NA);
+            offset += 1;
+
+            proto_tree_add_item(sub_tree, hf_btatt_day, tvb, offset, 1, ENC_NA);
+            offset += 1;
+
+            proto_tree_add_item(sub_tree, hf_btatt_hours, tvb, offset, 1, ENC_NA);
+            offset += 1;
+
+            proto_tree_add_item(sub_tree, hf_btatt_minutes, tvb, offset, 1, ENC_NA);
+            offset += 1;
+
+            proto_tree_add_item(sub_tree, hf_btatt_seconds, tvb, offset, 1, ENC_NA);
+            offset += 1;
+        }
+
+        if (flags & 0x04) {
+            proto_tree_add_item(tree, hf_btatt_body_composition_measurement_user_id, tvb, offset, 1, ENC_NA);
+            offset += 1;
+        }
+
+        if (flags & 0x08) {
+            proto_tree_add_item(sub_tree, hf_btatt_body_composition_measurement_basal_metabolism, tvb, offset, 2, ENC_LITTLE_ENDIAN);
+            offset += 2;
+        }
+
+        if (flags & 0x10) {
+            proto_tree_add_item(sub_tree, hf_btatt_body_composition_measurement_muscle_percentage, tvb, offset, 2, ENC_LITTLE_ENDIAN);
+            offset += 2;
+        }
+
+        if (flags & 0x20) {
+            if (flags & 0x01)
+                proto_tree_add_item(sub_tree, hf_btatt_body_composition_measurement_muscle_mass_lb, tvb, offset, 2, ENC_LITTLE_ENDIAN);
+            else
+                proto_tree_add_item(sub_tree, hf_btatt_body_composition_measurement_muscle_mass_kg, tvb, offset, 2, ENC_LITTLE_ENDIAN);
+            offset += 2;
+
+        }
+
+        if (flags & 0x40) {
+            if (flags & 0x01)
+                proto_tree_add_item(sub_tree, hf_btatt_body_composition_measurement_fat_free_mass_lb, tvb, offset, 2, ENC_LITTLE_ENDIAN);
+            else
+                proto_tree_add_item(sub_tree, hf_btatt_body_composition_measurement_fat_free_mass_kg, tvb, offset, 2, ENC_LITTLE_ENDIAN);
+            offset += 2;
+
+        }
+
+        if (flags & 0x80) {
+            if (flags & 0x01)
+                proto_tree_add_item(sub_tree, hf_btatt_body_composition_measurement_soft_lean_mass_lb, tvb, offset, 2, ENC_LITTLE_ENDIAN);
+            else
+                proto_tree_add_item(sub_tree, hf_btatt_body_composition_measurement_soft_lean_mass_kg, tvb, offset, 2, ENC_LITTLE_ENDIAN);
+            offset += 2;
+        }
+
+        if (flags & 0x100) {
+            if (flags & 0x01)
+                proto_tree_add_item(sub_tree, hf_btatt_body_composition_measurement_body_water_mass_lb, tvb, offset, 2, ENC_LITTLE_ENDIAN);
+            else
+                proto_tree_add_item(sub_tree, hf_btatt_body_composition_measurement_body_water_mass_kg, tvb, offset, 2, ENC_LITTLE_ENDIAN);
+            offset += 2;
+        }
+
+        if (flags & 0x200) {
+            proto_tree_add_item(sub_tree, hf_btatt_body_composition_measurement_impedance, tvb, offset, 2, ENC_LITTLE_ENDIAN);
+            offset += 2;
+        }
+
+        if (flags & 0x400) {
+            if (flags & 0x01)
+                proto_tree_add_item(sub_tree, hf_btatt_body_composition_measurement_weight_lb, tvb, offset, 2, ENC_LITTLE_ENDIAN);
+            else
+                proto_tree_add_item(sub_tree, hf_btatt_body_composition_measurement_weight_kg, tvb, offset, 2, ENC_LITTLE_ENDIAN);
+            offset += 2;
+        }
+
+        if (flags & 0x800) {
+            if (flags & 0x01)
+                proto_tree_add_item(sub_tree, hf_btatt_body_composition_measurement_height_inches, tvb, offset, 2, ENC_LITTLE_ENDIAN);
+            else
+                proto_tree_add_item(sub_tree, hf_btatt_body_composition_measurement_height_meter, tvb, offset, 2, ENC_LITTLE_ENDIAN);
+            offset += 2;
+        }
+
+        break;
+    case 0x2A9D: /* Weight Measurement */
+        if (service_uuid.bt_uuid == GATT_SERVICE_WEIGHT_SCALE) {
+            if (is_writeable_response(att_data->opcode) || att_data->opcode == ATT_OPCODE_HANDLE_VALUE_CONFIRMATION)
+                break;
+
+            if (!is_writeable_request(att_data->opcode) && att_data->opcode != ATT_OPCODE_HANDLE_VALUE_INDICATION)
+                expert_add_info(pinfo, tree, &ei_btatt_invalid_usage);
+        }
+
+        if (bluetooth_gatt_has_no_parameter(att_data->opcode))
+            break;
+
+        proto_tree_add_bitmask(tree, tvb, offset, hf_btatt_weight_measurement_flags, ett_btatt_value, hfx_btatt_weight_measurement_flags, ENC_NA);
+        flags = tvb_get_guint8(tvb, offset);
+        offset += 1;
+
+        if (flags & 0x01)
+            proto_tree_add_item(tree, hf_btatt_weight_measurement_weight_lb, tvb, offset, 2, ENC_LITTLE_ENDIAN);
+        else
+            proto_tree_add_item(tree, hf_btatt_weight_measurement_weight_kg, tvb, offset, 2, ENC_LITTLE_ENDIAN);
+        offset += 2;
+
+        if (flags & 0x02) {
+            sub_item = proto_tree_add_item(tree, hf_btatt_weight_measurement_timestamp, tvb, offset, 7, ENC_NA);
+            sub_tree = proto_item_add_subtree(sub_item, ett_btatt_list);
+
+            proto_tree_add_item(sub_tree, hf_btatt_year, tvb, offset, 2, ENC_LITTLE_ENDIAN);
+            offset += 2;
+
+            proto_tree_add_item(sub_tree, hf_btatt_month, tvb, offset, 1, ENC_NA);
+            offset += 1;
+
+            proto_tree_add_item(sub_tree, hf_btatt_day, tvb, offset, 1, ENC_NA);
+            offset += 1;
+
+            proto_tree_add_item(sub_tree, hf_btatt_hours, tvb, offset, 1, ENC_NA);
+            offset += 1;
+
+            proto_tree_add_item(sub_tree, hf_btatt_minutes, tvb, offset, 1, ENC_NA);
+            offset += 1;
+
+            proto_tree_add_item(sub_tree, hf_btatt_seconds, tvb, offset, 1, ENC_NA);
+            offset += 1;
+        }
+
+        if (flags & 0x04) {
+            proto_tree_add_item(tree, hf_btatt_weight_measurement_user_id, tvb, offset, 1, ENC_NA);
+            offset += 1;
+        }
+
+        if (flags & 0x08) {
+            proto_tree_add_item(sub_tree, hf_btatt_weight_measurement_bmi, tvb, offset, 2, ENC_LITTLE_ENDIAN);
+            offset += 2;
+
+            if (flags & 0x01)
+                proto_tree_add_item(sub_tree, hf_btatt_weight_measurement_height_in, tvb, offset, 2, ENC_LITTLE_ENDIAN);
+            else
+                proto_tree_add_item(sub_tree, hf_btatt_weight_measurement_height_m, tvb, offset, 2, ENC_LITTLE_ENDIAN);
+            offset += 2;
+        }
+
+        break;
     case 0x2A9E: /* Weight Scale Feature */
+         if (service_uuid.bt_uuid == GATT_SERVICE_WEIGHT_SCALE) {
+            if (is_readable_request(att_data->opcode))
+                break;
+
+            if (!is_readable_response(att_data->opcode))
+                expert_add_info(pinfo, tree, &ei_btatt_invalid_usage);
+        }
+
+        if (bluetooth_gatt_has_no_parameter(att_data->opcode))
+            break;
+
         proto_tree_add_bitmask(tree, tvb, offset, hf_btatt_weight_scale_feature, ett_btatt_value, hfx_btatt_weight_scale_feature, ENC_LITTLE_ENDIAN);
         offset += 4;
 
         break;
+    case 0x2A9F: /* User Control Point */
+        if (service_uuid.bt_uuid == GATT_SERVICE_USER_DATA) {
+            if (is_writeable_response(att_data->opcode) || att_data->opcode == ATT_OPCODE_HANDLE_VALUE_CONFIRMATION)
+                break;
+
+            if (!is_writeable_request(att_data->opcode) && att_data->opcode != ATT_OPCODE_HANDLE_VALUE_INDICATION)
+                expert_add_info(pinfo, tree, &ei_btatt_invalid_usage);
+        }
+
+        if (bluetooth_gatt_has_no_parameter(att_data->opcode))
+            break;
+
+        proto_tree_add_item(tree, hf_btatt_user_control_point_opcode, tvb, offset, 1, ENC_NA);
+        opcode = tvb_get_guint8(tvb, offset);
+        offset += 1;
+
+        switch (opcode) {
+        case 0x01: /* Register New User */
+            sub_item = proto_tree_add_item(tree, hf_btatt_user_control_point_consent_code, tvb, offset, 2, ENC_LITTLE_ENDIAN);
+            value =  tvb_get_guint16(tvb, offset, ENC_LITTLE_ENDIAN);
+            if (value > 9999)
+                expert_add_info(pinfo, sub_item, &ei_btatt_consent_out_of_bounds);
+            offset += 2;
+
+            break;
+        case 0x02: /* Consent */
+            proto_tree_add_item(tree, hf_btatt_user_index, tvb, offset, 1, ENC_NA);
+            offset += 1;
+
+            sub_item = proto_tree_add_item(tree, hf_btatt_user_control_point_consent_code, tvb, offset, 2, ENC_LITTLE_ENDIAN);
+            value =  tvb_get_guint16(tvb, offset, ENC_LITTLE_ENDIAN);
+            if (value > 9999)
+                expert_add_info(pinfo, sub_item, &ei_btatt_consent_out_of_bounds);
+            offset += 2;
+
+            break;
+        case 0x03: /* Delete User Data */
+            /* N/A */
+            break;
+        case 0x20: /* Response Code */
+            proto_tree_add_item(tree, hf_btatt_user_control_point_request_opcode, tvb, offset, 1, ENC_NA);
+            offset += 1;
+
+            proto_tree_add_item(tree, hf_btatt_user_control_point_response_value, tvb, offset, 1, ENC_NA);
+            offset += 1;
+
+            if (tvb_get_guint8(tvb, offset - 2) == 0x01 && tvb_get_guint8(tvb, offset - 1) == 0x01) { /* Register New User && Success */
+                proto_tree_add_item(tree, hf_btatt_user_index, tvb, offset, 1, ENC_NA);
+                offset += 1;
+            }
+
+            break;
+        }
+
+        break;
     case 0x2AA0: /* Magnetic Flux Density - 2D */
     case 0x2AA1: /* Magnetic Flux Density - 3D */
+        if (service_uuid.bt_uuid == GATT_SERVICE_ENVIRONMENTAL_SENSING) {
+            if (is_readable_request(att_data->opcode))
+                break;
+
+            if (!is_readable_response(att_data->opcode) &&
+                    att_data->opcode != ATT_OPCODE_HANDLE_VALUE_NOTIFICATION)
+                expert_add_info(pinfo, tree, &ei_btatt_invalid_usage);
+        }
+
+        if (bluetooth_gatt_has_no_parameter(att_data->opcode))
+            break;
+
         proto_tree_add_item(tree, hf_btatt_magnetic_flux_density_x, tvb, offset, 2, ENC_LITTLE_ENDIAN);
         offset += 2;
 
@@ -3638,16 +7620,51 @@ dissect_attribute_value(proto_tree *tree, proto_item *patron_item, packet_info *
 
         break;
     case 0x2AA2: /* Language */
+        if (service_uuid.bt_uuid == GATT_SERVICE_USER_DATA) {
+            if (is_readable_request(att_data->opcode) || is_writeable_response(att_data->opcode))
+                break;
+
+            if (!is_readable_response(att_data->opcode) &&
+                    !is_writeable_request(att_data->opcode))
+                expert_add_info(pinfo, tree, &ei_btatt_invalid_usage);
+        }
+
+        if (bluetooth_gatt_has_no_parameter(att_data->opcode))
+            break;
+
         proto_tree_add_item(tree, hf_btatt_language, tvb, offset, tvb_captured_length_remaining(tvb, offset), ENC_NA | ENC_UTF_8);
         offset += tvb_captured_length_remaining(tvb, offset);
 
         break;
     case 0x2AA3: /* Barometric Pressure Trend */
+        if (service_uuid.bt_uuid == GATT_SERVICE_ENVIRONMENTAL_SENSING) {
+            if (is_readable_request(att_data->opcode))
+                break;
+
+            if (!is_readable_response(att_data->opcode) &&
+                    att_data->opcode != ATT_OPCODE_HANDLE_VALUE_NOTIFICATION)
+                expert_add_info(pinfo, tree, &ei_btatt_invalid_usage);
+        }
+
+        if (bluetooth_gatt_has_no_parameter(att_data->opcode))
+            break;
+
         proto_tree_add_item(tree, hf_btatt_barometric_pressure_trend, tvb, offset, 1, ENC_NA);
         offset += 1;
 
         break;
     case 0x2AA4: /* Bond Management Control Point */
+        if (service_uuid.bt_uuid == GATT_SERVICE_BOND_MANAGEMENT) {
+            if (is_writeable_response(att_data->opcode))
+                break;
+
+            if (!is_writeable_request(att_data->opcode))
+                expert_add_info(pinfo, tree, &ei_btatt_invalid_usage);
+        }
+
+        if (bluetooth_gatt_has_no_parameter(att_data->opcode))
+            break;
+
         proto_tree_add_item(tree, hf_btatt_bond_management_control_point_opcode, tvb, offset, 1, ENC_NA);
         offset += 1;
 
@@ -3657,6 +7674,17 @@ dissect_attribute_value(proto_tree *tree, proto_item *patron_item, packet_info *
         }
         break;
     case 0x2AA5: /* Bond Management Feature */
+        if (service_uuid.bt_uuid == GATT_SERVICE_BOND_MANAGEMENT) {
+            if (is_readable_request(att_data->opcode))
+                break;
+
+            if (!is_readable_response(att_data->opcode))
+                expert_add_info(pinfo, tree, &ei_btatt_invalid_usage);
+        }
+
+        if (bluetooth_gatt_has_no_parameter(att_data->opcode))
+            break;
+
         proto_tree_add_bitmask(tree, tvb, offset, hf_btatt_bond_management_feature, ett_btatt_value, hfx_btatt_bond_management_feature, ENC_LITTLE_ENDIAN);
         flags = tvb_get_guint24(tvb, offset, ENC_LITTLE_ENDIAN);
         offset += 3;
@@ -3670,58 +7698,1009 @@ dissect_attribute_value(proto_tree *tree, proto_item *patron_item, packet_info *
 
         break;
     case 0x2AA6: /* Central Address Resolution */
+        if (bluetooth_gatt_has_no_parameter(att_data->opcode))
+            break;
+
         proto_tree_add_item(tree, hf_btatt_central_address_resolution, tvb, offset, 1, ENC_NA);
         offset += 1;
 
         break;
-
-    case 0x2909: /* Number of Digitals   - Not adopted, 0.9 now (18th July 2015) */
-    case 0x290E: /* Time Trigger Setting - Not adopted, 0.9 now (18th July 2015) */
-/* TODO: Implement, low priority because they are not adopted yet */
-    case 0x290A: /* Value Trigger Setting */
-    case 0x2A53: /* RSC Measurement */
-    case 0x2A55: /* SC Control Point */
-    case 0x2A56: /* Digital */
-    case 0x2A58: /* Analog */
-    case 0x2A5A: /* Aggregate */
-    case 0x2A5B: /* CSC Measurement */
-    case 0x2A63: /* Cycling Power Measurement */
-    case 0x2A64: /* Cycling Power Vector */
-    case 0x2A66: /* Cycling Power Control Point */
-    case 0x2A67: /* Location and Speed */
-    case 0x2A68: /* Navigation */
-    case 0x2A69: /* Position Quality */
-    case 0x2A6B: /* LN Control Point */
-    case 0x2A9C: /* Body Composition Measurement */
-    case 0x2A9D: /* Weight Measurement */
-    case 0x2A9F: /* User Control Point */
     case 0x2AA7: /* CGM Measurement */
-    case 0x2AA8: /* CGM Feature */
-    case 0x2AA9: /* CGM Status */
-    case 0x2AAA: /* CGM Session Start Time */
-    case 0x2AAB: /* CGM Session Run Time */
-    case 0x2AAC: /* CGM Specific Ops Control Point */
-    case 0x2AAD: /* Indoor Positioning Configuration    */
-    case 0x2AAE: /* Latitude    */
-    case 0x2AAF: /* Longitude   */
-    case 0x2AB0: /* Local North Coordinate  */
-    case 0x2AB1: /* Local East Coordinate   */
-    case 0x2AB2: /* Floor Number    */
-    case 0x2AB3: /* Altitude    */
-    case 0x2AB4: /* Uncertainty  */
-    case 0x2AB5: /* Location Name   */
-/* TODO: Implement (easy) */
-    case 0x2906: /* Valid Range */
-    case 0x2A2A: /* IEEE 11073-20601 Regulatory Certification Data List */
-    case 0x2A4D: /* Report */
+        if (service_uuid.bt_uuid == GATT_SERVICE_CONTINUOUS_GLUCOSE_MONITORING) {
+            if (att_data->opcode != ATT_OPCODE_HANDLE_VALUE_NOTIFICATION)
+                expert_add_info(pinfo, tree, &ei_btatt_invalid_usage);
+        }
 
-/* TODO: Implement */
-        sub_item = proto_tree_add_item(tree, hf_btatt_value, tvb, offset, -1, ENC_NA);
-        expert_add_info(pinfo, sub_item, &ei_btatt_undecoded);
-        offset = tvb_captured_length(tvb);
+        if (bluetooth_gatt_has_no_parameter(att_data->opcode))
+            break;
+
+        sub_item = proto_tree_add_item(tree, hf_btatt_cgm_measurement_size, tvb, offset, 1, ENC_NA);
+        if (tvb_get_guint8(tvb, offset) >= 6)
+            expert_add_info(pinfo, sub_item, &ei_btatt_cgm_size_too_small);
+        offset += 1;
+
+        proto_tree_add_bitmask(tree, tvb, offset, hf_btatt_cgm_measurement_flags, ett_btatt_value, hfx_btatt_cgm_measurement_flags, ENC_NA);
+        flags = tvb_get_guint8(tvb, offset);
+        offset += 1;
+
+        proto_tree_add_item(tree, hf_btatt_cgm_measurement_glucose_concentration, tvb, offset, 2, ENC_LITTLE_ENDIAN);
+        offset += 2;
+
+        proto_tree_add_item(tree, hf_btatt_cgm_measurement_time_offset, tvb, offset, 2, ENC_LITTLE_ENDIAN);
+        offset += 2;
+
+        if (flags & 0xE0) {
+            value = 0;
+            if (flags & 0x80)
+                value += 1;
+            if (flags & 0x40)
+                value += 1;
+            if (flags & 0x20)
+                value += 1;
+
+            sub_item = proto_tree_add_item(tree, hf_btatt_cgm_sensor_status_annunciation, tvb, offset, value, ENC_NA);
+            sub_tree = proto_item_add_subtree(sub_item, ett_btatt_list);
+        }
+
+        if (flags & 0x80) {
+            proto_tree_add_bitmask(sub_tree, tvb, offset, hf_btatt_cgm_sensor_status_annunciation_status, ett_btatt_value, hfx_btatt_cgm_sensor_status_annunciation_status, ENC_NA);
+            offset += 1;
+        }
+
+        if (flags & 0x40) {
+            proto_tree_add_bitmask(sub_tree, tvb, offset, hf_btatt_cgm_sensor_status_annunciation_cal_temp, ett_btatt_value, hfx_btatt_cgm_sensor_status_annunciation_cal_temp, ENC_NA);
+            offset += 1;
+        }
+
+        if (flags & 0x20) {
+            proto_tree_add_bitmask(sub_tree, tvb, offset, hf_btatt_cgm_sensor_status_annunciation_warning, ett_btatt_value, hfx_btatt_cgm_sensor_status_annunciation_warning, ENC_NA);
+            offset += 1;
+        }
+
+        if (flags & 0x01) {
+            proto_tree_add_item(tree, hf_btatt_cgm_measurement_trend_information, tvb, offset, 2, ENC_LITTLE_ENDIAN);
+            offset += 2;
+        }
+
+        if (flags & 0x02) {
+            proto_tree_add_item(tree, hf_btatt_cgm_measurement_quality, tvb, offset, 2, ENC_LITTLE_ENDIAN);
+            offset += 2;
+        }
+
+        /* NOTE: only add if "E2E-CRC Supported bit is set in CGM Feature", but for now simple heuristic should be enough */
+        if (tvb_reported_length_remaining(tvb, offset) >= 2) {
+            proto_tree_add_item(tree, hf_btatt_cgm_e2e_crc, tvb, offset, 2, ENC_LITTLE_ENDIAN);
+            offset += 2;
+        }
+
+        break;
+    case 0x2AA8: /* CGM Feature */
+        if (service_uuid.bt_uuid == GATT_SERVICE_CONTINUOUS_GLUCOSE_MONITORING) {
+            if (is_readable_request(att_data->opcode))
+                break;
+
+            if (!is_readable_response(att_data->opcode))
+                expert_add_info(pinfo, tree, &ei_btatt_invalid_usage);
+        }
+
+        if (bluetooth_gatt_has_no_parameter(att_data->opcode))
+            break;
+
+        proto_tree_add_bitmask(tree, tvb, offset, hf_btatt_cgm_feature_feature, ett_btatt_value, hfx_btatt_cgm_feature_feature, ENC_LITTLE_ENDIAN);
+        offset += 3;
+
+        proto_tree_add_bitmask(tree, tvb, offset, hf_btatt_cgm_type_and_sample_location, ett_btatt_value, hfx_btatt_cgm_type_and_sample_location, ENC_NA);
+        offset += 1;
+
+        /* NOTE: This one is mandatory - if not supported then 0xFFFF */
+        proto_tree_add_item(tree, hf_btatt_cgm_e2e_crc, tvb, offset, 2, ENC_LITTLE_ENDIAN);
+        offset += 2;
+
+        break;
+    case 0x2AA9: /* CGM Status */
+        if (service_uuid.bt_uuid == GATT_SERVICE_CONTINUOUS_GLUCOSE_MONITORING) {
+            if (is_readable_request(att_data->opcode))
+                break;
+
+            if (!is_readable_response(att_data->opcode))
+                expert_add_info(pinfo, tree, &ei_btatt_invalid_usage);
+        }
+
+        if (bluetooth_gatt_has_no_parameter(att_data->opcode))
+            break;
+
+        proto_tree_add_item(tree, hf_btatt_cgm_time_offset, tvb, offset, 2, ENC_LITTLE_ENDIAN);
+        offset += 2;
+
+        sub_item = proto_tree_add_item(tree, hf_btatt_cgm_status, tvb, offset, 3, ENC_LITTLE_ENDIAN);
+        sub_tree = proto_item_add_subtree(sub_item, ett_btatt_list);
+
+        proto_tree_add_bitmask(sub_tree, tvb, offset, hf_btatt_cgm_sensor_status_annunciation_status, ett_btatt_value, hfx_btatt_cgm_sensor_status_annunciation_status, ENC_NA);
+        offset += 1;
+
+        proto_tree_add_bitmask(sub_tree, tvb, offset, hf_btatt_cgm_sensor_status_annunciation_cal_temp, ett_btatt_value, hfx_btatt_cgm_sensor_status_annunciation_cal_temp, ENC_NA);
+        offset += 1;
+
+        proto_tree_add_bitmask(sub_tree, tvb, offset, hf_btatt_cgm_sensor_status_annunciation_warning, ett_btatt_value, hfx_btatt_cgm_sensor_status_annunciation_warning, ENC_NA);
+        offset += 1;
+
+
+        /* NOTE: only add if "E2E-CRC Supported bit is set in CGM Feature", but for now simple heuristic should be enough */
+        if (tvb_reported_length_remaining(tvb, offset) >= 2) {
+            proto_tree_add_item(tree, hf_btatt_cgm_e2e_crc, tvb, offset, 2, ENC_LITTLE_ENDIAN);
+            offset += 2;
+        }
+
+        break;
+    case 0x2AAA: /* CGM Session Start Time */
+        if (service_uuid.bt_uuid == GATT_SERVICE_CONTINUOUS_GLUCOSE_MONITORING) {
+            if (is_readable_request(att_data->opcode) || is_writeable_response(att_data->opcode))
+                break;
+
+            if (!is_readable_response(att_data->opcode) &&
+                    !is_writeable_request(att_data->opcode))
+                expert_add_info(pinfo, tree, &ei_btatt_invalid_usage);
+        }
+
+        if (bluetooth_gatt_has_no_parameter(att_data->opcode))
+            break;
+
+        sub_item = proto_tree_add_item(tree, hf_btatt_cgm_session_start_time, tvb, offset, 7, ENC_NA);
+        sub_tree = proto_item_add_subtree(sub_item, ett_btatt_list);
+
+        proto_tree_add_item(sub_tree, hf_btatt_year, tvb, offset, 2, ENC_LITTLE_ENDIAN);
+        offset += 2;
+
+        proto_tree_add_item(sub_tree, hf_btatt_month, tvb, offset, 1, ENC_NA);
+        offset += 1;
+
+        proto_tree_add_item(sub_tree, hf_btatt_day, tvb, offset, 1, ENC_NA);
+        offset += 1;
+
+        proto_tree_add_item(sub_tree, hf_btatt_hours, tvb, offset, 1, ENC_NA);
+        offset += 1;
+
+        proto_tree_add_item(sub_tree, hf_btatt_minutes, tvb, offset, 1, ENC_NA);
+        offset += 1;
+
+        proto_tree_add_item(sub_tree, hf_btatt_seconds, tvb, offset, 1, ENC_NA);
+        offset += 1;
+
+        proto_tree_add_item(tree, hf_btatt_timezone, tvb, offset, 1, ENC_NA);
+        offset += 1;
+
+        proto_tree_add_item(tree, hf_btatt_dst_offset, tvb, offset, 1, ENC_NA);
+        offset += 1;
+
+        /* NOTE: only add if "E2E-CRC Supported bit is set in CGM Feature", but for now simple heuristic should be enough */
+        if (tvb_reported_length_remaining(tvb, offset) >= 2) {
+            proto_tree_add_item(tree, hf_btatt_cgm_e2e_crc, tvb, offset, 2, ENC_LITTLE_ENDIAN);
+            offset += 2;
+        }
+
+        break;
+    case 0x2AAB: /* CGM Session Run Time */
+        if (service_uuid.bt_uuid == GATT_SERVICE_CONTINUOUS_GLUCOSE_MONITORING) {
+            if (is_readable_request(att_data->opcode) || is_writeable_response(att_data->opcode))
+                break;
+
+            if (!is_readable_response(att_data->opcode) &&
+                    !is_writeable_request(att_data->opcode))
+                expert_add_info(pinfo, tree, &ei_btatt_invalid_usage);
+        }
+
+        if (bluetooth_gatt_has_no_parameter(att_data->opcode))
+            break;
+
+        proto_tree_add_item(tree, hf_btatt_cgm_session_run_time, tvb, offset, 2, ENC_LITTLE_ENDIAN);
+        offset += 2;
+
+        /* NOTE: only add if "E2E-CRC Supported bit is set in CGM Feature", but for now simple heuristic should be enough */
+        if (tvb_reported_length_remaining(tvb, offset) >= 2) {
+            proto_tree_add_item(tree, hf_btatt_cgm_e2e_crc, tvb, offset, 2, ENC_LITTLE_ENDIAN);
+            offset += 2;
+        }
+
+        break;
+    case 0x2AAC: /* CGM Specific Ops Control Point */
+        if (service_uuid.bt_uuid == GATT_SERVICE_CONTINUOUS_GLUCOSE_MONITORING) {
+            if (is_writeable_response(att_data->opcode) || att_data->opcode == ATT_OPCODE_HANDLE_VALUE_CONFIRMATION)
+                break;
+
+            if (!is_writeable_request(att_data->opcode) && att_data->opcode != ATT_OPCODE_HANDLE_VALUE_INDICATION)
+                expert_add_info(pinfo, tree, &ei_btatt_invalid_usage);
+        }
+
+        if (bluetooth_gatt_has_no_parameter(att_data->opcode))
+            break;
+
+        proto_tree_add_item(tree, hf_btatt_cgm_specific_ops_control_point_opcode, tvb, offset, 1, ENC_NA);
+        opcode = tvb_get_guint8(tvb, offset);
+        offset += 1;
+
+        sub_item = proto_tree_add_item(tree, hf_btatt_cgm_specific_ops_control_point_operand, tvb, offset, 0, ENC_NA);
+        sub_tree = proto_item_add_subtree(sub_item, ett_btatt_list);
+        operand_offset = offset;
+
+        switch (opcode) {
+        case  1: /* Set CGM Communication Interval */
+            proto_tree_add_item(sub_tree, hf_btatt_cgm_specific_ops_control_point_operand_communication_interval, tvb, offset, 1, ENC_NA);
+            offset += 1;
+
+            break;
+        case  2: /* Get CGM Communication Interval */
+        case  8: /* Get Patient High Alert Level */
+        case 11: /* Get Patient Low Alert Level */
+        case 14: /* Get Hypo Alert Level */
+        case 17: /* Get Hyper Alert Level */
+        case 20: /* Get Rate of Decrease Alert Level */
+        case 23: /* Get Rate of Increase Alert Level */
+        case 25: /* Reset Device Specific Alert */
+        case 26: /* Start the Session */
+        case 27: /* Stop the Session */
+            /* N/A */
+
+            break;
+        case  4: /* Set Glucose Calibration Value */
+            proto_tree_add_item(sub_tree, hf_btatt_cgm_specific_ops_control_point_calibration_glucose_concentration, tvb, offset, 2, ENC_LITTLE_ENDIAN);
+            offset += 2;
+
+            proto_tree_add_item(sub_tree, hf_btatt_cgm_specific_ops_control_point_calibration_time, tvb, offset, 2, ENC_LITTLE_ENDIAN);
+            offset += 2;
+
+            proto_tree_add_bitmask(sub_tree, tvb, offset, hf_btatt_cgm_type_and_sample_location, ett_btatt_value, hfx_btatt_cgm_type_and_sample_location, ENC_NA);
+            offset += 1;
+
+            proto_tree_add_item(sub_tree, hf_btatt_cgm_specific_ops_control_point_next_calibration_time, tvb, offset, 2, ENC_LITTLE_ENDIAN);
+            offset += 2;
+
+            proto_tree_add_item(sub_tree, hf_btatt_cgm_specific_ops_control_point_calibration_data_record_number, tvb, offset, 2, ENC_LITTLE_ENDIAN);
+            offset += 2;
+
+            proto_tree_add_bitmask(sub_tree, tvb, offset, hf_btatt_cgm_specific_ops_control_point_calibration_status, ett_btatt_value, hfx_btatt_cgm_specific_ops_control_point_calibration_status, ENC_NA);
+            offset += 1;
+
+            break;
+        case  5: /* Get Glucose Calibration Value */
+            proto_tree_add_item(sub_tree, hf_btatt_cgm_specific_ops_control_point_operand_calibration_data_record_number, tvb, offset, 2, ENC_LITTLE_ENDIAN);
+            offset += 2;
+
+            break;
+        case  7: /* Set Patient High Alert Level */
+        case 10: /* Set Patient Low Alert Level */
+        case 13: /* Set Hypo Alert Level */
+        case 16: /* Set Hyper Alert Level */
+            proto_tree_add_item(sub_tree, hf_btatt_cgm_specific_ops_control_point_operand_alert_level, tvb, offset, 2, ENC_LITTLE_ENDIAN);
+            offset += 2;
+
+            break;
+        case 19: /* Set Rate of Decrease Alert Level */
+        case 22: /* Set Rate of Increase Alert Level */
+            proto_tree_add_item(sub_tree, hf_btatt_cgm_specific_ops_control_point_operand_alert_level_rate, tvb, offset, 2, ENC_LITTLE_ENDIAN);
+            offset += 2;
+
+            break;
+        case  3: /* CGM Communication Interval response */
+        case  6: /* Glucose Calibration Value response */
+        case  9: /* Patient High Alert Level Response */
+        case 12: /* Patient Low Alert Level Response */
+        case 15: /* Hypo Alert Level Response */
+        case 18: /* Hyper Alert Level Response */
+        case 21: /* Rate of Decrease Alert Level Response */
+        case 24: /* Rate of Increase Alert Level Response */
+            expert_add_info(pinfo, sub_item, &ei_btatt_opcode_invalid_request);
+            break;
+
+        case 28: /* Response Code */
+            proto_tree_add_item(sub_tree, hf_btatt_cgm_specific_ops_control_point_request_opcode, tvb, offset, 1, ENC_NA);
+            offset += 1;
+
+            proto_tree_add_item(sub_tree, hf_btatt_cgm_specific_ops_control_point_response_code, tvb, offset, 1, ENC_NA);
+            offset += 1;
+
+            switch (tvb_get_guint8(tvb, offset - 2)) {
+            case  1: /* Set CGM Communication Interval */
+            case  2: /* Get CGM Communication Interval */
+            case  4: /* Set Glucose Calibration Value */
+            case  5: /* Get Glucose Calibration Value */
+            case  7: /* Set Patient High Alert Level */
+            case  8: /* Get Patient High Alert Level */
+            case 10: /* Set Patient Low Alert Level */
+            case 11: /* Get Patient Low Alert Level */
+            case 13: /* Set Hypo Alert Level */
+            case 14: /* Get Hypo Alert Level */
+            case 16: /* Set Hyper Alert Level */
+            case 17: /* Get Hyper Alert Level */
+            case 19: /* Set Rate of Decrease Alert Level */
+            case 20: /* Get Rate of Decrease Alert Level */
+            case 22: /* Set Rate of Increase Alert Level */
+            case 23: /* Get Rate of Increase Alert Level */
+            case 25: /* Reset Device Specific Alert */
+            case 26: /* Start the Session */
+            case 27: /* Stop the Session */
+                expert_add_info(pinfo, sub_item, &ei_btatt_opcode_invalid_response);
+                break;
+
+            case  3: /* CGM Communication Interval response */
+                proto_tree_add_item(sub_tree, hf_btatt_cgm_specific_ops_control_point_operand_communication_interval, tvb, offset, 1, ENC_NA);
+                offset += 1;
+
+                break;
+            case  6: /* Glucose Calibration Value response */
+                proto_tree_add_item(sub_tree, hf_btatt_cgm_specific_ops_control_point_calibration_glucose_concentration, tvb, offset, 2, ENC_LITTLE_ENDIAN);
+                offset += 2;
+
+                proto_tree_add_item(sub_tree, hf_btatt_cgm_specific_ops_control_point_calibration_time, tvb, offset, 2, ENC_LITTLE_ENDIAN);
+                offset += 2;
+
+                proto_tree_add_bitmask(sub_tree, tvb, offset, hf_btatt_cgm_type_and_sample_location, ett_btatt_value, hfx_btatt_cgm_type_and_sample_location, ENC_NA);
+                offset += 1;
+
+                proto_tree_add_item(sub_tree, hf_btatt_cgm_specific_ops_control_point_next_calibration_time, tvb, offset, 2, ENC_LITTLE_ENDIAN);
+                offset += 2;
+
+                proto_tree_add_item(sub_tree, hf_btatt_cgm_specific_ops_control_point_calibration_data_record_number, tvb, offset, 2, ENC_LITTLE_ENDIAN);
+                offset += 2;
+
+                proto_tree_add_bitmask(sub_tree, tvb, offset, hf_btatt_cgm_specific_ops_control_point_calibration_status, ett_btatt_value, hfx_btatt_cgm_specific_ops_control_point_calibration_status, ENC_NA);
+                offset += 1;
+
+                break;
+            case  9: /* Patient High Alert Level Response */
+            case 12: /* Patient Low Alert Level Response */
+            case 15: /* Hypo Alert Level Response */
+            case 18: /* Hyper Alert Level Response */
+                proto_tree_add_item(sub_tree, hf_btatt_cgm_specific_ops_control_point_operand_alert_level, tvb, offset, 2, ENC_LITTLE_ENDIAN);
+                offset += 2;
+
+                break;
+            case 21: /* Rate of Decrease Alert Level Response */
+            case 24: /* Rate of Increase Alert Level Response */
+                proto_tree_add_item(sub_tree, hf_btatt_cgm_specific_ops_control_point_operand_alert_level_rate, tvb, offset, 2, ENC_LITTLE_ENDIAN);
+                offset += 2;
+
+                break;
+            }
+
+            break;
+        };
+
+        proto_item_set_len(sub_item, offset - operand_offset);
+
+        /* NOTE: only add if "E2E-CRC Supported bit is set in CGM Feature", but for now simple heuristic should be enough */
+        if (tvb_reported_length_remaining(tvb, offset) >= 2) {
+            proto_tree_add_item(tree, hf_btatt_cgm_e2e_crc, tvb, offset, 2, ENC_LITTLE_ENDIAN);
+            offset += 2;
+        }
+
+        break;
+    case 0x2AAD: /* Indoor Positioning Configuration */
+        if (service_uuid.bt_uuid == GATT_SERVICE_INDOOR_POSITIONING) {
+            if (is_readable_request(att_data->opcode) || is_writeable_response(att_data->opcode))
+                break;
+
+            if (!is_readable_response(att_data->opcode) && !is_writeable_request(att_data->opcode) && att_data->opcode != ATT_OPCODE_WRITE_COMMAND)
+                expert_add_info(pinfo, tree, &ei_btatt_invalid_usage);
+        }
+
+        if (bluetooth_gatt_has_no_parameter(att_data->opcode))
+            break;
+
+        proto_tree_add_bitmask(tree, tvb, offset, hf_btatt_indoor_positioning_configuration, ett_btatt_value, hfx_btatt_indoor_positioning_configuration, ENC_NA);
+        offset += 1;
+
+        break;
+    case 0x2AAE: /* Latitude */
+        if (service_uuid.bt_uuid == GATT_SERVICE_INDOOR_POSITIONING) {
+            if (is_readable_request(att_data->opcode) || is_writeable_response(att_data->opcode))
+                break;
+
+            if (!is_readable_response(att_data->opcode) && !is_writeable_request(att_data->opcode) && att_data->opcode != ATT_OPCODE_WRITE_COMMAND)
+                expert_add_info(pinfo, tree, &ei_btatt_invalid_usage);
+        }
+
+        if (bluetooth_gatt_has_no_parameter(att_data->opcode))
+            break;
+
+        proto_tree_add_item(tree, hf_btatt_latitude, tvb, offset, 4, ENC_LITTLE_ENDIAN);
+        offset += 4;
+
+        break;
+    case 0x2AAF: /* Longitude */
+        if (service_uuid.bt_uuid == GATT_SERVICE_INDOOR_POSITIONING) {
+            if (is_readable_request(att_data->opcode) || is_writeable_response(att_data->opcode))
+                break;
+
+            if (!is_readable_response(att_data->opcode) && !is_writeable_request(att_data->opcode) && att_data->opcode != ATT_OPCODE_WRITE_COMMAND)
+                expert_add_info(pinfo, tree, &ei_btatt_invalid_usage);
+        }
+
+        if (bluetooth_gatt_has_no_parameter(att_data->opcode))
+            break;
+
+        proto_tree_add_item(tree, hf_btatt_longitude, tvb, offset, 4, ENC_LITTLE_ENDIAN);
+        offset += 4;
+
+        break;
+    case 0x2AB0: /* Local North Coordinate */
+        if (service_uuid.bt_uuid == GATT_SERVICE_INDOOR_POSITIONING) {
+            if (is_readable_request(att_data->opcode) || is_writeable_response(att_data->opcode))
+                break;
+
+            if (!is_readable_response(att_data->opcode) && !is_writeable_request(att_data->opcode) && att_data->opcode != ATT_OPCODE_WRITE_COMMAND)
+                expert_add_info(pinfo, tree, &ei_btatt_invalid_usage);
+        }
+
+        if (bluetooth_gatt_has_no_parameter(att_data->opcode))
+            break;
+
+        proto_tree_add_item(tree, hf_btatt_local_north_coordinate, tvb, offset, 2, ENC_LITTLE_ENDIAN);
+        offset += 2;
+
+        break;
+    case 0x2AB1: /* Local East Coordinate */
+        if (service_uuid.bt_uuid == GATT_SERVICE_INDOOR_POSITIONING) {
+            if (is_readable_request(att_data->opcode) || is_writeable_response(att_data->opcode))
+                break;
+
+            if (!is_readable_response(att_data->opcode) && !is_writeable_request(att_data->opcode) && att_data->opcode != ATT_OPCODE_WRITE_COMMAND)
+                expert_add_info(pinfo, tree, &ei_btatt_invalid_usage);
+        }
+
+        if (bluetooth_gatt_has_no_parameter(att_data->opcode))
+            break;
+
+        proto_tree_add_item(tree, hf_btatt_local_east_coordinate, tvb, offset, 2, ENC_LITTLE_ENDIAN);
+        offset += 2;
+
+        break;
+    case 0x2AB2: /* Floor Number */
+        if (service_uuid.bt_uuid == GATT_SERVICE_INDOOR_POSITIONING) {
+            if (is_readable_request(att_data->opcode) || is_writeable_response(att_data->opcode))
+                break;
+
+            if (!is_readable_response(att_data->opcode) && !is_writeable_request(att_data->opcode) && att_data->opcode != ATT_OPCODE_WRITE_COMMAND)
+                expert_add_info(pinfo, tree, &ei_btatt_invalid_usage);
+        }
+
+        if (bluetooth_gatt_has_no_parameter(att_data->opcode))
+            break;
+
+        proto_tree_add_item(tree, hf_btatt_floor_number, tvb, offset, 1, ENC_NA);
+        offset += 1;
+
+        break;
+    case 0x2AB3: /* Altitude */
+        if (service_uuid.bt_uuid == GATT_SERVICE_INDOOR_POSITIONING) {
+            if (is_readable_request(att_data->opcode) || is_writeable_response(att_data->opcode))
+                break;
+
+            if (!is_readable_response(att_data->opcode) && !is_writeable_request(att_data->opcode) && att_data->opcode != ATT_OPCODE_WRITE_COMMAND)
+                expert_add_info(pinfo, tree, &ei_btatt_invalid_usage);
+        }
+
+        if (bluetooth_gatt_has_no_parameter(att_data->opcode))
+            break;
+
+        proto_tree_add_item(tree, hf_btatt_altitude, tvb, offset, 2, ENC_LITTLE_ENDIAN);
+        offset += 2;
+
+        break;
+    case 0x2AB4: /* Uncertainty */
+        if (service_uuid.bt_uuid == GATT_SERVICE_INDOOR_POSITIONING) {
+            if (is_readable_request(att_data->opcode) || is_writeable_response(att_data->opcode))
+                break;
+
+            if (!is_readable_response(att_data->opcode) && !is_writeable_request(att_data->opcode) && att_data->opcode != ATT_OPCODE_WRITE_COMMAND)
+                expert_add_info(pinfo, tree, &ei_btatt_invalid_usage);
+        }
+
+        if (bluetooth_gatt_has_no_parameter(att_data->opcode))
+            break;
+
+        proto_tree_add_bitmask(tree, tvb, offset, hf_btatt_uncertainty, ett_btatt_value, hfx_btatt_uncertainty, ENC_NA);
+        offset += 1;
+
+        break;
+    case 0x2AB5: /* Location Name */
+        if (service_uuid.bt_uuid == GATT_SERVICE_INDOOR_POSITIONING) {
+            if (is_readable_request(att_data->opcode) || is_writeable_response(att_data->opcode))
+                break;
+
+            if (!is_readable_response(att_data->opcode) && !is_writeable_request(att_data->opcode) && att_data->opcode != ATT_OPCODE_WRITE_COMMAND)
+                expert_add_info(pinfo, tree, &ei_btatt_invalid_usage);
+        }
+
+        if (bluetooth_gatt_has_no_parameter(att_data->opcode))
+            break;
+
+        proto_tree_add_item(tree, hf_btatt_location_name, tvb, offset, tvb_captured_length_remaining(tvb, offset), ENC_NA | ENC_UTF_8);
+        offset += tvb_captured_length_remaining(tvb, offset);
+
+        break;
+    case 0x2AB6: /* URI */
+        if (service_uuid.bt_uuid == GATT_SERVICE_HTTP_PROXY) {
+            if (is_writeable_response(att_data->opcode))
+                break;
+
+            if (!is_writeable_request(att_data->opcode))
+                expert_add_info(pinfo, tree, &ei_btatt_invalid_usage);
+        }
+
+        if (bluetooth_gatt_has_no_parameter(att_data->opcode))
+            break;
+
+        proto_tree_add_item(tree, hf_btatt_uri, tvb, offset, tvb_captured_length_remaining(tvb, offset), ENC_NA | ENC_UTF_8);
+        offset += tvb_captured_length_remaining(tvb, offset);
+
+        break;
+    case 0x2AB7: /* HTTP Headers */
+        if (service_uuid.bt_uuid == GATT_SERVICE_HTTP_PROXY) {
+            if (is_readable_request(att_data->opcode) || is_writeable_response(att_data->opcode))
+                break;
+
+            if (!is_readable_response(att_data->opcode) &&
+                    !is_writeable_request(att_data->opcode))
+                expert_add_info(pinfo, tree, &ei_btatt_invalid_usage);
+        }
+
+        if (bluetooth_gatt_has_no_parameter(att_data->opcode))
+            break;
+
+        sub_item = proto_tree_add_item(tree, hf_btatt_http_headers, tvb, offset, tvb_captured_length_remaining(tvb, offset), ENC_NA | ENC_UTF_8);
+        sub_tree = proto_item_add_subtree(sub_item, ett_btatt_value);
+
+        call_dissector(http_handle, tvb_new_subset_remaining(tvb, offset), pinfo, sub_tree);
+
+        offset += tvb_captured_length_remaining(tvb, offset);
+
+        break;
+    case 0x2AB8: /* HTTP Status Code */
+        if (service_uuid.bt_uuid == GATT_SERVICE_HTTP_PROXY) {
+            if (att_data->opcode != ATT_OPCODE_HANDLE_VALUE_NOTIFICATION)
+                expert_add_info(pinfo, tree, &ei_btatt_invalid_usage);
+        }
+
+        if (bluetooth_gatt_has_no_parameter(att_data->opcode))
+            break;
+
+        proto_tree_add_item(tree, hf_btatt_http_status_code, tvb, offset, 2, ENC_LITTLE_ENDIAN);
+        offset += 2;
+
+        proto_tree_add_bitmask(tree, tvb, offset, hf_btatt_http_data_status, ett_btatt_value, hfx_btatt_http_data_status, ENC_NA);
+        offset += 1;
+
+        break;
+    case 0x2AB9: /* HTTP Entity Body */
+        if (service_uuid.bt_uuid == GATT_SERVICE_HTTP_PROXY) {
+            if (is_readable_request(att_data->opcode) || is_writeable_response(att_data->opcode))
+                break;
+
+            if (!is_readable_response(att_data->opcode) &&
+                    !is_writeable_request(att_data->opcode))
+                expert_add_info(pinfo, tree, &ei_btatt_invalid_usage);
+        }
+
+        if (bluetooth_gatt_has_no_parameter(att_data->opcode))
+            break;
+
+        proto_tree_add_item(tree, hf_btatt_http_entity_body, tvb, offset, tvb_captured_length_remaining(tvb, offset), ENC_NA | ENC_UTF_8);
+        offset += tvb_captured_length_remaining(tvb, offset);
+
+        break;
+    case 0x2ABA: /* HTTP Control Point */
+        if (service_uuid.bt_uuid == GATT_SERVICE_HTTP_PROXY) {
+            if (is_writeable_response(att_data->opcode))
+                break;
+
+            if (!is_writeable_request(att_data->opcode))
+                expert_add_info(pinfo, tree, &ei_btatt_invalid_usage);
+        }
+
+        if (bluetooth_gatt_has_no_parameter(att_data->opcode))
+            break;
+
+        proto_tree_add_item(tree, hf_btatt_http_control_point_opcode, tvb, offset, 1, ENC_NA);
+        offset += 1;
+
+        break;
+    case 0x2ABB: /* HTTPS Security */
+        if (service_uuid.bt_uuid == GATT_SERVICE_HTTP_PROXY) {
+            if (is_readable_request(att_data->opcode))
+                break;
+
+            if (!is_readable_response(att_data->opcode))
+                expert_add_info(pinfo, tree, &ei_btatt_invalid_usage);
+        }
+
+        if (bluetooth_gatt_has_no_parameter(att_data->opcode))
+            break;
+
+        proto_tree_add_item(tree, hf_btatt_https_security, tvb, offset, 1, ENC_NA);
+        offset += 1;
+
+        break;
+    case 0x2ABC: /* TDS Control Point */
+        if (service_uuid.bt_uuid == GATT_SERVICE_TRANSPORT_DISCOVERY) {
+            if (is_writeable_response(att_data->opcode) || att_data->opcode == ATT_OPCODE_HANDLE_VALUE_CONFIRMATION)
+                break;
+
+            if (!is_writeable_request(att_data->opcode) && att_data->opcode != ATT_OPCODE_HANDLE_VALUE_INDICATION)
+                expert_add_info(pinfo, tree, &ei_btatt_invalid_usage);
+        }
+
+        if (bluetooth_gatt_has_no_parameter(att_data->opcode))
+            break;
+
+        proto_tree_add_item(tree, hf_btatt_tds_opcode, tvb, offset, 1, ENC_NA);
+        offset += 1;
+
+        if (att_data->opcode == 0x1B || att_data->opcode == 0x1D) { /* Handle Value Notification || Handle Value Indication" */
+            proto_tree_add_item(tree, hf_btatt_tds_result_code, tvb, offset, 1, ENC_NA);
+            offset += 1;
+        } else {
+            proto_tree_add_item(tree, hf_btatt_tds_organization_id, tvb, offset, 1, ENC_NA);
+            offset += 1;
+        }
+
+        if (tvb_reported_length_remaining(tvb, offset) > 0) {
+            proto_tree_add_item(tree, hf_btatt_tds_data, tvb, offset, tvb_reported_length_remaining(tvb, offset), ENC_NA);
+            offset += tvb_reported_length_remaining(tvb, offset);
+        }
+
+        break;
+    case 0x2ABD: /* OTS Feature */
+        if (service_uuid.bt_uuid == GATT_SERVICE_OBJECT_TRANSFER) {
+            if (is_readable_request(att_data->opcode))
+                break;
+
+            if (!is_readable_response(att_data->opcode))
+                expert_add_info(pinfo, tree, &ei_btatt_invalid_usage);
+        }
+
+        if (bluetooth_gatt_has_no_parameter(att_data->opcode))
+            break;
+
+        proto_tree_add_bitmask(tree, tvb, offset, hf_btatt_ots_feature_oacp, ett_btatt_value, hfx_btatt_ots_feature_oacp, ENC_LITTLE_ENDIAN);
+        offset += 4;
+
+        proto_tree_add_bitmask(tree, tvb, offset, hf_btatt_ots_feature_olcp, ett_btatt_value, hfx_btatt_ots_feature_olcp, ENC_LITTLE_ENDIAN);
+        offset += 4;
+
+        break;
+    case 0x2ABE: /* Object Name */
+        if (service_uuid.bt_uuid == GATT_SERVICE_OBJECT_TRANSFER) {
+            if (is_readable_request(att_data->opcode) || is_writeable_response(att_data->opcode))
+                break;
+
+            if (!is_readable_response(att_data->opcode) && !is_writeable_request(att_data->opcode))
+                expert_add_info(pinfo, tree, &ei_btatt_invalid_usage);
+        }
+
+        if (bluetooth_gatt_has_no_parameter(att_data->opcode))
+            break;
+
+        proto_tree_add_item(tree, hf_btatt_ots_object_name, tvb, offset, tvb_captured_length_remaining(tvb, offset), ENC_NA | ENC_UTF_8);
+        offset += tvb_captured_length_remaining(tvb, offset);
+
+        break;
+    case 0x2ABF: /* Object Type */
+        if (service_uuid.bt_uuid == GATT_SERVICE_OBJECT_TRANSFER) {
+            if (is_readable_request(att_data->opcode))
+                break;
+
+            if (!is_readable_response(att_data->opcode))
+                expert_add_info(pinfo, tree, &ei_btatt_invalid_usage);
+        }
+
+        if (bluetooth_gatt_has_no_parameter(att_data->opcode))
+            break;
+
+        offset = dissect_gatt_uuid(tree, pinfo, tvb, offset);
+
+        break;
+    case 0x2AC0: /* Object Size */
+        if (service_uuid.bt_uuid == GATT_SERVICE_OBJECT_TRANSFER) {
+            if (is_readable_request(att_data->opcode))
+                break;
+
+            if (!is_readable_response(att_data->opcode))
+                expert_add_info(pinfo, tree, &ei_btatt_invalid_usage);
+        }
+
+        if (bluetooth_gatt_has_no_parameter(att_data->opcode))
+            break;
+
+        proto_tree_add_item(tree, hf_btatt_ots_current_size, tvb, offset, 4, ENC_LITTLE_ENDIAN);
+        offset += 4;
+
+        proto_tree_add_item(tree, hf_btatt_ots_allocated_size, tvb, offset, 4, ENC_LITTLE_ENDIAN);
+        offset += 4;
+
+        break;
+    case 0x2AC1: /* Object First-Created */
+        if (service_uuid.bt_uuid == GATT_SERVICE_OBJECT_TRANSFER) {
+            if (is_readable_request(att_data->opcode) || is_writeable_response(att_data->opcode))
+                break;
+
+            if (!is_readable_response(att_data->opcode) && !is_writeable_request(att_data->opcode))
+                expert_add_info(pinfo, tree, &ei_btatt_invalid_usage);
+        }
+
+        if (bluetooth_gatt_has_no_parameter(att_data->opcode))
+            break;
+
+        sub_item = proto_tree_add_item(tree, hf_btatt_ots_object_first_created, tvb, offset, 7, ENC_NA);
+        sub_tree = proto_item_add_subtree(sub_item, ett_btatt_value);
+
+        call_dissector_with_data(find_dissector("btgatt.uuid0x2a08"), tvb_new_subset(tvb, offset, 7, 7), pinfo, sub_tree, att_data);
+        offset += 7;
+
+        break;
+    case 0x2AC2: /* Object Last-Modified */
+        if (service_uuid.bt_uuid == GATT_SERVICE_OBJECT_TRANSFER) {
+            if (is_readable_request(att_data->opcode) || is_writeable_response(att_data->opcode))
+                break;
+
+            if (!is_readable_response(att_data->opcode) && !is_writeable_request(att_data->opcode))
+                expert_add_info(pinfo, tree, &ei_btatt_invalid_usage);
+        }
+
+        if (bluetooth_gatt_has_no_parameter(att_data->opcode))
+            break;
+
+        sub_item = proto_tree_add_item(tree, hf_btatt_ots_object_last_modified, tvb, offset, 7, ENC_NA);
+        sub_tree = proto_item_add_subtree(sub_item, ett_btatt_value);
+
+        call_dissector_with_data(find_dissector("btgatt.uuid0x2a08"), tvb_new_subset(tvb, offset, 7, 7), pinfo, sub_tree, att_data);
+        offset += 7;
+
+        break;
+    case 0x2AC3: /* Object ID */
+        if (service_uuid.bt_uuid == GATT_SERVICE_OBJECT_TRANSFER) {
+            if (is_readable_request(att_data->opcode))
+                break;
+
+            if (!is_readable_response(att_data->opcode))
+                expert_add_info(pinfo, tree, &ei_btatt_invalid_usage);
+        }
+
+        if (bluetooth_gatt_has_no_parameter(att_data->opcode))
+            break;
+
+        proto_tree_add_item(tree, hf_btatt_ots_object_id, tvb, offset, 6, ENC_LITTLE_ENDIAN);
+        offset += 6;
+
+        break;
+    case 0x2AC4: /* Object Properties */
+        if (service_uuid.bt_uuid == GATT_SERVICE_OBJECT_TRANSFER) {
+            if (is_readable_request(att_data->opcode) || is_writeable_response(att_data->opcode))
+                break;
+
+            if (!is_readable_response(att_data->opcode) && !is_writeable_request(att_data->opcode))
+                expert_add_info(pinfo, tree, &ei_btatt_invalid_usage);
+        }
+
+        if (bluetooth_gatt_has_no_parameter(att_data->opcode))
+            break;
+
+        proto_tree_add_bitmask(tree, tvb, offset, hf_btatt_ots_properties, ett_btatt_value, hfx_btatt_ots_properties, ENC_LITTLE_ENDIAN);
+        offset += 4;
+
+        break;
+    case 0x2AC5: /* Object Action Control Point */
+        if (service_uuid.bt_uuid == GATT_SERVICE_OBJECT_TRANSFER) {
+            if (is_writeable_response(att_data->opcode) || att_data->opcode == ATT_OPCODE_HANDLE_VALUE_CONFIRMATION)
+                break;
+
+            if (!is_writeable_request(att_data->opcode) && att_data->opcode != ATT_OPCODE_HANDLE_VALUE_INDICATION)
+                expert_add_info(pinfo, tree, &ei_btatt_invalid_usage);
+        }
+
+        if (bluetooth_gatt_has_no_parameter(att_data->opcode))
+            break;
+
+        proto_tree_add_item(tree, hf_btatt_ots_action_opcode, tvb, offset, 1, ENC_NA);
+        opcode = tvb_get_guint8(tvb, offset);
+        offset += 1;
+
+        switch (opcode) {
+        case 0x01: /* Create  */
+            proto_tree_add_item(tree, hf_btatt_ots_size, tvb, offset, 4, ENC_LITTLE_ENDIAN);
+            offset += 4;
+
+            offset = dissect_gatt_uuid(tree, pinfo, tvb, offset);
+
+            break;
+        case 0x02: /* Delete  */
+        case 0x07: /* Abort */
+            /* none */
+
+            break;
+        case 0x03: /* Calculate Checksum */
+        case 0x05: /* Read */
+        case 0x06: /* Write */
+            proto_tree_add_item(tree, hf_btatt_ots_offset, tvb, offset, 4, ENC_LITTLE_ENDIAN);
+            offset += 4;
+
+            proto_tree_add_item(tree, hf_btatt_ots_length, tvb, offset, 4, ENC_LITTLE_ENDIAN);
+            offset += 4;
+
+            break;
+        case 0x04: /* Execute */
+            if (tvb_reported_length_remaining(tvb, offset) > 0) {
+                proto_tree_add_item(tree, hf_btatt_ots_execute_data, tvb, offset, tvb_reported_length_remaining(tvb, offset), ENC_NA | ENC_UTF_8);
+                offset += tvb_reported_length_remaining(tvb, offset);
+            }
+
+            break;
+        case 0x60: /* Response Code */
+            proto_tree_add_item(tree, hf_btatt_ots_action_response_opcode, tvb, offset, 1, ENC_NA);
+            offset += 1;
+
+            proto_tree_add_item(tree, hf_btatt_ots_action_result_code, tvb, offset, 1, ENC_NA);
+            offset += 1;
+
+            switch (tvb_get_guint8(tvb, offset)) {
+            case 0x01: /* Create  */
+            case 0x02: /* Delete  */
+            case 0x05: /* Read */
+            case 0x06: /* Write */
+            case 0x07: /* Abort */
+            case 0x60: /* Response Code */
+                /* none */
+
+                break;
+            case 0x03: /* Calculate Checksum */
+                proto_tree_add_item(tree, hf_btatt_ots_checksum, tvb, offset, 4, ENC_LITTLE_ENDIAN);
+                offset += 4;
+
+                break;
+            case 0x04: /* Execute */
+                if (tvb_reported_length_remaining(tvb, offset) > 0) {
+                    proto_tree_add_item(tree, hf_btatt_ots_execute_data, tvb, offset, tvb_reported_length_remaining(tvb, offset), ENC_NA | ENC_UTF_8);
+                    offset += tvb_reported_length_remaining(tvb, offset);
+                }
+
+                break;
+            }
+        }
+        break;
+    case 0x2AC6: /* Object List Control Point */
+        if (service_uuid.bt_uuid == GATT_SERVICE_OBJECT_TRANSFER) {
+            if (is_writeable_response(att_data->opcode) || att_data->opcode == ATT_OPCODE_HANDLE_VALUE_CONFIRMATION)
+                break;
+
+            if (!is_writeable_request(att_data->opcode) && att_data->opcode != ATT_OPCODE_HANDLE_VALUE_INDICATION)
+                expert_add_info(pinfo, tree, &ei_btatt_invalid_usage);
+        }
+
+        if (bluetooth_gatt_has_no_parameter(att_data->opcode))
+            break;
+
+        proto_tree_add_item(tree, hf_btatt_ots_list_opcode, tvb, offset, 1, ENC_NA);
+        opcode = tvb_get_guint8(tvb, offset);
+        offset += 1;
+
+        switch (opcode) {
+        case 0x01: /* First */
+        case 0x02: /* Last */
+        case 0x03: /* Previous */
+        case 0x04: /* Next */
+        case 0x07: /* Request Number of Object */
+        case 0x08: /* Clear Marking */
+            /* none */
+            break;
+        case 0x05: /* Go To */
+            proto_tree_add_item(tree, hf_btatt_ots_object_id, tvb, offset, 6, ENC_LITTLE_ENDIAN);
+            offset += 6;
+
+            break;
+        case 0x06: /* Order */
+            proto_tree_add_item(tree, hf_btatt_ots_list_order, tvb, offset, 1, ENC_NA);
+            offset += 1;
+
+            break;
+        case 0x70: /* Response Code  */
+            proto_tree_add_item(tree, hf_btatt_ots_list_response_opcode, tvb, offset, 1, ENC_NA);
+            offset += 1;
+
+            proto_tree_add_item(tree, hf_btatt_ots_list_result_code, tvb, offset, 1, ENC_NA);
+            offset += 1;
+
+            switch (opcode) {
+            case 0x01: /* First */
+            case 0x02: /* Last */
+            case 0x03: /* Previous */
+            case 0x04: /* Next */
+            case 0x05: /* Go To */
+            case 0x06: /* Order */
+            case 0x08: /* Clear Marking */
+            case 0x70: /* Response Code  */
+                /* none */
+                break;
+            case 0x07: /* Request Number of Object */
+                proto_tree_add_item(tree, hf_btatt_ots_list_total_number_of_objects, tvb, offset, 4, ENC_LITTLE_ENDIAN);
+                offset += 4;
+            }
+        }
+
+        break;
+    case 0x2AC7: /* Object List Filter */
+        if (service_uuid.bt_uuid == GATT_SERVICE_OBJECT_TRANSFER) {
+            if (is_readable_request(att_data->opcode) || is_writeable_response(att_data->opcode))
+                break;
+
+            if (!is_readable_response(att_data->opcode) && !is_writeable_request(att_data->opcode))
+                expert_add_info(pinfo, tree, &ei_btatt_invalid_usage);
+        }
+
+        if (bluetooth_gatt_has_no_parameter(att_data->opcode))
+            break;
+
+        proto_tree_add_item(tree, hf_btatt_ots_filter, tvb, offset, 1, ENC_NA);
+        offset += 1;
+        switch (tvb_get_guint8(tvb, offset - 1)) {
+        case 0x00: /* No Filter */
+        case 0x0A: /* Marked Objects */
+            /* none */
+            break;
+        case 0x01: /* Name Starts With */
+        case 0x02: /* Name Ends With */
+        case 0x03: /* Name Contains*/
+        case 0x04: /* Name is Exactly */
+            proto_tree_add_item(tree, hf_btatt_ots_name_string, tvb, offset, tvb_reported_length_remaining(tvb, offset), ENC_NA | ENC_UTF_8);
+            offset += tvb_reported_length_remaining(tvb, offset);
+
+            break;
+        case 0x05: /* Object Type */
+            offset = dissect_gatt_uuid(tree, pinfo, tvb, offset);
+
+            break;
+        case 0x06: /* Created Between */
+        case 0x07: /* Modified Between */
+            call_dissector_with_data(find_dissector("btgatt.uuid0x2a08"), tvb_new_subset(tvb, offset, 7, 7), pinfo, tree, att_data);
+            offset += 7;
+
+            call_dissector_with_data(find_dissector("btgatt.uuid0x2a08"), tvb_new_subset(tvb, offset, 7, 7), pinfo, tree, att_data);
+            offset += 7;
+
+            break;
+        case 0x08: /* Current Size Between */
+        case 0x09: /* Allocated Size Between */
+            proto_tree_add_item(tree, hf_btatt_ots_size_from, tvb, offset, 4, ENC_LITTLE_ENDIAN);
+            offset += 4;
+
+            proto_tree_add_item(tree, hf_btatt_ots_size_to, tvb, offset, 4, ENC_LITTLE_ENDIAN);
+            offset += 4;
+
+            break;
+        }
+
+        break;
+    case 0x2AC8: /* Object Changed */
+        if (service_uuid.bt_uuid == GATT_SERVICE_OBJECT_TRANSFER) {
+            if (att_data->opcode == ATT_OPCODE_HANDLE_VALUE_CONFIRMATION)
+                break;
+
+            if (att_data->opcode != ATT_OPCODE_HANDLE_VALUE_INDICATION)
+                expert_add_info(pinfo, tree, &ei_btatt_invalid_usage);
+        }
+
+        if (bluetooth_gatt_has_no_parameter(att_data->opcode))
+            break;
+
+        proto_tree_add_bitmask(tree, tvb, offset, hf_btatt_ots_flags, ett_btatt_value, hfx_btatt_ots_flags, ENC_NA);
+        offset += 1;
+
+        proto_tree_add_item(tree, hf_btatt_ots_object_id, tvb, offset, 6, ENC_LITTLE_ENDIAN);
+        offset += 6;
 
         break;
     default:
+        if (bluetooth_gatt_has_no_parameter(att_data->opcode))
+            break;
+
         proto_tree_add_item(tree, hf_btatt_value, tvb, offset, -1, ENC_NA);
         offset = tvb_captured_length(tvb);
     }
@@ -3743,15 +8722,15 @@ dissect_btgatt(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data)
     if (strlen(pinfo->current_proto) > 7) {
         uuid.size = 2;
         uuid.bt_uuid = (guint16) g_ascii_strtoull(pinfo->current_proto + strlen(pinfo->current_proto) - 7, NULL, 16);
-        uuid.data[0] = uuid.bt_uuid & 0xFF;
-        uuid.data[1] = (uuid.bt_uuid >> 8) & 0xFF;
+        uuid.data[1] = uuid.bt_uuid & 0xFF;
+        uuid.data[0] = (uuid.bt_uuid >> 8) & 0xFF;
     } else {
         uuid.size = 2;
         uuid.bt_uuid = 0;
     }
 
     return dissect_attribute_value(main_tree, patron_item, pinfo, tvb,
-            0, tvb_captured_length(tvb), 0, uuid, (bluetooth_data_t *) data);
+            0, tvb_captured_length(tvb), 0, uuid, (btatt_data_t *) data);
 
 }
 
@@ -3771,6 +8750,11 @@ is_long_attribute_value(bluetooth_uuid_t uuid)
     case 0x2A87: /* Email Address */
     case 0x2A90: /* Last Name */
     case 0x2AA4: /* Bond Management Control Point */
+    case 0x2AB5: /* Location Name */
+    case 0x2AB6: /* URI */
+    case 0x2AB7: /* HTTP Headers */
+    case 0x2AB9: /* HTTP Entity Body */
+    case 0x2ABE: /* Object Name */
         return TRUE;
     }
 
@@ -3786,7 +8770,7 @@ get_mtu(packet_info *pinfo, bluetooth_data_t *bluetooth_data)
     wmem_tree_t     *sub_wmemtree;
     guint            mtu = 23;
 
-    frame_number = pinfo->fd->num;
+    frame_number = pinfo->num;
 
     key[0].length = 1;
     key[0].key    = &bluetooth_data->interface_id;
@@ -3811,7 +8795,7 @@ save_mtu(packet_info *pinfo, bluetooth_data_t *bluetooth_data, guint mtu)
     guint32          frame_number;
     mtu_data_t      *mtu_data;
 
-    frame_number = pinfo->fd->num;
+    frame_number = pinfo->num;
 
     key[0].length = 1;
     key[0].key    = &bluetooth_data->interface_id;
@@ -3836,7 +8820,7 @@ save_value_fragment(packet_info *pinfo, tvbuff_t *tvb, gint offset,
     guint32           frame_number;
     fragment_data_t  *fragment_data;
 
-    frame_number = pinfo->fd->num;
+    frame_number = pinfo->num;
 
     key[0].length = 1;
     key[0].key    = &bluetooth_data->interface_id;
@@ -3865,13 +8849,13 @@ get_value(packet_info *pinfo, guint32 handle, bluetooth_data_t *bluetooth_data, 
     guint32           frame_number;
     fragment_data_t  *fragment_data;
     wmem_tree_t      *sub_wmemtree;
-    guint16           last_offset = 0xFFFF;
-    guint16           size;
+    guint             last_offset = G_MAXUINT;
+    guint             size;
     gboolean          first = TRUE;
     guint8           *data = NULL;
 
 
-    frame_number = pinfo->fd->num;
+    frame_number = pinfo->num;
 
     key[0].length = 1;
     key[0].key    = &bluetooth_data->interface_id;
@@ -3885,11 +8869,8 @@ get_value(packet_info *pinfo, guint32 handle, bluetooth_data_t *bluetooth_data, 
     sub_wmemtree = (wmem_tree_t *) wmem_tree_lookup32_array(fragments, key);
     while (1) {
         fragment_data = (sub_wmemtree) ? (fragment_data_t *) wmem_tree_lookup32_le(sub_wmemtree, frame_number) : NULL;
-        if (!fragment_data || (fragment_data && fragment_data->offset >= last_offset)) {
-            if (length)
-                *length = 0;
-            return NULL;
-        }
+        if (!fragment_data || (fragment_data && fragment_data->offset >= last_offset))
+            break;
 
         if (first) {
             size = fragment_data->offset + fragment_data->length;
@@ -3899,11 +8880,8 @@ get_value(packet_info *pinfo, guint32 handle, bluetooth_data_t *bluetooth_data, 
                 *length = size;
 
             first = FALSE;
-        }
-        else if (fragment_data->offset + fragment_data->length != last_offset) {
-            if (length)
-                *length = 0;
-            return NULL;
+        } else if (fragment_data->offset + fragment_data->length != last_offset) {
+            break;
         }
 
         memcpy(data + fragment_data->offset, fragment_data->data, fragment_data->length);
@@ -3914,6 +8892,8 @@ get_value(packet_info *pinfo, guint32 handle, bluetooth_data_t *bluetooth_data, 
         last_offset = fragment_data->offset;
     }
 
+    if (length)
+        *length = 0;
     return NULL;
 }
 
@@ -3928,18 +8908,20 @@ dissect_btatt(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data)
     guint8             opcode;
     guint8             request_opcode;
     bluetooth_data_t  *bluetooth_data;
+    btatt_data_t       att_data;
     request_data_t    *request_data;
     guint16            handle;
     bluetooth_uuid_t   uuid;
     guint              mtu;
 
-    uuid.size = 0;
-    uuid.bt_uuid = 0;
+    memset(&uuid, 0, sizeof uuid);
 
     bluetooth_data = (bluetooth_data_t *) data;
 
     if (tvb_reported_length_remaining(tvb, 0) < 1)
         return 0;
+
+    att_data.bluetooth_data   = bluetooth_data;
 
     main_item = proto_tree_add_item(tree, proto_btatt, tvb, 0, -1, ENC_NA);
     main_tree = proto_item_add_subtree(main_item, ett_btatt);
@@ -3964,6 +8946,7 @@ dissect_btatt(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data)
 
     proto_tree_add_bitmask_with_flags(main_tree, tvb, offset, hf_btatt_opcode, ett_btatt_opcode,  hfx_btatt_opcode, ENC_NA, BMT_NO_APPEND);
     opcode = tvb_get_guint8(tvb, 0);
+    att_data.opcode = opcode;
     offset++;
 
     request_data = get_request(tvb, offset, pinfo, opcode, bluetooth_data);
@@ -3976,11 +8959,14 @@ dissect_btatt(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data)
         request_opcode = tvb_get_guint8(tvb, offset);
         offset += 1;
 
-        offset = dissect_handle(main_tree, pinfo, hf_btatt_handle_in_error, tvb, offset, bluetooth_data, NULL);
+        offset = dissect_handle(main_tree, pinfo, hf_btatt_handle_in_error, tvb, offset, bluetooth_data, NULL, HANDLE_TVB);
+        handle = tvb_get_letohs(tvb, offset - 2);
 
         col_append_fstr(pinfo->cinfo, COL_INFO, " - %s, Handle: 0x%04x",
                         val_to_str_const(tvb_get_guint8(tvb, offset), error_vals, "<unknown>"),
-                        tvb_get_letohs(tvb, offset - 2));
+                        handle);
+
+        col_append_info_by_handle(pinfo, handle, bluetooth_data);
 
         proto_tree_add_item(main_tree, hf_btatt_error_code, tvb, offset, 1, ENC_LITTLE_ENDIAN);
         offset++;
@@ -4043,17 +9029,18 @@ dissect_btatt(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data)
 
     case 0x05: /* Find Information Response */
         {
-            guint8  format = tvb_get_guint8(tvb, offset);
+            guint8  format;
 
             sub_item = proto_tree_add_item(main_tree, hf_btatt_uuid_format, tvb, offset, 1, ENC_LITTLE_ENDIAN);
-            offset++;
+            format = tvb_get_guint8(tvb, offset);
+            offset += 1;
 
             if (format == 1) {
                 while( tvb_reported_length_remaining(tvb, offset) > 0) {
                     sub_item = proto_tree_add_item(main_tree, hf_btatt_information_data, tvb, offset, 4, ENC_NA),
                     sub_tree = proto_item_add_subtree(sub_item, ett_btatt_list);
 
-                    offset = dissect_handle(sub_tree, pinfo, hf_btatt_handle, tvb, offset, bluetooth_data, NULL);
+                    offset = dissect_handle(sub_tree, pinfo, hf_btatt_handle, tvb, offset, bluetooth_data, NULL, HANDLE_TVB);
                     handle = tvb_get_guint16(tvb, offset - 2, ENC_LITTLE_ENDIAN);
 
                     proto_tree_add_item(sub_tree, hf_btatt_uuid16, tvb, offset, 2, ENC_LITTLE_ENDIAN);
@@ -4064,7 +9051,9 @@ dissect_btatt(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data)
                             tvb_get_letohs(tvb, offset - 4),
                             print_uuid(&uuid));
 
-                    save_handle(pinfo, uuid, handle, bluetooth_data);
+                    save_handle(pinfo, uuid, handle, ATTRIBUTE_TYPE_OTHER, bluetooth_data);
+
+                    col_append_info_by_handle(pinfo, handle, bluetooth_data);
                 }
             }
             else if (format == 2) {
@@ -4072,7 +9061,7 @@ dissect_btatt(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data)
                     sub_item = proto_tree_add_item(main_tree, hf_btatt_information_data, tvb, offset, 4, ENC_NA),
                     sub_tree = proto_item_add_subtree(sub_item, ett_btatt_list);
 
-                    offset = dissect_handle(sub_tree, pinfo, hf_btatt_handle, tvb, offset, bluetooth_data, NULL);
+                    offset = dissect_handle(sub_tree, pinfo, hf_btatt_handle, tvb, offset, bluetooth_data, NULL, HANDLE_TVB);
                     handle = tvb_get_guint16(tvb, offset - 2, ENC_LITTLE_ENDIAN);
 
                     proto_tree_add_item(sub_tree, hf_btatt_uuid128, tvb, offset, 16, ENC_NA);
@@ -4083,7 +9072,9 @@ dissect_btatt(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data)
                             tvb_get_letohs(tvb, offset - 4),
                             print_uuid(&uuid));
 
-                    save_handle(pinfo, uuid, handle, bluetooth_data);
+                    save_handle(pinfo, uuid, handle, ATTRIBUTE_TYPE_OTHER, bluetooth_data);
+
+                    col_append_info_by_handle(pinfo, handle, bluetooth_data);
                 }
             }
             else {
@@ -4107,7 +9098,7 @@ dissect_btatt(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data)
         uuid = get_uuid(tvb, offset - 2, 2);
         offset += 2;
 
-        dissect_attribute_value(main_tree, NULL, pinfo, tvb, offset, tvb_captured_length_remaining(tvb, offset), 0, uuid, bluetooth_data);
+        dissect_attribute_value(main_tree, NULL, pinfo, tvb, offset, tvb_captured_length_remaining(tvb, offset), 0, uuid, &att_data);
 
         if (!pinfo->fd->flags.visited && bluetooth_data) {
             union request_parameters_union  request_parameters;
@@ -4131,7 +9122,7 @@ dissect_btatt(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data)
 
             sub_tree = proto_item_add_subtree(sub_item, ett_btatt_list);
 
-            offset = dissect_handle(sub_tree, pinfo, hf_btatt_handle, tvb, offset, bluetooth_data, NULL);
+            offset = dissect_handle(sub_tree, pinfo, hf_btatt_handle, tvb, offset, bluetooth_data, NULL, HANDLE_TVB);
 
             proto_tree_add_item(sub_tree, hf_btatt_group_end_handle, tvb, offset, 2, ENC_LITTLE_ENDIAN);
             offset += 2;
@@ -4139,7 +9130,7 @@ dissect_btatt(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data)
             if (request_data)
                 save_handle(pinfo, request_data->parameters.read_by_type.uuid,
                         tvb_get_guint16(tvb, offset - 4, ENC_LITTLE_ENDIAN),
-                        bluetooth_data);
+                        ATTRIBUTE_TYPE_OTHER, bluetooth_data);
 
         }
         break;
@@ -4168,8 +9159,7 @@ dissect_btatt(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data)
 
                 save_request(pinfo, opcode, request_parameters, bluetooth_data);
             }
-        }
-        else if (tvb_reported_length_remaining(tvb, offset) == 16) {
+        } else if (tvb_reported_length_remaining(tvb, offset) == 16) {
             sub_item = proto_tree_add_item(main_tree, hf_btatt_uuid128, tvb, offset, 16, ENC_NA);
             proto_item_append_text(sub_item, " (%s)", val_to_str_ext_const(tvb_get_letohs(tvb, offset),
                                             &bluetooth_uuid_vals_ext, "<unknown>"));
@@ -4184,8 +9174,11 @@ dissect_btatt(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data)
 
                 save_request(pinfo, opcode, request_parameters, bluetooth_data);
             }
+        } else {
+            sub_item = proto_tree_add_item(tree, hf_btatt_value, tvb, offset, -1, ENC_NA);
+            expert_add_info(pinfo, sub_item, &ei_btatt_bad_data);
+            offset = tvb_captured_length(tvb);
         }
-
 
         break;
 
@@ -4209,13 +9202,15 @@ dissect_btatt(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data)
                     sub_tree = proto_item_add_subtree(sub_item, ett_btatt_list);
 
                     if (request_data) {
-                        save_handle(pinfo, request_data->parameters.read_by_type.uuid, tvb_get_guint16(tvb, offset, ENC_LITTLE_ENDIAN), bluetooth_data);
+                        save_handle(pinfo, request_data->parameters.read_by_type.uuid,
+                                tvb_get_guint16(tvb, offset, ENC_LITTLE_ENDIAN),
+                                ATTRIBUTE_TYPE_OTHER, bluetooth_data);
                     }
 
-                    offset = dissect_handle(sub_tree, pinfo, hf_btatt_handle, tvb, offset, bluetooth_data, NULL);
+                    offset = dissect_handle(sub_tree, pinfo, hf_btatt_handle, tvb, offset, bluetooth_data, NULL, HANDLE_TVB);
 
                     if (request_data) {
-                        offset = dissect_attribute_value(sub_tree, sub_item, pinfo, tvb, offset, length - 2, tvb_get_guint16(tvb, offset - 2, ENC_LITTLE_ENDIAN), request_data->parameters.read_by_type.uuid, bluetooth_data);
+                        offset = dissect_attribute_value(sub_tree, sub_item, pinfo, tvb, offset, length - 2, tvb_get_guint16(tvb, offset - 2, ENC_LITTLE_ENDIAN), request_data->parameters.read_by_type.uuid, &att_data);
                     } else {
                         proto_tree_add_item(sub_tree, hf_btatt_value, tvb, offset, length - 2, ENC_NA);
                         offset += length - 2;
@@ -4231,23 +9226,29 @@ dissect_btatt(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data)
         break;
 
     case 0x0a: /* Read Request */
-        col_append_fstr(pinfo->cinfo, COL_INFO, ", Handle: 0x%04x", tvb_get_letohs(tvb, offset));
+        offset = dissect_handle(main_tree, pinfo, hf_btatt_handle, tvb, offset, bluetooth_data, &uuid, HANDLE_TVB);
+        handle = tvb_get_letohs(tvb, offset - 2);
 
-        offset = dissect_handle(main_tree, pinfo, hf_btatt_handle, tvb, offset, bluetooth_data, NULL);
+        col_append_info_by_handle(pinfo, handle, bluetooth_data);
 
         if (!pinfo->fd->flags.visited && bluetooth_data) {
             union request_parameters_union  request_parameters;
 
-            request_parameters.read_write.handle = tvb_get_guint16(tvb, offset - 2, ENC_LITTLE_ENDIAN);
+            request_parameters.read_write.handle = handle;
             request_parameters.read_write.offset = 0;
 
             save_request(pinfo, opcode, request_parameters, bluetooth_data);
         }
+
+        offset = dissect_attribute_value(main_tree, NULL, pinfo, tvb, offset, tvb_captured_length_remaining(tvb, offset), handle, uuid, &att_data);
+
         break;
 
     case 0x0b: /* Read Response */
         if (request_data) {
-            dissect_handle_uint(main_tree, pinfo, hf_btatt_handle, tvb, offset, bluetooth_data, &uuid, request_data->parameters.read_write.handle);
+            dissect_handle(main_tree, pinfo, hf_btatt_handle, tvb, offset, bluetooth_data, &uuid, request_data->parameters.read_write.handle);
+
+            col_append_info_by_handle(pinfo, request_data->parameters.read_write.handle, bluetooth_data);
         }
 
         if (is_long_attribute_value(uuid) && tvb_captured_length(tvb) >= mtu) {
@@ -4263,24 +9264,27 @@ dissect_btatt(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data)
             else
                 handle = 0;
 
-            offset = dissect_attribute_value(main_tree, NULL, pinfo, tvb, offset, tvb_captured_length_remaining(tvb, offset), handle, uuid, bluetooth_data);
+            offset = dissect_attribute_value(main_tree, NULL, pinfo, tvb, offset, tvb_captured_length_remaining(tvb, offset), handle, uuid, &att_data);
         }
         break;
 
     case 0x0c: /* Read Blob Request */
-        col_append_fstr(pinfo->cinfo, COL_INFO, ", Handle: 0x%04x, Offset: %u",
-                        tvb_get_letohs(tvb, offset), tvb_get_letohs(tvb, offset+2));
+        offset = dissect_handle(main_tree, pinfo, hf_btatt_handle, tvb, offset, bluetooth_data, &uuid, HANDLE_TVB);
+        handle = tvb_get_letohs(tvb, offset - 2);
 
-        offset = dissect_handle(main_tree, pinfo, hf_btatt_handle, tvb, offset, bluetooth_data, NULL);
+        col_append_info_by_handle(pinfo, handle, bluetooth_data);
+        col_append_fstr(pinfo->cinfo, COL_INFO, ", Offset: %u", tvb_get_letohs(tvb, offset));
 
         proto_tree_add_item(main_tree, hf_btatt_offset, tvb, offset, 2, ENC_LITTLE_ENDIAN);
         offset += 2;
+
+        dissect_attribute_value(main_tree, NULL, pinfo, tvb, offset, 0, handle, uuid, &att_data);
 
 
         if (!pinfo->fd->flags.visited && bluetooth_data) {
             union request_parameters_union  request_parameters;
 
-            request_parameters.read_write.handle = tvb_get_guint16(tvb, offset - 4, ENC_LITTLE_ENDIAN);
+            request_parameters.read_write.handle = handle;
             request_parameters.read_write.offset = tvb_get_guint16(tvb, offset - 2, ENC_LITTLE_ENDIAN);
 
             save_request(pinfo, opcode, request_parameters, bluetooth_data);
@@ -4289,10 +9293,12 @@ dissect_btatt(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data)
 
     case 0x0d: /* Read Blob Response */
         if (request_data) {
-            dissect_handle_uint(main_tree, pinfo, hf_btatt_handle, tvb, offset, bluetooth_data, &uuid, request_data->parameters.read_write.handle);
+            dissect_handle(main_tree, pinfo, hf_btatt_handle, tvb, offset, bluetooth_data, &uuid, request_data->parameters.read_write.handle);
+
+            col_append_info_by_handle(pinfo, request_data->parameters.read_write.handle, bluetooth_data);
 
             if (request_data->parameters.read_write.offset == 0 && !is_long_attribute_value(uuid)) {
-                offset = dissect_attribute_value(main_tree, NULL, pinfo, tvb, offset, tvb_captured_length_remaining(tvb, offset), request_data->parameters.read_write.handle, uuid, bluetooth_data);
+                offset = dissect_attribute_value(main_tree, NULL, pinfo, tvb, offset, tvb_captured_length_remaining(tvb, offset), request_data->parameters.read_write.handle, uuid, &att_data);
             } else {
                 if (!pinfo->fd->flags.visited && bluetooth_data)
                     save_value_fragment(pinfo, tvb, offset, request_data->parameters.read_write.handle, request_data->parameters.read_write.offset, bluetooth_data);
@@ -4310,7 +9316,7 @@ dissect_btatt(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data)
                         sub_tree = proto_item_add_subtree(sub_item, ett_btatt_value);
                         next_tvb = tvb_new_child_real_data(tvb, reassembled_data, reassembled_length, reassembled_length);
                         add_new_data_source(pinfo, next_tvb, "Reassembled ATT");
-                        dissect_attribute_value(sub_tree, NULL, pinfo, next_tvb, 0, tvb_captured_length(next_tvb), request_data->parameters.read_write.handle, uuid, bluetooth_data);
+                        dissect_attribute_value(sub_tree, NULL, pinfo, next_tvb, 0, tvb_captured_length(next_tvb), request_data->parameters.read_write.handle, uuid, &att_data);
                     }
                 } else {
                     sub_item = proto_tree_add_item(main_tree, hf_btatt_value, tvb, offset, -1, ENC_NA);
@@ -4334,8 +9340,11 @@ dissect_btatt(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data)
 
         col_append_str(pinfo->cinfo, COL_INFO, ", Handles: ");
         while (tvb_reported_length_remaining(tvb, offset) >= 2) {
-            offset = dissect_handle(main_tree, pinfo, hf_btatt_handle, tvb, offset, bluetooth_data, NULL);
-            col_append_fstr(pinfo->cinfo, COL_INFO, "0x%04x ", tvb_get_letohs(tvb, offset - 2));
+            offset = dissect_handle(main_tree, pinfo, hf_btatt_handle, tvb, offset, bluetooth_data, &uuid, HANDLE_TVB);
+            handle = tvb_get_letohs(tvb, offset - 2);
+            col_append_fstr(pinfo->cinfo, COL_INFO, "0x%04x ", handle);
+
+            dissect_attribute_value(main_tree, NULL, pinfo, tvb, offset, 0, handle, uuid, &att_data);
         }
 
         if (!pinfo->fd->flags.visited && bluetooth_data) {
@@ -4354,8 +9363,8 @@ dissect_btatt(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data)
             guint  i_handle;
 
             for (i_handle = 0; i_handle < request_data->parameters.read_multiple.number_of_handles; i_handle += 1) {
-                dissect_handle_uint(main_tree, pinfo, hf_btatt_handle, tvb, offset, bluetooth_data, &uuid, request_data->parameters.read_multiple.handle[i_handle]);
-                offset = dissect_attribute_value(main_tree, NULL, pinfo, tvb, offset, tvb_captured_length_remaining(tvb, offset), request_data->parameters.read_multiple.handle[i_handle], uuid, bluetooth_data);
+                dissect_handle(main_tree, pinfo, hf_btatt_handle, tvb, offset, bluetooth_data, &uuid, request_data->parameters.read_multiple.handle[i_handle]);
+                offset = dissect_attribute_value(main_tree, NULL, pinfo, tvb, offset, tvb_captured_length_remaining(tvb, offset), request_data->parameters.read_multiple.handle[i_handle], uuid, &att_data);
             }
         } else {
             proto_tree_add_item(main_tree, hf_btatt_value, tvb, offset, -1, ENC_NA);
@@ -4380,14 +9389,14 @@ dissect_btatt(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data)
 
                     sub_tree = proto_item_add_subtree(sub_item, ett_btatt_list);
 
-                    offset = dissect_handle(sub_tree, pinfo, hf_btatt_handle, tvb, offset, bluetooth_data, NULL);
+                    offset = dissect_handle(sub_tree, pinfo, hf_btatt_handle, tvb, offset, bluetooth_data, NULL, HANDLE_TVB);
                     handle = tvb_get_guint16(tvb, offset - 2, ENC_LITTLE_ENDIAN);
 
                     proto_tree_add_item(sub_tree, hf_btatt_group_end_handle, tvb, offset, 2, ENC_LITTLE_ENDIAN);
                     offset += 2;
 
                     if (request_data) {
-                        offset = dissect_attribute_value(sub_tree, sub_item, pinfo, tvb, offset, length - 4, handle, request_data->parameters.read_by_type.uuid, bluetooth_data);
+                        offset = dissect_attribute_value(sub_tree, sub_item, pinfo, tvb, offset, length - 4, handle, request_data->parameters.read_by_type.uuid, &att_data);
                     } else {
                         proto_tree_add_item(sub_tree, hf_btatt_value, tvb, offset, length - 4, ENC_NA);
                         offset += length - 4;
@@ -4406,16 +9415,18 @@ dissect_btatt(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data)
     case 0x1d: /* Handle Value Indication */
     case 0x52: /* Write Command */
     case 0x1b: /* Handle Value Notification */
-        col_append_fstr(pinfo->cinfo, COL_INFO, ", Handle: 0x%04x", tvb_get_letohs(tvb, offset));
+        offset = dissect_handle(main_tree, pinfo, hf_btatt_handle, tvb, offset, bluetooth_data, &uuid, HANDLE_TVB);
+        handle = tvb_get_letohs(tvb, offset - 2);
 
-        offset = dissect_handle(main_tree, pinfo, hf_btatt_handle, tvb, offset, bluetooth_data, &uuid);
+        col_append_info_by_handle(pinfo, handle, bluetooth_data);
 
-        offset = dissect_attribute_value(main_tree, NULL, pinfo, tvb, offset, tvb_captured_length_remaining(tvb, offset), tvb_get_guint16(tvb, offset - 2, ENC_LITTLE_ENDIAN), uuid, bluetooth_data);
+        offset = dissect_attribute_value(main_tree, NULL, pinfo, tvb, offset, tvb_captured_length_remaining(tvb, offset), tvb_get_guint16(tvb, offset - 2, ENC_LITTLE_ENDIAN), uuid, &att_data);
 
         if (!pinfo->fd->flags.visited && bluetooth_data && (opcode == 0x12 || opcode == 0x1d)) {
             union request_parameters_union  request_parameters;
 
-            request_parameters.data = NULL;
+            request_parameters.read_write.handle = handle;
+            request_parameters.read_write.offset = 0;
 
             save_request(pinfo, opcode, request_parameters, bluetooth_data);
         }
@@ -4423,14 +9434,24 @@ dissect_btatt(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data)
 
     case 0x13: /* Write Response */
         /* No parameters */
+
+        if (request_data) {
+            dissect_handle(main_tree, pinfo, hf_btatt_handle, tvb, offset, bluetooth_data, &uuid, request_data->parameters.read_write.handle);
+
+            dissect_attribute_value(main_tree, NULL, pinfo, tvb, offset, 0, request_data->parameters.read_write.handle, uuid, &att_data);
+
+            col_append_info_by_handle(pinfo, request_data->parameters.read_write.handle, bluetooth_data);
+        }
+
         break;
 
     case 0x16: /* Prepare Write Request */
     case 0x17: /* Prepare Write Response */
-        col_append_fstr(pinfo->cinfo, COL_INFO, ", Handle: 0x%04x, Offset: %u",
-                        tvb_get_letohs(tvb, offset), tvb_get_letohs(tvb, offset+2));
+        offset = dissect_handle(main_tree, pinfo, hf_btatt_handle, tvb, offset, bluetooth_data, &uuid, HANDLE_TVB);
+        handle = tvb_get_letohs(tvb, offset - 2);
 
-        offset = dissect_handle(main_tree, pinfo, hf_btatt_handle, tvb, offset, bluetooth_data, &uuid);
+        col_append_info_by_handle(pinfo, handle, bluetooth_data);
+        col_append_fstr(pinfo->cinfo, COL_INFO, ", Offset: %u", tvb_get_letohs(tvb, offset));
 
         proto_tree_add_item(main_tree, hf_btatt_offset, tvb, offset, 2, ENC_LITTLE_ENDIAN);
         offset += 2;
@@ -4462,7 +9483,7 @@ dissect_btatt(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data)
                 sub_tree = proto_item_add_subtree(sub_item, ett_btatt_value);
                 next_tvb = tvb_new_child_real_data(tvb, reassembled_data, reassembled_length, reassembled_length);
                 add_new_data_source(pinfo, next_tvb, "Reassembled ATT");
-                dissect_attribute_value(sub_tree, NULL, pinfo, next_tvb, 0, tvb_captured_length(next_tvb), request_data->parameters.read_write.handle, uuid, bluetooth_data);
+                dissect_attribute_value(sub_tree, NULL, pinfo, next_tvb, 0, tvb_captured_length(next_tvb), request_data->parameters.read_write.handle, uuid, &att_data);
             }
         } else {
             proto_tree_add_item(main_tree, hf_btatt_value, tvb, offset, -1, ENC_NA);
@@ -4481,6 +9502,7 @@ dissect_btatt(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data)
         if (!pinfo->fd->flags.visited && bluetooth_data) {
             union request_parameters_union  request_parameters;
 
+            /* NOTE: Enable request-response tracking using empty data*/
             request_parameters.data = NULL;
 
             save_request(pinfo, opcode, request_parameters, bluetooth_data);
@@ -4491,18 +9513,29 @@ dissect_btatt(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data)
         /* No parameters */
         break;
 
+    case 0x1E: /* Handle Value Confirmation */
+        if (request_data) {
+            dissect_handle(main_tree, pinfo, hf_btatt_handle, tvb, offset, bluetooth_data, &uuid, request_data->parameters.read_write.handle);
+
+            col_append_info_by_handle(pinfo, request_data->parameters.read_write.handle, bluetooth_data);
+
+            dissect_attribute_value(main_tree, NULL, pinfo, tvb, offset, 0, request_data->parameters.read_write.handle, uuid, &att_data);
+        }
+        break;
+
     case 0xd2: /* Signed Write Command */
         {
             guint8 length;
 
-            col_append_fstr(pinfo->cinfo, COL_INFO, ", Handle: 0x%04x", tvb_get_letohs(tvb, offset));
+            offset = dissect_handle(main_tree, pinfo, hf_btatt_handle, tvb, offset, bluetooth_data, &uuid, HANDLE_TVB);
+            handle = tvb_get_letohs(tvb, offset - 2);
 
-            offset = dissect_handle(main_tree, pinfo, hf_btatt_handle, tvb, offset, bluetooth_data, NULL);
+            col_append_info_by_handle(pinfo, handle, bluetooth_data);
 
             length = tvb_reported_length_remaining(tvb, offset);
+            dissect_attribute_value(main_tree, NULL, pinfo, tvb, offset, (length > 12) ? length - 12 : 0, handle, uuid, &att_data);
             if (length > 12) {
-                proto_tree_add_item(main_tree, hf_btatt_value, tvb, offset, length-12, ENC_NA);
-                offset+=length-12;
+                offset += length - 12;
             }
 
             proto_tree_add_item(main_tree, hf_btatt_sign_counter, tvb, offset, 4, ENC_LITTLE_ENDIAN);
@@ -4516,22 +9549,133 @@ dissect_btatt(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data)
     }
 
     if (request_data) {
-        if (request_data->request_in_frame > 0  && request_data->request_in_frame != pinfo->fd->num) {
+        if (request_data->request_in_frame > 0  && request_data->request_in_frame != pinfo->num) {
             sub_item = proto_tree_add_uint(main_tree, hf_request_in_frame, tvb, 0, 0, request_data->request_in_frame);
             PROTO_ITEM_SET_GENERATED(sub_item);
         }
 
         if (!pinfo->fd->flags.visited && request_data->response_in_frame == 0 &&
-                pinfo->fd->num > request_data->request_in_frame)
-            request_data->response_in_frame = pinfo->fd->num;
+                pinfo->num > request_data->request_in_frame)
+            request_data->response_in_frame = pinfo->num;
 
-        if (request_data->response_in_frame > 0 && request_data->response_in_frame != pinfo->fd->num) {
+        if (request_data->response_in_frame > 0 && request_data->response_in_frame != pinfo->num) {
             sub_item = proto_tree_add_uint(main_tree, hf_response_in_frame, tvb, 0, 0, request_data->response_in_frame);
             PROTO_ITEM_SET_GENERATED(sub_item);
         }
     }
 
     return offset;
+}
+
+static int
+dissect_btgatt_nordic_uart_tx(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree, void *data)
+{
+    btatt_data_t *att_data = (btatt_data_t *) data;
+
+    if (bluetooth_gatt_has_no_parameter(att_data->opcode))
+        return -1;
+
+    proto_tree_add_item(tree, hf_gatt_nordic_uart_tx, tvb, 0, tvb_captured_length(tvb), ENC_ASCII | ENC_NA);
+
+    return tvb_captured_length(tvb);
+}
+
+static int
+dissect_btgatt_nordic_uart_rx(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree, void *data)
+{
+    btatt_data_t *att_data = (btatt_data_t *) data;
+
+    if (bluetooth_gatt_has_no_parameter(att_data->opcode))
+        return -1;
+
+    proto_tree_add_item(tree, hf_gatt_nordic_uart_rx, tvb, 0, tvb_captured_length(tvb), ENC_ASCII | ENC_NA);
+
+    return tvb_captured_length(tvb);
+}
+
+static int
+dissect_btgatt_nordic_dfu_control_point(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data)
+{
+    gint    offset = 0;
+    guint8  opcode;
+    guint8  request_opcode;
+    guint8  status;
+    btatt_data_t *att_data = (btatt_data_t *) data;
+
+    if (bluetooth_gatt_has_no_parameter(att_data->opcode))
+        return -1;
+
+    proto_tree_add_item(tree, hf_gatt_nordic_dfu_control_point_opcode, tvb, offset, 1, ENC_NA);
+    opcode = tvb_get_guint8(tvb, offset);
+    offset += 1;
+
+    switch (opcode) {
+    case 0x01: /* Start DFU */
+        proto_tree_add_item(tree, hf_gatt_nordic_dfu_control_point_image_type, tvb, offset, 1, ENC_NA);
+        offset += 1;
+
+        break;
+    case 0x02: /* Initialize DFU Parameters */
+        if (tvb_reported_length_remaining(tvb, offset) > 0) {
+            proto_tree_add_item(tree, hf_gatt_nordic_dfu_control_point_init_packet, tvb, offset, 1, ENC_NA);
+            offset += 1;
+        }
+
+        break;
+    case 0x03: /* Receive Firmware Image */
+    case 0x04: /* Validate Firmware */
+    case 0x05: /* Activate Image and Reset */
+    case 0x06: /* Reset System */
+    case 0x07: /* Report Received Image Size */
+        /* nop */
+
+        break;
+    case 0x08: /* Packet Receipt Notification Request */
+        proto_tree_add_item(tree, hf_gatt_nordic_dfu_control_point_number_of_packets, tvb, offset, 2, ENC_LITTLE_ENDIAN);
+        offset += 2;
+
+        break;
+    case 0x10: /* Response Code */
+        proto_tree_add_item(tree, hf_gatt_nordic_dfu_control_point_request_opcode, tvb, offset, 1, ENC_NA);
+        request_opcode = tvb_get_guint8(tvb, offset);
+        offset += 1;
+
+        proto_tree_add_item(tree, hf_gatt_nordic_dfu_control_point_response_value, tvb, offset, 1, ENC_NA);
+        status = tvb_get_guint8(tvb, offset);
+        offset += 1;
+
+        if (request_opcode == 0x07 && status == 0x01) { /* Report Received Image Size && Success */
+            proto_tree_add_item(tree, hf_gatt_nordic_dfu_control_point_number_of_bytes, tvb, offset, 4, ENC_LITTLE_ENDIAN);
+            offset += 4;
+        }
+
+        break;
+    case 0x11: /* Packet Receipt Notification */
+        proto_tree_add_item(tree, hf_gatt_nordic_dfu_control_point_number_of_bytes, tvb, offset, 4, ENC_LITTLE_ENDIAN);
+        offset += 4;
+        break;
+    }
+
+    if (tvb_captured_length_remaining(tvb, offset) > 0) {
+        proto_tree_add_expert(tree, pinfo, &ei_btatt_unexpected_data, tvb, offset, -1);
+        offset = tvb_captured_length(tvb);
+    }
+
+    return offset;
+}
+
+
+static int
+dissect_btgatt_nordic_dfu_packet(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree, void *data)
+{
+    btatt_data_t *att_data = (btatt_data_t *) data;
+
+    if (bluetooth_gatt_has_no_parameter(att_data->opcode))
+        return -1;
+
+    proto_tree_add_item(tree, hf_gatt_nordic_dfu_packet, tvb, 0, tvb_captured_length(tvb), ENC_NA);
+
+    return tvb_captured_length(tvb);
 }
 
 void
@@ -4612,9 +9756,29 @@ proto_register_btatt(void)
             FT_UINT8, BASE_HEX, VALS(error_vals), 0x0,
             NULL, HFILL}
         },
+        {&hf_btatt_service_uuid16,
+            {"Service UUID", "btatt.service_uuid16",
+            FT_UINT16, BASE_HEX | BASE_EXT_STRING, &bluetooth_uuid_vals_ext, 0x0,
+            NULL, HFILL}
+        },
+        {&hf_btatt_service_uuid128,
+            {"Service UUID", "btatt.service_uuid128",
+            FT_BYTES, BASE_NONE, NULL, 0x0,
+            NULL, HFILL}
+        },
+        {&hf_btatt_characteristic_uuid16,
+            {"Characteristic UUID", "btatt.characteristic_uuid16",
+            FT_UINT16, BASE_HEX | BASE_EXT_STRING, &bluetooth_uuid_vals_ext, 0x0,
+            NULL, HFILL}
+        },
+        {&hf_btatt_characteristic_uuid128,
+            {"Characteristic UUID", "btatt.characteristic_uuid128",
+            FT_BYTES, BASE_NONE, NULL, 0x0,
+            NULL, HFILL}
+        },
         {&hf_btatt_uuid16,
             {"UUID", "btatt.uuid16",
-            FT_UINT16, BASE_HEX |BASE_EXT_STRING, &bluetooth_uuid_vals_ext, 0x0,
+            FT_UINT16, BASE_HEX | BASE_EXT_STRING, &bluetooth_uuid_vals_ext, 0x0,
             NULL, HFILL}
         },
         {&hf_btatt_uuid128,
@@ -4919,7 +10083,7 @@ proto_register_btatt(void)
         },
         {&hf_btatt_appearance_subcategory,
             {"Subcategory", "btatt.appearance.subcategory",
-            FT_UINT16, BASE_DEC_HEX, NULL, 0x003F,
+            FT_UINT16, BASE_DEC_HEX, VALS(appearance_subcategory_generic_vals), 0x003F,
             NULL, HFILL}
         },
         {&hf_btatt_appearance_subcategory_watch,
@@ -5082,10 +10246,9 @@ proto_register_btatt(void)
             FT_STRING, BASE_NONE, NULL, 0x0,
             NULL, HFILL}
         },
-/* TODO: FT_UINT40 */
         {&hf_btatt_system_id_manufacturer_identifier,
             {"Manufacturer Identifier", "btatt.system_id.manufacturer_identifier",
-            FT_UINT64, BASE_HEX, NULL, 0x0,
+            FT_UINT40, BASE_HEX, NULL, 0x0,
             NULL, HFILL}
         },
         {&hf_btatt_system_id_organizationally_unique_identifier,
@@ -6218,16 +11381,14 @@ proto_register_btatt(void)
             FT_INT16, BASE_DEC, NULL, 0x0,
             NULL, HFILL}
         },
-/* TODO: This field should be SFLOAT: IEEE-11073 16-bit SFLOAT */
         {&hf_btatt_glucose_measurement_glucose_concentration_kg_per_l,
             {"Glucose Concentration [kg/l]", "btatt.glucose_measurement.glucose_concentration.kg_per_l",
-            FT_UINT16, BASE_HEX, NULL, 0x0,
+            FT_IEEE_11073_SFLOAT, BASE_FLOAT, NULL, 0x0,
             NULL, HFILL}
         },
-/* TODO: This field should be SFLOAT: IEEE-11073 16-bit SFLOAT */
         {&hf_btatt_glucose_measurement_glucose_concentration_mol_per_l,
             {"Glucose Concentration [mol/l]", "btatt.glucose_measurement.glucose_concentration.mol_per_l",
-            FT_UINT16, BASE_HEX, NULL, 0x0,
+            FT_IEEE_11073_SFLOAT, BASE_FLOAT, NULL, 0x0,
             NULL, HFILL}
         },
         {&hf_btatt_glucose_measurement_type_and_sample_location,
@@ -6475,16 +11636,14 @@ proto_register_btatt(void)
             FT_UINT8, BASE_HEX, VALS(temperature_measurement_flags_temperature_unit_vals), 0x01,
             NULL, HFILL}
         },
-/* TODO: This field should be FLOAT: IEEE-11073 32-bit SFLOAT */
         {&hf_btatt_temperature_measurement_value_celsius,
             {"Value [Celsius]", "btatt.temperature_measurement.value.celsius",
-            FT_UINT32, BASE_HEX, NULL, 0x00,
+            FT_IEEE_11073_FLOAT, BASE_FLOAT, NULL, 0x00,
             NULL, HFILL}
         },
-/* TODO: This field should be FLOAT: IEEE-11073 32-bit SFLOAT */
         {&hf_btatt_temperature_measurement_value_fahrenheit,
             {"Value [Fahrenheit]", "btatt.temperature_measurement.value.fahrenheit",
-            FT_UINT32, BASE_HEX, NULL, 0x00,
+            FT_IEEE_11073_FLOAT, BASE_FLOAT, NULL, 0x00,
             NULL, HFILL}
         },
         {&hf_btatt_temperature_measurement_timestamp,
@@ -6557,10 +11716,9 @@ proto_register_btatt(void)
             FT_UINT8, BASE_HEX, VALS(glucose_measurement_context_carbohydrate_id_vals), 0x0,
             NULL, HFILL}
         },
-/* TODO: This field should be SFLOAT: IEEE-11073 16-bit SFLOAT */
         {&hf_btatt_glucose_measurement_context_carbohydrate_kg,
             {"Carbohydrate [kg]", "btatt.glucose_measurement_context.carbohydrate.kg",
-            FT_UINT16, BASE_HEX, NULL, 0x0,
+            FT_IEEE_11073_SFLOAT, BASE_FLOAT, NULL, 0x0,
             NULL, HFILL}
         },
         {&hf_btatt_glucose_measurement_context_meal,
@@ -6598,22 +11756,19 @@ proto_register_btatt(void)
             FT_UINT8, BASE_HEX, VALS(glucose_measurement_context_medication_id_vals), 0x0,
             NULL, HFILL}
         },
-/* TODO: This field should be SFLOAT: IEEE-11073 16-bit SFLOAT */
         {&hf_btatt_glucose_measurement_context_medication_l,
             {"Medication [l]", "btatt.glucose_measurement_context.medication.l",
-            FT_UINT16, BASE_HEX, NULL, 0x0,
+            FT_IEEE_11073_SFLOAT, BASE_FLOAT, NULL, 0x0,
             NULL, HFILL}
         },
-/* TODO: This field should be SFLOAT: IEEE-11073 16-bit SFLOAT */
         {&hf_btatt_glucose_measurement_context_medication_kg,
             {"Medication [kg]", "btatt.glucose_measurement_context.medication.kg",
-            FT_UINT16, BASE_HEX, NULL, 0x0,
+            FT_IEEE_11073_SFLOAT, BASE_FLOAT, NULL, 0x0,
             NULL, HFILL}
         },
-/* TODO: This field should be SFLOAT: IEEE-11073 16-bit SFLOAT */
         {&hf_btatt_glucose_measurement_context_hba1c,
             {"HbA1c", "btatt.glucose_measurement_context.hba1c",
-            FT_UINT16, BASE_HEX, NULL, 0x0,
+            FT_IEEE_11073_SFLOAT, BASE_FLOAT, NULL, 0x0,
             NULL, HFILL}
         },
         {&hf_btatt_blood_pressure_measurement_flags,
@@ -6651,40 +11806,34 @@ proto_register_btatt(void)
             FT_UINT8, BASE_HEX, VALS(blood_pressure_measurement_unit_vals), 0x01,
             NULL, HFILL}
         },
-/* TODO: This field should be SFLOAT: IEEE-11073 16-bit SFLOAT */
         {&hf_btatt_blood_pressure_measurement_compound_value_systolic_kpa,
             {"Systolic [kPa]", "btatt.blood_pressure_measurement.compound_value.systolic.kpa",
-            FT_UINT16, BASE_HEX, NULL, 0x0,
+            FT_IEEE_11073_SFLOAT, BASE_FLOAT, NULL, 0x0,
             NULL, HFILL}
         },
-/* TODO: This field should be SFLOAT: IEEE-11073 16-bit SFLOAT */
         {&hf_btatt_blood_pressure_measurement_compound_value_diastolic_kpa,
             {"Diastolic [kPa]", "btatt.blood_pressure_measurement.compound_value.diastolic.kpa",
-            FT_UINT16, BASE_HEX, NULL, 0x0,
+            FT_IEEE_11073_SFLOAT, BASE_FLOAT, NULL, 0x0,
             NULL, HFILL}
         },
-/* TODO: This field should be SFLOAT: IEEE-11073 16-bit SFLOAT */
         {&hf_btatt_blood_pressure_measurement_compound_value_mean_arterial_pressure_kpa,
             {"Arterial Pressure [kPa]", "btatt.blood_pressure_measurement.compound_value.arterial_pressure.kpa",
-            FT_UINT16, BASE_HEX, NULL, 0x0,
+            FT_IEEE_11073_SFLOAT, BASE_FLOAT, NULL, 0x0,
             NULL, HFILL}
         },
-/* TODO: This field should be SFLOAT: IEEE-11073 16-bit SFLOAT */
         {&hf_btatt_blood_pressure_measurement_compound_value_systolic_mmhg,
             {"Systolic [mmHg]", "btatt.blood_pressure_measurement.compound_value.systolic.mmhg",
-            FT_UINT16, BASE_HEX, NULL, 0x0,
+            FT_IEEE_11073_SFLOAT, BASE_FLOAT, NULL, 0x0,
             NULL, HFILL}
         },
-/* TODO: This field should be SFLOAT: IEEE-11073 16-bit SFLOAT */
         {&hf_btatt_blood_pressure_measurement_compound_value_diastolic_mmhg,
             {"Diastolic [mmHg]", "btatt.blood_pressure_measurement.compound_value.diastolic.mmhg",
-            FT_UINT16, BASE_HEX, NULL, 0x0,
+            FT_IEEE_11073_SFLOAT, BASE_FLOAT, NULL, 0x0,
             NULL, HFILL}
         },
-/* TODO: This field should be SFLOAT: IEEE-11073 16-bit SFLOAT */
         {&hf_btatt_blood_pressure_measurement_compound_value_mean_arterial_pressure_mmhg,
             {"Arterial Pressure [mmHg]", "btatt.blood_pressure_measurement.compound_value.arterial_pressure.mmhg",
-            FT_UINT16, BASE_HEX, NULL, 0x0,
+            FT_IEEE_11073_SFLOAT, BASE_FLOAT, NULL, 0x0,
             NULL, HFILL}
         },
         {&hf_btatt_blood_pressure_measurement_timestamp,
@@ -6692,10 +11841,9 @@ proto_register_btatt(void)
             FT_NONE, BASE_NONE, NULL, 0x0,
             NULL, HFILL}
         },
-/* TODO: This field should be SFLOAT: IEEE-11073 16-bit SFLOAT */
         {&hf_btatt_blood_pressure_measurement_pulse_rate,
             {"Pulse Rate", "btatt.blood_pressure_measurement.pulse_rate",
-            FT_UINT16, BASE_HEX, NULL, 0x0,
+            FT_IEEE_11073_SFLOAT, BASE_FLOAT, NULL, 0x0,
             NULL, HFILL}
         },
         {&hf_btatt_blood_pressure_measurement_user_id,
@@ -6740,37 +11888,37 @@ proto_register_btatt(void)
         },
         {&hf_btatt_heart_rate_measurement_flags,
             {"Flags", "btatt.heart_rate_measurement.flags",
-            FT_UINT16, BASE_HEX, NULL, 0x0,
+            FT_UINT8, BASE_HEX, NULL, 0x0,
             NULL, HFILL}
         },
         {&hf_btatt_heart_rate_measurement_flags_reserved,
             {"Reserved", "btatt.heart_rate_measurement.flags.reserved",
-            FT_UINT16, BASE_HEX, NULL, 0xE0,
+            FT_UINT8, BASE_HEX, NULL, 0xE0,
             NULL, HFILL}
         },
         {&hf_btatt_heart_rate_measurement_flags_rr_interval,
             {"RR Interval", "btatt.heart_rate_measurement.flags.rr_interval",
-            FT_BOOLEAN, 16, NULL, 0x10,
+            FT_BOOLEAN, 8, NULL, 0x10,
             NULL, HFILL}
         },
         {&hf_btatt_heart_rate_measurement_flags_energy_expended,
             {"Energy Expended", "btatt.heart_rate_measurement.flags.energy_expended",
-            FT_BOOLEAN, 16, NULL, 0x08,
+            FT_BOOLEAN, 8, NULL, 0x08,
             NULL, HFILL}
         },
         {&hf_btatt_heart_rate_measurement_flags_sensor_contact_status_support,
             {"Sensor Support", "btatt.heart_rate_measurement.flags.sensor_contact_status.support",
-            FT_BOOLEAN, 16, NULL, 0x04,
+            FT_BOOLEAN, 8, NULL, 0x04,
             NULL, HFILL}
         },
         {&hf_btatt_heart_rate_measurement_flags_sensor_contact_status_contact,
             {"Sensor Contact", "btatt.heart_rate_measurement.flags.sensor_contact_status.contact",
-            FT_BOOLEAN, 16, NULL, 0x02,
+            FT_BOOLEAN, 8, NULL, 0x02,
             NULL, HFILL}
         },
         {&hf_btatt_heart_rate_measurement_flags_value_16,
             {"Value is UINT16", "btatt.heart_rate_measurement.flags.value_16",
-            FT_BOOLEAN, 16, NULL, 0x01,
+            FT_BOOLEAN, 8, NULL, 0x01,
             NULL, HFILL}
         },
         {&hf_btatt_heart_rate_measurement_value_8,
@@ -6786,6 +11934,11 @@ proto_register_btatt(void)
         {&hf_btatt_heart_rate_measurement_energy_expended,
             {"Energy Expended", "btatt.heart_rate_measurement.energy_expended",
             FT_UINT16, BASE_DEC, NULL, 0x0,
+            NULL, HFILL}
+        },
+        {&hf_btatt_heart_rate_measurement_rr_intervals,
+            {"RR Intervals", "btatt.heart_rate_measurement.rr_intervals",
+            FT_NONE, BASE_NONE, NULL, 0x0,
             NULL, HFILL}
         },
         {&hf_btatt_heart_rate_measurement_rr_interval,
@@ -6838,6 +11991,2003 @@ proto_register_btatt(void)
             FT_UINT8, BASE_DEC, VALS(record_access_control_point_response_code_vals), 0x0,
             NULL, HFILL}
         },
+        {&hf_btatt_value_trigger_setting_condition,
+            {"Condition", "btatt.value_trigger_setting.condition",
+            FT_UINT8, BASE_DEC, VALS(value_trigger_setting_condition_vals), 0x0,
+            NULL, HFILL}
+        },
+        {&hf_btatt_value_trigger_setting_analog,
+            {"Analog", "btatt.value_trigger_setting.analog",
+            FT_UINT16, BASE_DEC, NULL, 0x0,
+            NULL, HFILL}
+        },
+        {&hf_btatt_value_trigger_setting_analog_one,
+            {"Analog One", "btatt.value_trigger_setting.analog_one",
+            FT_UINT16, BASE_DEC, NULL, 0x0,
+            NULL, HFILL}
+        },
+        {&hf_btatt_value_trigger_setting_analog_two,
+            {"Analog Two", "btatt.value_trigger_setting.analog_two",
+            FT_UINT16, BASE_DEC, NULL, 0x0,
+            NULL, HFILL}
+        },
+        {&hf_btatt_digital,
+            {"Digital", "btatt.digital",
+            FT_UINT8, BASE_DEC, VALS(digital_vals), 0x0,
+            NULL, HFILL}
+        },
+        {&hf_btatt_analog,
+            {"Analog", "btatt.analog",
+            FT_UINT16, BASE_DEC, NULL, 0x0,
+            NULL, HFILL}
+        },
+        {&hf_btatt_location_name,
+            {"Location Name", "btatt.location_name",
+            FT_STRING, BASE_NONE, NULL, 0x0,
+            NULL, HFILL}
+        },
+        {&hf_btatt_uncertainty,
+            {"Uncertainty", "btatt.uncertainty",
+            FT_UINT8, BASE_HEX, NULL, 0x0,
+            NULL, HFILL}
+        },
+        {&hf_btatt_uncertainty_reserved,
+            {"Reserved", "btatt.uncertainty.reserved",
+            FT_UINT8, BASE_HEX, NULL, 0x80,
+            NULL, HFILL}
+        },
+        {&hf_btatt_uncertainty_precision,
+            {"Precision", "btatt.uncertainty.precision",
+            FT_UINT8, BASE_HEX, VALS(btatt_ips_uncertainty_precision_vals), 0x70,
+            NULL, HFILL}
+        },
+        {&hf_btatt_uncertainty_update_time,
+            {"Update Time", "btatt.uncertainty.update_time",
+            FT_UINT8, BASE_HEX, VALS(btatt_ips_uncertainty_update_time_vals), 0x0E,
+            NULL, HFILL}
+        },
+        {&hf_btatt_uncertainty_stationary,
+            {"Stationary", "btatt.uncertainty.stationary",
+            FT_UINT8, BASE_HEX, VALS(btatt_ips_uncertainty_stationary_vals), 0x01,
+            NULL, HFILL}
+        },
+        {&hf_btatt_latitude,
+            {"Latitude", "btatt.latitude",
+            FT_INT32, BASE_DEC, NULL, 0x0,
+            NULL, HFILL}
+        },
+        {&hf_btatt_longitude,
+            {"Longitude", "btatt.longitude",
+            FT_INT32, BASE_DEC, NULL, 0x0,
+            NULL, HFILL}
+        },
+        {&hf_btatt_local_north_coordinate,
+            {"Local North Coordinate", "btatt.local_north_coordinate",
+            FT_INT16, BASE_DEC, NULL, 0x0,
+            NULL, HFILL}
+        },
+        {&hf_btatt_local_east_coordinate,
+            {"Local East Coordinate", "btatt.local_east_coordinate",
+            FT_INT16, BASE_DEC, NULL, 0x0,
+            NULL, HFILL}
+        },
+        {&hf_btatt_floor_number,
+            {"Floor Number", "btatt.floor_number",
+            FT_UINT8, BASE_DEC, NULL, 0x0,
+            NULL, HFILL}
+        },
+        {&hf_btatt_altitude,
+            {"Altitude", "btatt.altitude",
+            FT_UINT16, BASE_DEC, NULL, 0x0,
+            NULL, HFILL}
+        },
+        {&hf_btatt_indoor_positioning_configuration,
+            {"Indoor Positioning Configuration", "btatt.indoor_positioning_configuration",
+            FT_UINT8, BASE_HEX, NULL, 0x0,
+            NULL, HFILL}
+        },
+        {&hf_btatt_indoor_positioning_configuration_reserved,
+            {"Reserved", "btatt.indoor_positioning_configuration.reserved",
+            FT_UINT8, BASE_HEX, NULL, 0xC0,
+            NULL, HFILL}
+        },
+        {&hf_btatt_indoor_positioning_configuration_location_name,
+            {"Location Name", "btatt.indoor_positioning_configuration.location_name",
+            FT_BOOLEAN, 8, NULL, 0x40,
+            NULL, HFILL}
+        },
+        {&hf_btatt_indoor_positioning_configuration_uncertainty,
+            {"Uncertainty", "btatt.indoor_positioning_configuration.uncertainty",
+            FT_BOOLEAN, 8, NULL, 0x20,
+            NULL, HFILL}
+        },
+        {&hf_btatt_indoor_positioning_configuration_floor_number,
+            {"Floor Number", "btatt.indoor_positioning_configuration.floor_number",
+            FT_BOOLEAN, 8, NULL, 0x10,
+            NULL, HFILL}
+        },
+        {&hf_btatt_indoor_positioning_configuration_altitude,
+            {"Altitude", "btatt.indoor_positioning_configuration.altitude",
+            FT_BOOLEAN, 8, NULL, 0x08,
+            NULL, HFILL}
+        },
+        {&hf_btatt_indoor_positioning_configuration_tx_power,
+            {"Tx Power", "btatt.indoor_positioning_configuration.tx_power",
+            FT_BOOLEAN, 8, NULL, 0x04,
+            NULL, HFILL}
+        },
+        {&hf_btatt_indoor_positioning_configuration_coordinate_system,
+            {"Coordinate System", "btatt.indoor_positioning_configuration.coordinate_system",
+            FT_UINT8, BASE_HEX, VALS(btatt_ips_coordinate_system), 0x02,
+            NULL, HFILL}
+        },
+        {&hf_btatt_indoor_positioning_configuration_coordinates,
+            {"Coordinates", "btatt.indoor_positioning_configuration.coordinates",
+            FT_BOOLEAN, 8, NULL, 0x01,
+            NULL, HFILL}
+        },
+        {&hf_btatt_number_of_digitals,
+            {"Number of Digitals", "btatt.number_of_digitals",
+            FT_UINT8, BASE_DEC, NULL, 0x0,
+            NULL, HFILL}
+        },
+        {&hf_btatt_time_trigger_setting_condition,
+            {"Condition", "btatt.time_trigger_setting.condition",
+            FT_UINT8, BASE_HEX, VALS(time_trigger_setting_condition_vals), 0x0,
+            NULL, HFILL}
+        },
+        {&hf_btatt_time_trigger_setting_value,
+            {"Value", "btatt.time_trigger_setting.value",
+            FT_UINT8, BASE_DEC, NULL, 0x0,
+            NULL, HFILL}
+        },
+        {&hf_btatt_time_trigger_setting_value_count,
+            {"Count", "btatt.time_trigger_setting.count",
+            FT_UINT16, BASE_DEC, NULL, 0x0,
+            NULL, HFILL}
+        },
+        {&hf_btatt_time_trigger_setting_value_time_interval,
+            {"Time Interval", "btatt.time_trigger_setting.time_interval",
+            FT_UINT24, BASE_DEC, NULL, 0x0,
+            NULL, HFILL}
+        },
+        {&hf_btatt_rsc_measurement_flags,
+            {"Flags", "btatt.rsc_measurement.flags",
+            FT_UINT8, BASE_HEX, NULL, 0x0,
+            NULL, HFILL}
+        },
+        {&hf_btatt_rsc_measurement_flags_reserved,
+            {"Reserved", "btatt.rsc_measurement.flags.reserved",
+            FT_UINT8, BASE_HEX, NULL, 0xF8,
+            NULL, HFILL}
+        },
+        {&hf_btatt_rsc_measurement_flags_type_of_movement,
+            {"Type of Movement", "btatt.rsc_measurement.flags.type_of_movement",
+            FT_UINT8, BASE_HEX, VALS(rsc_measurement_flags_type_of_movement_vals), 0x04,
+            NULL, HFILL}
+        },
+        {&hf_btatt_rsc_measurement_flags_total_distance_present,
+            {"Total Distance Present", "btatt.rsc_measurement.flags.total_distance_present",
+            FT_BOOLEAN, 8, NULL, 0x02,
+            NULL, HFILL}
+        },
+        {&hf_btatt_rsc_measurement_flags_instantaneous_stride_length_present,
+            {"Instantaneous Stride Length Present", "btatt.rsc_measurement.flags.instantaneous_stride_length_present",
+            FT_BOOLEAN, 8, NULL, 0x01,
+            NULL, HFILL}
+        },
+        {&hf_btatt_rsc_measurement_instantaneous_speed,
+            {"Instantaneous Speed", "btatt.rsc_measurement.instantaneous_speed",
+            FT_UINT16, BASE_DEC, NULL, 0x0,
+            NULL, HFILL}
+        },
+        {&hf_btatt_rsc_measurement_instantaneous_cadence,
+            {"Instantaneous Cadence", "btatt.rsc_measurement.instantaneous_cadence",
+            FT_UINT8, BASE_DEC, NULL, 0x0,
+            NULL, HFILL}
+        },
+        {&hf_btatt_rsc_measurement_instantaneous_stride_length,
+            {"Instantaneous Stride Length", "btatt.rsc_measurement.instantaneous_stride_length",
+            FT_UINT16, BASE_DEC, NULL, 0x0,
+            NULL, HFILL}
+        },
+        {&hf_btatt_rsc_measurement_total_distance,
+            {"Total Distance", "btatt.rsc_measurement.total_distance",
+            FT_UINT32, BASE_DEC, NULL, 0x0,
+            NULL, HFILL}
+        },
+        {&hf_btatt_sc_control_point_opcode,
+            {"Opcode", "btatt.sc_control_point.opcode",
+            FT_UINT8, BASE_HEX, VALS(sc_control_point_opcode_vals), 0x0,
+            NULL, HFILL}
+        },
+        {&hf_btatt_sc_control_point_request_opcode,
+            {"Request Opcode", "btatt.sc_control_point.request_opcode",
+            FT_UINT8, BASE_HEX, VALS(sc_control_point_opcode_vals), 0x0,
+            NULL, HFILL}
+        },
+        {&hf_btatt_sc_control_point_cumulative_value,
+            {"Cumulative Value", "btatt.sc_control_point.cumulative_value",
+            FT_UINT32, BASE_DEC, NULL, 0x0,
+            NULL, HFILL}
+        },
+        {&hf_btatt_sc_control_point_response_value,
+            {"Response Value", "btatt.sc_control_point.response_value",
+            FT_UINT8, BASE_HEX, VALS(sc_control_point_response_value_vals), 0x0,
+            NULL, HFILL}
+        },
+        {&hf_btatt_cycling_power_measurement_flags,
+            {"Flags", "btatt.cycling_power_measurement.flags",
+            FT_UINT16, BASE_HEX, NULL, 0x0,
+            NULL, HFILL}
+        },
+        {&hf_btatt_cycling_power_measurement_flags_reserved,
+            {"Reserved", "btatt.cycling_power_measurement.flags.reserved",
+            FT_UINT16, BASE_HEX, NULL, 0xE000,
+            NULL, HFILL}
+        },
+        {&hf_btatt_cycling_power_measurement_flags_offset_compensation_indicator,
+            {"Offset Compensation Indicator", "btatt.cycling_power_measurement.flags.offset_compensation_indicator",
+            FT_BOOLEAN, 16, NULL, 0x1000,
+            NULL, HFILL}
+        },
+        {&hf_btatt_cycling_power_measurement_flags_accumulated_energy,
+            {"Accumulated Energy", "btatt.cycling_power_measurement.flags.accumulated_energy",
+            FT_BOOLEAN, 16, NULL, 0x0800,
+            NULL, HFILL}
+        },
+        {&hf_btatt_cycling_power_measurement_flags_bottom_dead_spot_angle,
+            {"Bottom Dead Spot Angle", "btatt.cycling_power_measurement.flags.bottom_dead_spot_angle",
+            FT_BOOLEAN, 16, NULL, 0x0400,
+            NULL, HFILL}
+        },
+        {&hf_btatt_cycling_power_measurement_flags_top_dead_spot_angle,
+            {"Top Dead Spot Angle", "btatt.cycling_power_measurement.flags.top_dead_spot_angle",
+            FT_BOOLEAN, 16, NULL, 0x0200,
+            NULL, HFILL}
+        },
+        {&hf_btatt_cycling_power_measurement_flags_extreme_angles,
+            {"Extreme_angles", "btatt.cycling_power_measurement.flags.extreme_angles",
+            FT_BOOLEAN, 16, NULL, 0x0100,
+            NULL, HFILL}
+        },
+        {&hf_btatt_cycling_power_measurement_flags_extreme_torque_magnitudes,
+            {"Extreme Torque Magnitudes", "btatt.cycling_power_measurement.flags.extreme_torque_magnitudes",
+            FT_BOOLEAN, 16, NULL, 0x0080,
+            NULL, HFILL}
+        },
+        {&hf_btatt_cycling_power_measurement_flags_extreme_force_magnitudes,
+            {"Extreme Force Magnitudes", "btatt.cycling_power_measurement.flags.extreme_force_magnitudes",
+            FT_BOOLEAN, 16, NULL, 0x0040,
+            NULL, HFILL}
+        },
+        {&hf_btatt_cycling_power_measurement_flags_crank_revolution_data,
+            {"Crank Revolution Data", "btatt.cycling_power_measurement.flags.crank_revolution_data",
+            FT_BOOLEAN, 16, NULL, 0x0020,
+            NULL, HFILL}
+        },
+        {&hf_btatt_cycling_power_measurement_flags_wheel_revolution_data,
+            {"Wheel Revolution Data", "btatt.cycling_power_measurement.flags.wheel_revolution_data",
+            FT_BOOLEAN, 16, NULL, 0x0010,
+            NULL, HFILL}
+        },
+        {&hf_btatt_cycling_power_measurement_flags_accumulated_torque_source,
+            {"accumulated_torque_source", "btatt.cycling_power_measurement.flags.accumulated_torque_source",
+            FT_UINT16, BASE_HEX, VALS(cycling_power_measurement_flags_accumulated_torque_source_vals), 0x0008,
+            NULL, HFILL}
+        },
+        {&hf_btatt_cycling_power_measurement_flags_accumulated_torque,
+            {"Accumulated Torque", "btatt.cycling_power_measurement.flags.accumulated_torque",
+            FT_BOOLEAN, 16, NULL, 0x0004,
+            NULL, HFILL}
+        },
+        {&hf_btatt_cycling_power_measurement_flags_pedal_power_balance_reference,
+            {"Pedal Power Balance Reference", "btatt.cycling_power_measurement.flags.pedal_power_balance_reference",
+            FT_BOOLEAN, 16, NULL, 0x0002,
+            NULL, HFILL}
+        },
+        {&hf_btatt_cycling_power_measurement_flags_pedal_power_balance,
+            {"Pedal Power Balance", "btatt.cycling_power_measurement.flags.pedal_power_balance",
+            FT_BOOLEAN, 16, NULL, 0x0001,
+            NULL, HFILL}
+        },
+        {&hf_btatt_cycling_power_measurement_instantaneous_power,
+            {"Instantaneous Power", "btatt.cycling_power_measurement.instantaneous_power",
+            FT_INT16, BASE_DEC, NULL, 0x0,
+            NULL, HFILL}
+        },
+        {&hf_btatt_cycling_power_measurement_pedal_power_balance,
+            {"Pedal Power Balance", "btatt.cycling_power_measurement.pedal_power_balance",
+            FT_UINT8, BASE_DEC, NULL, 0x0,
+            NULL, HFILL}
+        },
+        {&hf_btatt_cycling_power_measurement_accumulated_torque,
+            {"Accumulated Torque", "btatt.cycling_power_measurement.accumulated_torque",
+            FT_UINT16, BASE_DEC, NULL, 0x0,
+            NULL, HFILL}
+        },
+        {&hf_btatt_cycling_power_measurement_wheel_revolution_data_cumulative_wheel_revolutions,
+            {"Wheel Revolution Data Cumulative Wheel Revolutions", "btatt.cycling_power_measurement.wheel_revolution_data_cumulative_wheel_revolutions",
+            FT_UINT32, BASE_DEC, NULL, 0x0,
+            NULL, HFILL}
+        },
+        {&hf_btatt_cycling_power_measurement_wheel_revolution_data_last_wheel_event_time,
+            {"Wheel Revolution Data Last Wheel Event Time", "btatt.cycling_power_measurement.wheel_revolution_data_last_wheel_event_time",
+            FT_UINT16, BASE_DEC, NULL, 0x0,
+            NULL, HFILL}
+        },
+        {&hf_btatt_cycling_power_measurement_crank_revolution_data_cumulative_crank_revolutions,
+            {"Crank Revolution Data Cumulative Crank Revolutions", "btatt.cycling_power_measurement.crank_revolution_data_cumulative_crank_revolutions",
+            FT_UINT16, BASE_DEC, NULL, 0x0,
+            NULL, HFILL}
+        },
+        {&hf_btatt_cycling_power_measurement_crank_revolution_data_last_crank_event_time,
+            {"Crank Revolution Data Last Crank Event Time", "btatt.cycling_power_measurement.crank_revolution_data_last_crank_event_time",
+            FT_UINT16, BASE_DEC, NULL, 0x0,
+            NULL, HFILL}
+        },
+        {&hf_btatt_cycling_power_measurement_extreme_force_magnitudes_maximum_force_magnitude,
+            {"Extreme Force Magnitudes Maximum Force Magnitude", "btatt.cycling_power_measurement.extreme_force_magnitudes_maximum_force_magnitude",
+            FT_INT16, BASE_DEC, NULL, 0x0,
+            NULL, HFILL}
+        },
+        {&hf_btatt_cycling_power_measurement_extreme_force_magnitudes_minimum_force_magnitude,
+            {"Extreme Force Magnitudes Minimum Force Magnitude", "btatt.cycling_power_measurement.extreme_force_magnitudes_minimum_force_magnitude",
+            FT_INT16, BASE_DEC, NULL, 0x0,
+            NULL, HFILL}
+        },
+        {&hf_btatt_cycling_power_measurement_extreme_torque_magnitudes_maximum_torque_magnitude,
+            {"Extreme Torque Magnitudes Maximum Torque Magnitude", "btatt.cycling_power_measurement.extreme_torque_magnitudes_maximum_torque_magnitude",
+            FT_INT16, BASE_DEC, NULL, 0x0,
+            NULL, HFILL}
+        },
+        {&hf_btatt_cycling_power_measurement_extreme_torque_magnitudes_minimum_torque_magnitude,
+            {"Extreme Torque Magnitudes Minimum Torque Magnitude", "btatt.cycling_power_measurement.extreme_torque_magnitudes_minimum_torque_magnitude",
+            FT_INT16, BASE_DEC, NULL, 0x0,
+            NULL, HFILL}
+        },
+        {&hf_btatt_cycling_power_measurement_extreme_angles,
+            {"Extreme Angles", "btatt.cycling_power_measurement.extreme_angles",
+            FT_NONE, BASE_NONE, NULL, 0x0,
+            NULL, HFILL}
+        },
+        {&hf_btatt_cycling_power_measurement_extreme_angles_maximum,
+            {"Minimum", "btatt.cycling_power_measurement.extreme_angles.maximum",
+            FT_UINT24, BASE_DEC, NULL, 0xFFF000,
+            NULL, HFILL}
+        },
+        {&hf_btatt_cycling_power_measurement_extreme_angles_minimum,
+            {"Maximum", "btatt.cycling_power_measurement.extreme_angles.minimum",
+            FT_UINT24, BASE_DEC, NULL, 0x000FFF,
+            NULL, HFILL}
+        },
+        {&hf_btatt_cycling_power_measurement_top_dead_spot_angle,
+            {"Top Dead Spot Angle", "btatt.cycling_power_measurement.top_dead_spot_angle",
+            FT_UINT16, BASE_DEC, NULL, 0x0,
+            NULL, HFILL}
+        },
+        {&hf_btatt_cycling_power_measurement_bottom_dead_spot_angle,
+            {"Bottom Dead Spot Angle", "btatt.cycling_power_measurement.bottom_dead_spot_angle",
+            FT_UINT16, BASE_DEC, NULL, 0x0,
+            NULL, HFILL}
+        },
+        {&hf_btatt_cycling_power_measurement_accumulated_energy,
+            {"Accumulated Energy", "btatt.cycling_power_measurement.accumulated_energy",
+            FT_UINT16, BASE_DEC, NULL, 0x0,
+            NULL, HFILL}
+        },
+        {&hf_btatt_csc_measurement_flags,
+            {"Flags", "btatt.csc_measurement.flags",
+            FT_UINT8, BASE_HEX, NULL, 0x0,
+            NULL, HFILL}
+        },
+        {&hf_btatt_csc_measurement_flags_reserved,
+            {"Reserved", "btatt.csc_measurement.flags.reserved",
+            FT_UINT8, BASE_HEX, NULL, 0xFC,
+            NULL, HFILL}
+        },
+        {&hf_btatt_csc_measurement_flags_crank_revolution_data,
+            {"Crank Revolution Data", "btatt.csc_measurement.flags.crank_revolution_data",
+            FT_BOOLEAN, 8, NULL, 0x02,
+            NULL, HFILL}
+        },
+        {&hf_btatt_csc_measurement_flags_wheel_revolution_data,
+            {"Wheel Revolution Data", "btatt.csc_measurement.flags.wheel_revolution_data",
+            FT_BOOLEAN, 8, NULL, 0x01,
+            NULL, HFILL}
+        },
+        {&hf_btatt_csc_measurement_cumulative_wheel_revolutions,
+            {"Cumulative Wheel Revolutions", "btatt.csc_measurement.cumulative_wheel_revolutions",
+            FT_UINT32, BASE_DEC, NULL, 0x0,
+            NULL, HFILL}
+        },
+        {&hf_btatt_csc_measurement_cumulative_crank_revolutions,
+            {"Cumulative Crank Revolutions", "btatt.csc_measurement.cumulative_crank_revolutions",
+            FT_UINT16, BASE_DEC, NULL, 0x0,
+            NULL, HFILL}
+        },
+        {&hf_btatt_csc_measurement_last_event_time,
+            {"Last Event Time", "btatt.csc_measurement.last_event_time",
+            FT_UINT16, BASE_DEC, NULL, 0x0,
+            NULL, HFILL}
+        },
+        {&hf_btatt_cycling_power_vector_flags,
+            {"Flags", "btatt.csc_measurement.flags",
+            FT_UINT8, BASE_HEX, NULL, 0x0,
+            NULL, HFILL}
+        },
+        {&hf_btatt_cycling_power_vector_flags_reserved,
+            {"Reserved", "btatt.csc_measurement.flags.reserved",
+            FT_UINT8, BASE_HEX, NULL, 0xC0,
+            NULL, HFILL}
+        },
+        {&hf_btatt_cycling_power_vector_flags_instantaneous_measurement_direction,
+            {"Instantaneous Measurement Direction", "btatt.cycling_power_vector.flags.instantaneous_measurement_direction",
+            FT_UINT8, BASE_HEX, VALS(cycling_power_vector_flags_instantaneous_measurement_direction_vals), 0x30,
+            NULL, HFILL}
+        },
+        {&hf_btatt_cycling_power_vector_flags_instantaneous_torque_magnitude_array,
+            {"Instantaneous Torque Magnitude Array", "btatt.cycling_power_vector.flags.instantaneous_torque_magnitude_array",
+            FT_BOOLEAN, 8, NULL, 0x08,
+            NULL, HFILL}
+        },
+        {&hf_btatt_cycling_power_vector_flags_instantaneous_force_magnitude_array,
+            {"Instantaneous Force Magnitude Array", "btatt.cycling_power_vector.flags.instantaneous_force_magnitude_array",
+            FT_BOOLEAN, 8, NULL, 0x04,
+            NULL, HFILL}
+        },
+        {&hf_btatt_cycling_power_vector_flags_first_crank_measurement_angle,
+            {"First Crank Measurement Angle", "btatt.cycling_power_vector.flags.first_crank_measurement_angle",
+            FT_BOOLEAN, 8, NULL, 0x02,
+            NULL, HFILL}
+        },
+        {&hf_btatt_cycling_power_vector_flags_crank_revolution_data,
+            {"Crank Revolution Data", "btatt.cycling_power_vector.flags.crank_revolution_data",
+            FT_BOOLEAN, 8, NULL, 0x01,
+            NULL, HFILL}
+        },
+
+        {&hf_btatt_cycling_power_vector_crank_revolution_data_cumulative_crank_revolutions,
+            {"cumulative_crank_revolutions", "btatt.csc_measurement.cumulative_crank_revolutions",
+            FT_UINT16, BASE_DEC, NULL, 0x0,
+            NULL, HFILL}
+        },
+        {&hf_btatt_cycling_power_vector_crank_revolution_data_last_crank_event_time,
+            {"Last Crank Event Time", "btatt.csc_measurement.last_crank_event_time",
+            FT_UINT16, BASE_DEC, NULL, 0x0,
+            NULL, HFILL}
+        },
+        {&hf_btatt_cycling_power_vector_first_crank_measurement_angle,
+            {"First Crank Measurement Angle", "btatt.csc_measurement.first_crank_measurement_angle",
+            FT_UINT16, BASE_DEC, NULL, 0x0,
+            NULL, HFILL}
+        },
+
+        {&hf_btatt_cycling_power_vector_instantaneous_force_magnitude_array,
+            {"Instantaneous Force Magnitude Array", "btatt.csc_measurement.instantaneous_force_magnitude_array",
+            FT_INT16, BASE_DEC, NULL, 0x0,
+            NULL, HFILL}
+        },
+        {&hf_btatt_cycling_power_vector_instantaneous_torque_magnitude_array,
+            {"Instantaneous Torque Magnitude Array", "btatt.csc_measurement.instantaneous_torque_magnitude_array",
+            FT_INT16, BASE_DEC, NULL, 0x0,
+            NULL, HFILL}
+        },
+        {&hf_btatt_cycling_power_control_point_opcode,
+            {"Opcode", "btatt.cycling_power_control_point.opcode",
+            FT_UINT8, BASE_HEX, VALS(cycling_power_control_point_opcode), 0x0,
+            NULL, HFILL}
+        },
+        {&hf_btatt_cycling_power_control_point_cumulative_value,
+            {"Cumulative Value", "btatt.cycling_power_control_point.cumulative_value",
+            FT_UINT32, BASE_DEC, NULL, 0x0,
+            NULL, HFILL}
+        },
+        {&hf_btatt_cycling_power_control_point_sensor_location,
+            {"Sensor Location", "btatt.cycling_power_control_point.sensor_location",
+            FT_UINT8, BASE_DEC, NULL, 0x0,
+            NULL, HFILL}
+        },
+        {&hf_btatt_cycling_power_control_point_crank_length,
+            {"Crank Length", "btatt.cycling_power_control_point.crank_length",
+            FT_UINT16, BASE_DEC, NULL, 0x0,
+            NULL, HFILL}
+        },
+        {&hf_btatt_cycling_power_control_point_chain_length,
+            {"Chain Length", "btatt.cycling_power_control_point.chain_length",
+            FT_UINT16, BASE_DEC, NULL, 0x0,
+            NULL, HFILL}
+        },
+        {&hf_btatt_cycling_power_control_point_chain_weight,
+            {"Chain Weight", "btatt.cycling_power_control_point.chain_weight",
+            FT_UINT16, BASE_DEC, NULL, 0x0,
+            NULL, HFILL}
+        },
+        {&hf_btatt_cycling_power_control_point_span_length,
+            {"Span Length", "btatt.cycling_power_control_point.span_length",
+            FT_UINT16, BASE_DEC, NULL, 0x0,
+            NULL, HFILL}
+        },
+        {&hf_btatt_cycling_power_control_point_content_mask,
+            {"Content Mask", "btatt.cycling_power_control_point.content_mask",
+            FT_UINT16, BASE_HEX, NULL, 0x0,
+            NULL, HFILL}
+        },
+        {&hf_btatt_cycling_power_control_point_content_mask_reserved,
+            {"Reserved", "btatt.cycling_power_control_point.content_mask.reserved",
+            FT_UINT16, BASE_HEX, NULL, 0xFE0,
+            NULL, HFILL}
+        },
+        {&hf_btatt_cycling_power_control_point_content_mask_accumulated_energy,
+            {"Accumulated Energy", "btatt.cycling_power_control_point.content_mask.accumulated_energy",
+            FT_BOOLEAN, 16, TFS(&control_point_mask_value_tfs), 0x100,
+            NULL, HFILL}
+        },
+        {&hf_btatt_cycling_power_control_point_content_mask_bottom_dead_spot_angle,
+            {"Bottom Dead Spot Angle", "btatt.cycling_power_control_point.content_mask.bottom_dead_spot_angle",
+            FT_BOOLEAN, 16, TFS(&control_point_mask_value_tfs), 0x080,
+            NULL, HFILL}
+        },
+        {&hf_btatt_cycling_power_control_point_content_mask_top_dead_spot_angle,
+            {"Top Dead Spot Angle", "btatt.cycling_power_control_point.content_mask.top_dead_spot_angle",
+            FT_BOOLEAN, 16, TFS(&control_point_mask_value_tfs), 0x040,
+            NULL, HFILL}
+        },
+        {&hf_btatt_cycling_power_control_point_content_mask_extreme_angles,
+            {"Extreme Angles", "btatt.cycling_power_control_point.content_mask.extreme_angles",
+            FT_BOOLEAN, 16, TFS(&control_point_mask_value_tfs), 0x020,
+            NULL, HFILL}
+        },
+        {&hf_btatt_cycling_power_control_point_content_mask_extreme_magnitudes,
+            {"Extreme Magnitudes", "btatt.cycling_power_control_point.content_mask.extreme_magnitudes",
+            FT_BOOLEAN, 16, TFS(&control_point_mask_value_tfs), 0x010,
+            NULL, HFILL}
+        },
+        {&hf_btatt_cycling_power_control_point_content_mask_crank_revolution_data,
+            {"Crank Revolution Data", "btatt.cycling_power_control_point.content_mask.crank_revolution_data",
+            FT_BOOLEAN, 16, TFS(&control_point_mask_value_tfs), 0x008,
+            NULL, HFILL}
+        },
+        {&hf_btatt_cycling_power_control_point_content_mask_wheel_revolution_data,
+            {"Wheel Revolution Data", "btatt.cycling_power_control_point.content_mask.wheel_revolution_data",
+            FT_BOOLEAN, 16, TFS(&control_point_mask_value_tfs), 0x004,
+            NULL, HFILL}
+        },
+        {&hf_btatt_cycling_power_control_point_content_mask_accumulated_torque,
+            {"Accumulated Torque", "btatt.cycling_power_control_point.content_mask.accumulated_torque",
+            FT_BOOLEAN, 16, TFS(&control_point_mask_value_tfs), 0x002,
+            NULL, HFILL}
+        },
+        {&hf_btatt_cycling_power_control_point_content_mask_pedal_power_balance,
+            {"Pedal Power Balance", "btatt.cycling_power_control_point.content_mask.pedal_power_balance",
+            FT_BOOLEAN, 16, TFS(&control_point_mask_value_tfs), 0x001,
+            NULL, HFILL}
+        },
+        {&hf_btatt_cycling_power_control_point_request_opcode,
+            {"Request Opcode", "btatt.cycling_power_control_point.request_opcode",
+            FT_UINT8, BASE_HEX, VALS(cycling_power_control_point_opcode), 0x0,
+            NULL, HFILL}
+        },
+        {&hf_btatt_cycling_power_control_point_response_value,
+            {"Response Value", "btatt.cycling_power_control_point.response_value",
+            FT_UINT8, BASE_HEX, VALS(cycling_power_control_point_response_value), 0x0,
+            NULL, HFILL}
+        },
+        {&hf_btatt_cycling_power_control_point_start_offset_compensation,
+            {"Start Offset Compensation", "btatt.cycling_power_control_point.start_offset_compensation",
+            FT_INT16, BASE_DEC, NULL, 0x0,
+            NULL, HFILL}
+        },
+        {&hf_btatt_cycling_power_control_point_sampling_rate,
+            {"Sampling Rate", "btatt.cycling_power_control_point.sampling_rate",
+            FT_UINT8, BASE_DEC, NULL, 0x0,
+            NULL, HFILL}
+        },
+        {&hf_btatt_cycling_power_control_point_factory_calibration_date,
+            {"Factory Calibration Date", "btatt.cycling_power_control_point.factory_calibration_date",
+            FT_NONE, BASE_NONE, NULL, 0x0,
+            NULL, HFILL}
+        },
+        {&hf_btatt_location_and_speed_flags,
+            {"Flags", "btatt.location_and_speed.flags",
+            FT_UINT16, BASE_HEX, NULL, 0x0,
+            NULL, HFILL}
+        },
+        {&hf_btatt_location_and_speed_flags_reserved,
+            {"Reserved", "btatt.location_and_speed.flags.reserved",
+            FT_UINT16, BASE_HEX, NULL, 0xC000,
+            NULL, HFILL}
+        },
+        {&hf_btatt_location_and_speed_flags_heading_source,
+            {"Heading Source", "btatt.location_and_speed.flags.heading_source",
+            FT_BOOLEAN, 16, TFS(&flags_heading_source_tfs), 0x3000,
+            NULL, HFILL}
+        },
+        {&hf_btatt_location_and_speed_flags_elevation_source,
+            {"Elevation Source", "btatt.location_and_speed.flags.elevation_source",
+            FT_UINT16, BASE_HEX, VALS(location_and_speed_flags_elevation_source_vals), 0x0C00,
+            NULL, HFILL}
+        },
+        {&hf_btatt_location_and_speed_flags_speed_and_distance_format,
+            {"Speed_and Distance Format", "btatt.location_and_speed.flags.speed_and_distance_format",
+            FT_BOOLEAN, 16, TFS(&location_and_speed_flags_speed_and_distance_format_tfs), 0x0200,
+            NULL, HFILL}
+        },
+        {&hf_btatt_location_and_speed_flags_position_status,
+            {"Position Status", "btatt.location_and_speed.flags.position_status",
+            FT_UINT16, BASE_HEX, VALS(flags_position_status_vals), 0x0180,
+            NULL, HFILL}
+        },
+        {&hf_btatt_location_and_speed_flags_utc_time,
+            {"UTC Time Present", "btatt.location_and_speed.flags.utc_time",
+            FT_BOOLEAN, 16, NULL, 0x0040,
+            NULL, HFILL}
+        },
+        {&hf_btatt_location_and_speed_flags_rolling_time,
+            {"Rolling Time", "btatt.location_and_speed.flags.rolling_time",
+            FT_BOOLEAN, 16, NULL, 0x0020,
+            NULL, HFILL}
+        },
+        {&hf_btatt_location_and_speed_flags_heading,
+            {"Heading", "btatt.location_and_speed.flags.heading",
+            FT_BOOLEAN, 16, NULL, 0x0010,
+            NULL, HFILL}
+        },
+        {&hf_btatt_location_and_speed_flags_elevation,
+            {"Elevation", "btatt.location_and_speed.flags.elevation",
+            FT_BOOLEAN, 16, NULL, 0x0008,
+            NULL, HFILL}
+        },
+        {&hf_btatt_location_and_speed_flags_location,
+            {"Location", "btatt.location_and_speed.flags.location",
+            FT_BOOLEAN, 16, NULL, 0x0004,
+            NULL, HFILL}
+        },
+        {&hf_btatt_location_and_speed_flags_total_distance,
+            {"Total Distance Present", "btatt.location_and_speed.flags.total_distance",
+            FT_BOOLEAN, 16, NULL, 0x0002,
+            NULL, HFILL}
+        },
+        {&hf_btatt_location_and_speed_flags_instantaneous_speed,
+            {"Instantaneous Speed", "btatt.location_and_speed.flags.instantaneous_speed",
+            FT_BOOLEAN, 16, NULL, 0x0001,
+            NULL, HFILL}
+        },
+        {&hf_btatt_location_and_speed_instantaneous_speed,
+            {"Instantaneous Speed", "btatt.location_and_speed.instantaneous_speed",
+            FT_UINT16, BASE_DEC, NULL, 0x0,
+            NULL, HFILL}
+        },
+        {&hf_btatt_location_and_speed_total_distance,
+            {"Total Distance", "btatt.location_and_speed.total_distance",
+            FT_UINT24, BASE_DEC, NULL, 0x0,
+            NULL, HFILL}
+        },
+        {&hf_btatt_location_and_speed_location_longitude,
+            {"Location Longitude", "btatt.location_and_speed.location.longitude",
+            FT_INT32, BASE_DEC, NULL, 0x0,
+            NULL, HFILL}
+        },
+        {&hf_btatt_location_and_speed_location_latitude,
+            {"Location Latitude", "btatt.location_and_speed.location.latitude",
+            FT_INT32, BASE_DEC, NULL, 0x0,
+            NULL, HFILL}
+        },
+        {&hf_btatt_location_and_speed_elevation,
+            {"Elevation", "btatt.location_and_speed.elevation",
+            FT_INT24, BASE_DEC, NULL, 0x0,
+            NULL, HFILL}
+        },
+        {&hf_btatt_location_and_speed_heading,
+            {"Heading", "btatt.location_and_speed.heading",
+            FT_UINT16, BASE_DEC, NULL, 0x0,
+            NULL, HFILL}
+        },
+        {&hf_btatt_location_and_speed_rolling_time,
+            {"Rolling Time", "btatt.location_and_speed.rolling_time",
+            FT_UINT8, BASE_DEC, NULL, 0x0,
+            NULL, HFILL}
+        },
+        {&hf_btatt_location_and_speed_utc_time,
+            {"UTC Time", "btatt.location_and_speed.utc_time",
+            FT_NONE, BASE_NONE, NULL, 0x0,
+            NULL, HFILL}
+        },
+        {&hf_btatt_navigation_flags,
+            {"Flags", "btatt.navigation.flags",
+            FT_UINT16, BASE_HEX, NULL, 0x0,
+            NULL, HFILL}
+        },
+        {&hf_btatt_navigation_flags_reserved,
+            {"Reserved", "btatt.navigation.flags.reserved",
+            FT_UINT16, BASE_HEX, NULL, 0xFE00,
+            NULL, HFILL}
+        },
+        {&hf_btatt_navigation_flags_destination_reached,
+            {"Destination Reached", "btatt.navigation.flags.destination_reached",
+            FT_BOOLEAN, 16, NULL, 0x0100,
+            NULL, HFILL}
+        },
+        {&hf_btatt_navigation_flags_waypoint_reached,
+            {"Waypoint Reached", "btatt.navigation.flags.waypoint_reached",
+            FT_BOOLEAN, 16, NULL, 0x0080,
+            NULL, HFILL}
+        },
+        {&hf_btatt_navigation_flags_navigation_indicator_type,
+            {"Navigation Indicator Type", "btatt.navigation.flags.navigation_indicator_type",
+            FT_BOOLEAN, 16, TFS(&navigation_indicator_type_tfs), 0x0040,
+            NULL, HFILL}
+        },
+        {&hf_btatt_navigation_flags_heading_source,
+            {"Heading Source", "btatt.navigation.flags.heading_source",
+            FT_BOOLEAN, 16, TFS(&flags_heading_source_tfs), 0x0020,
+            NULL, HFILL}
+        },
+        {&hf_btatt_navigation_flags_position_status,
+            {"Position Status", "btatt.navigation.flags.position_status",
+            FT_UINT16, BASE_HEX, VALS(flags_position_status_vals), 0x0018,
+            NULL, HFILL}
+        },
+        {&hf_btatt_navigation_flags_estimated_time_of_arrival,
+            {"Estimated Time of Arrival", "btatt.navigation.flags.estimated_time_of_arrival",
+            FT_BOOLEAN, 16, NULL, 0x0004,
+            NULL, HFILL}
+        },
+        {&hf_btatt_navigation_flags_remaining_vertical_distance,
+            {"Remaining Vertical Distance", "btatt.navigation.flags.remaining_vertical_distance",
+            FT_BOOLEAN, 16, NULL, 0x0002,
+            NULL, HFILL}
+        },
+        {&hf_btatt_navigation_flags_remaining_distance,
+            {"Remaining Distance", "btatt.navigation.flags.remaining_distance",
+            FT_BOOLEAN, 16, NULL, 0x0001,
+            NULL, HFILL}
+        },
+        {&hf_btatt_navigation_bearing,
+            {"Bearing", "btatt.navigation.bearing",
+            FT_UINT16, BASE_DEC, NULL, 0x0,
+            NULL, HFILL}
+        },
+        {&hf_btatt_navigation_heading,
+            {"Heading", "btatt.navigation.heading",
+            FT_UINT16, BASE_DEC, NULL, 0x0,
+            NULL, HFILL}
+        },
+        {&hf_btatt_navigation_remaining_distance,
+            {"Remaining Distance", "btatt.navigation.remaining_distance",
+            FT_UINT24, BASE_DEC, NULL, 0x0,
+            NULL, HFILL}
+        },
+        {&hf_btatt_navigation_remaining_vertical_distance,
+            {"Remaining Vertical Distance", "btatt.navigation.remaining_vertical_distance",
+            FT_INT24, BASE_DEC, NULL, 0x0,
+            NULL, HFILL}
+        },
+        {&hf_btatt_navigation_estimated_time_of_arrival,
+            {"Estimated Time of Arrival", "btatt.navigation.estimated_time_of_arrival",
+            FT_NONE, BASE_NONE, NULL, 0x0,
+            NULL, HFILL}
+        },
+        {&hf_btatt_position_quality_flags,
+            {"Flags", "btatt.position_quality.flags",
+            FT_UINT16, BASE_HEX, NULL, 0x0,
+            NULL, HFILL}
+        },
+        {&hf_btatt_position_quality_flags_reserved,
+            {"Reserved", "btatt.position_quality.flags.reserved",
+            FT_UINT16, BASE_HEX, NULL, 0xFE00,
+            NULL, HFILL}
+        },
+        {&hf_btatt_position_quality_flags_position_status,
+            {"Position Status", "btatt.position_quality.flags.position_status",
+            FT_UINT16, BASE_HEX, VALS(flags_position_status_vals), 0x0180,
+            NULL, HFILL}
+        },
+        {&hf_btatt_position_quality_flags_vdop,
+            {"VDOP", "btatt.position_quality.flags.vdop",
+            FT_BOOLEAN, 16, NULL, 0x0040,
+            NULL, HFILL}
+        },
+        {&hf_btatt_position_quality_flags_hdop,
+            {"HDOP", "btatt.position_quality.flags.hdop",
+            FT_BOOLEAN, 16, NULL, 0x0020,
+            NULL, HFILL}
+        },
+        {&hf_btatt_position_quality_flags_evpe,
+            {"EVPE", "btatt.position_quality.flags.evpe",
+            FT_BOOLEAN, 16, NULL, 0x0010,
+            NULL, HFILL}
+        },
+        {&hf_btatt_position_quality_flags_ehpe,
+            {"EHPE", "btatt.position_quality.flags.ehpe",
+            FT_BOOLEAN, 16, NULL, 0x0008,
+            NULL, HFILL}
+        },
+        {&hf_btatt_position_quality_flags_time_to_first_fix,
+            {"Time to First Fix", "btatt.position_quality.flags.time_to_first_fix",
+            FT_BOOLEAN, 16, NULL, 0x0004,
+            NULL, HFILL}
+        },
+        {&hf_btatt_position_quality_flags_number_of_beacons_in_view,
+            {"Number of Beacons in View", "btatt.position_quality.flags.number_of_beacons_in_view",
+            FT_BOOLEAN, 16, NULL, 0x0002,
+            NULL, HFILL}
+        },
+        {&hf_btatt_position_quality_flags_number_of_beacons_in_solution,
+            {"Number of Beacons_in Solution", "btatt.position_quality.flags.number_of_beacons_in_solution",
+            FT_BOOLEAN, 16, NULL, 0x0001,
+            NULL, HFILL}
+        },
+        {&hf_btatt_position_quality_number_of_beacons_in_solution,
+            {"number_of_beacons_in_solution", "btatt.position_quality.number_of_beacons_in_solution",
+            FT_UINT8, BASE_DEC, NULL, 0x0,
+            NULL, HFILL}
+        },
+        {&hf_btatt_position_quality_number_of_beacons_in_view,
+            {"number_of_beacons_in_view", "btatt.position_quality.number_of_beacons_in_view",
+            FT_UINT8, BASE_DEC, NULL, 0x0,
+            NULL, HFILL}
+        },
+        {&hf_btatt_position_quality_time_to_first_fix,
+            {"time_to_first_fix", "btatt.position_quality.time_to_first_fix",
+            FT_UINT16, BASE_DEC, NULL, 0x0,
+            NULL, HFILL}
+        },
+        {&hf_btatt_position_quality_ehpe,
+            {"EHPE", "btatt.position_quality.ehpe",
+            FT_UINT32, BASE_DEC, NULL, 0x0,
+            NULL, HFILL}
+        },
+        {&hf_btatt_position_quality_evpe,
+            {"EVPE", "btatt.position_quality.evpe",
+            FT_UINT32, BASE_DEC, NULL, 0x0,
+            NULL, HFILL}
+        },
+        {&hf_btatt_position_quality_hdop,
+            {"HDOP", "btatt.position_quality.hdop",
+            FT_UINT8, BASE_DEC, NULL, 0x0,
+            NULL, HFILL}
+        },
+        {&hf_btatt_position_quality_vdop,
+            {"VDOP", "btatt.position_quality.vdop",
+            FT_UINT8, BASE_DEC, NULL, 0x0,
+            NULL, HFILL}
+        },
+        {&hf_btatt_ln_control_point_opcode,
+            {"Opcode", "btatt.ln_control_point.opcode",
+            FT_UINT8, BASE_HEX, VALS(ln_control_point_opcode), 0x0,
+            NULL, HFILL}
+        },
+        {&hf_btatt_ln_control_point_cumulative_value,
+            {"Cumulative Value", "btatt.ln_control_point.cumulative_value",
+            FT_UINT24, BASE_DEC, NULL, 0x0,
+            NULL, HFILL}
+        },
+        {&hf_btatt_ln_control_point_content_mask,
+            {"Content Mask", "btatt.ln_control_point.content_mask",
+            FT_UINT16, BASE_HEX, NULL, 0x0,
+            NULL, HFILL}
+        },
+        {&hf_btatt_ln_control_point_content_mask_reserved,
+            {"Reserved", "btatt.ln_control_point.content_mask.reserved",
+            FT_UINT16, BASE_HEX, NULL, 0xFF80,
+            NULL, HFILL}
+        },
+        {&hf_btatt_ln_control_point_content_mask_utc_time,
+            {"UTC Time", "btatt.ln_control_point.content_mask.utc_time",
+            FT_BOOLEAN, 16, TFS(&control_point_mask_value_tfs), 0x0040,
+            NULL, HFILL}
+        },
+        {&hf_btatt_ln_control_point_content_mask_rolling_time,
+            {"Rolling Time", "btatt.ln_control_point.content_mask.rolling_time",
+            FT_BOOLEAN, 16, TFS(&control_point_mask_value_tfs), 0x0020,
+            NULL, HFILL}
+        },
+        {&hf_btatt_ln_control_point_content_mask_heading,
+            {"Heading", "btatt.ln_control_point.content_mask.heading",
+            FT_BOOLEAN, 16, TFS(&control_point_mask_value_tfs), 0x0010,
+            NULL, HFILL}
+        },
+        {&hf_btatt_ln_control_point_content_mask_elevation,
+            {"Elevation", "btatt.ln_control_point.content_mask.elevation",
+            FT_BOOLEAN, 16, TFS(&control_point_mask_value_tfs), 0x0008,
+            NULL, HFILL}
+        },
+        {&hf_btatt_ln_control_point_content_mask_location,
+            {"Location", "btatt.ln_control_point.content_mask.location",
+            FT_BOOLEAN, 16, TFS(&control_point_mask_value_tfs), 0x0004,
+            NULL, HFILL}
+        },
+        {&hf_btatt_ln_control_point_content_mask_total_distance,
+            {"Total Distance", "btatt.ln_control_point.content_mask.total_distance",
+            FT_BOOLEAN, 16, TFS(&control_point_mask_value_tfs), 0x0002,
+            NULL, HFILL}
+        },
+        {&hf_btatt_ln_control_point_content_mask_instantaneous_speed,
+            {"Instantaneous Speed", "btatt.ln_control_point.content_mask.instantaneous_speed",
+            FT_BOOLEAN, 16, TFS(&control_point_mask_value_tfs), 0x0001,
+            NULL, HFILL}
+        },
+        {&hf_btatt_ln_control_point_navigation_control,
+            {"Navigation Control", "btatt.ln_control_point.navigation_control",
+            FT_UINT8, BASE_HEX, VALS(ln_control_point_navigation_control_vals), 0x0,
+            NULL, HFILL}
+        },
+        {&hf_btatt_ln_control_point_route_number,
+            {"Route Number", "btatt.ln_control_point.route_number",
+            FT_UINT16, BASE_DEC, NULL, 0x0,
+            NULL, HFILL}
+        },
+        {&hf_btatt_ln_control_point_fix_rate,
+            {"Fix Rate", "btatt.ln_control_point.fix_rate",
+            FT_UINT8, BASE_DEC, NULL, 0x0,
+            NULL, HFILL}
+        },
+        {&hf_btatt_ln_control_point_elevation,
+            {"Elevation", "btatt.ln_control_point.elevation",
+            FT_INT24, BASE_DEC, NULL, 0x0,
+            NULL, HFILL}
+        },
+        {&hf_btatt_ln_control_point_request_opcode,
+            {"Request Opcode", "btatt.ln_control_point.request_opcode",
+            FT_UINT8, BASE_HEX, VALS(ln_control_point_opcode), 0x0,
+            NULL, HFILL}
+        },
+        {&hf_btatt_ln_control_point_response_value,
+            {"Response Value", "btatt.ln_control_point.response_value",
+            FT_UINT8, BASE_HEX, VALS(ln_control_point_response_value), 0x0,
+            NULL, HFILL}
+        },
+        {&hf_btatt_ln_control_point_response_value_number_of_routes,
+            {"Number of Routes", "btatt.ln_control_point.number_of_routes",
+            FT_UINT16, BASE_DEC, NULL, 0x0,
+            NULL, HFILL}
+        },
+        {&hf_btatt_ln_control_point_response_value_name_of_route,
+            {"Name_of Route", "btatt.ln_control_point.name_of_route",
+            FT_STRING, BASE_NONE, NULL, 0x0,
+            NULL, HFILL}
+        },
+        {&hf_btatt_body_composition_measurement_flags,
+            {"Flags", "btatt.body_composition_measurement.flags",
+            FT_UINT16, BASE_HEX, NULL, 0x0,
+            NULL, HFILL}
+        },
+        {&hf_btatt_body_composition_measurement_flags_reserved,
+            {"Reserved", "btatt.body_composition_measurement.flags.reserved",
+            FT_UINT16, BASE_HEX, NULL, 0xE000,
+            NULL, HFILL}
+        },
+        {&hf_btatt_body_composition_measurement_flags_multiple_packet_measurement,
+            {"Multiple Packet Measurement", "btatt.body_composition_measurement.flags.multiple_packet_measurement",
+            FT_BOOLEAN, 16, NULL, 0x1000,
+            NULL, HFILL}
+        },
+        {&hf_btatt_body_composition_measurement_flags_height,
+            {"Height", "btatt.body_composition_measurement.flags.height",
+            FT_BOOLEAN, 16, NULL, 0x0800,
+            NULL, HFILL}
+        },
+        {&hf_btatt_body_composition_measurement_flags_weight,
+            {"Weight", "btatt.body_composition_measurement.flags.weight",
+            FT_BOOLEAN, 16, NULL, 0x0400,
+            NULL, HFILL}
+        },
+        {&hf_btatt_body_composition_measurement_flags_impedance,
+            {"Impedance", "btatt.body_composition_measurement.flags.impedance",
+            FT_BOOLEAN, 16, NULL, 0x0200,
+            NULL, HFILL}
+        },
+        {&hf_btatt_body_composition_measurement_flags_body_water_mass,
+            {"Body Water Mass", "btatt.body_composition_measurement.flags.body_water_mass",
+            FT_BOOLEAN, 16, NULL, 0x0100,
+            NULL, HFILL}
+        },
+        {&hf_btatt_body_composition_measurement_flags_soft_lean_mass,
+            {"Soft Lean Mass", "btatt.body_composition_measurement.flags.soft_lean_mass",
+            FT_BOOLEAN, 16, NULL, 0x0080,
+            NULL, HFILL}
+        },
+        {&hf_btatt_body_composition_measurement_flags_fat_free_mass,
+            {"Fat Free Mass", "btatt.body_composition_measurement.flags.fat_free_mass",
+            FT_BOOLEAN, 16, NULL, 0x0040,
+            NULL, HFILL}
+        },
+        {&hf_btatt_body_composition_measurement_flags_muscle_mass,
+            {"Muscle Mass", "btatt.body_composition_measurement.flags.muscle_mass",
+            FT_BOOLEAN, 16, NULL, 0x0020,
+            NULL, HFILL}
+        },
+        {&hf_btatt_body_composition_measurement_flags_muscle_percentage,
+            {"Muscle Percentage", "btatt.body_composition_measurement.flags.muscle_percentage",
+            FT_BOOLEAN, 16, NULL, 0x0010,
+            NULL, HFILL}
+        },
+        {&hf_btatt_body_composition_measurement_flags_basal_metabolism,
+            {"Basal Metabolism", "btatt.body_composition_measurement.flags.basal_metabolism",
+            FT_BOOLEAN, 16, NULL, 0x0008,
+            NULL, HFILL}
+        },
+        {&hf_btatt_body_composition_measurement_flags_user_id,
+            {"User ID", "btatt.body_composition_measurement.flags.user_id",
+            FT_BOOLEAN, 16, NULL, 0x0004,
+            NULL, HFILL}
+        },
+        {&hf_btatt_body_composition_measurement_flags_timestamp,
+            {"Timestamp", "btatt.body_composition_measurement.flags.timestamp",
+            FT_BOOLEAN, 16, NULL, 0x0002,
+            NULL, HFILL}
+        },
+        {&hf_btatt_body_composition_measurement_flags_measurement_units,
+            {"Measurement Units", "btatt.body_composition_measurement.flags.measurement_units",
+            FT_UINT16, BASE_HEX, VALS(body_composition_measurement_flags_measurement_units_vals), 0x0001,
+            NULL, HFILL}
+        },
+        {&hf_btatt_body_composition_measurement_body_fat_percentage,
+            {"Body Fat Percentage", "btatt.body_composition_measurement.body_fat_percentage",
+            FT_UINT16, BASE_DEC, NULL, 0x0,
+            NULL, HFILL}
+        },
+        {&hf_btatt_body_composition_measurement_timestamp,
+            {"Timestamp", "btatt.body_composition_measurement.timestamp",
+            FT_NONE, BASE_NONE, NULL, 0x0,
+            NULL, HFILL}
+        },
+        {&hf_btatt_body_composition_measurement_user_id,
+            {"User ID", "btatt.body_composition_measurement.user_id",
+            FT_UINT8, BASE_DEC, NULL, 0x0,
+            NULL, HFILL}
+        },
+        {&hf_btatt_body_composition_measurement_basal_metabolism,
+            {"Basal Metabolism", "btatt.body_composition_measurement.basal_metabolism",
+            FT_UINT16, BASE_DEC, NULL, 0x0,
+            NULL, HFILL}
+        },
+        {&hf_btatt_body_composition_measurement_muscle_percentage,
+            {"Muscle Percentage", "btatt.body_composition_measurement.muscle_percentage",
+            FT_UINT16, BASE_DEC, NULL, 0x0,
+            NULL, HFILL}
+        },
+        {&hf_btatt_body_composition_measurement_muscle_mass_lb,
+            {"Muscle Mass [lb]", "btatt.body_composition_measurement.muscle_mass.lb",
+            FT_UINT16, BASE_DEC, NULL, 0x0,
+            NULL, HFILL}
+        },
+        {&hf_btatt_body_composition_measurement_muscle_mass_kg,
+            {"Muscle Mass [kg]", "btatt.body_composition_measurement.muscle_mass.kg",
+            FT_UINT16, BASE_DEC, NULL, 0x0,
+            NULL, HFILL}
+        },
+        {&hf_btatt_body_composition_measurement_fat_free_mass_lb,
+            {"Fat Free Mass [lb]", "btatt.body_composition_measurement.fat_free_mass.lb",
+            FT_UINT16, BASE_DEC, NULL, 0x0,
+            NULL, HFILL}
+        },
+        {&hf_btatt_body_composition_measurement_fat_free_mass_kg,
+            {"Fat Free Mass [kg]", "btatt.body_composition_measurement.fat_free_mass.kg",
+            FT_UINT16, BASE_DEC, NULL, 0x0,
+            NULL, HFILL}
+        },
+        {&hf_btatt_body_composition_measurement_soft_lean_mass_lb,
+            {"Soft Lean Mass [lb]", "btatt.body_composition_measurement.soft_lean_mass.lb",
+            FT_UINT16, BASE_DEC, NULL, 0x0,
+            NULL, HFILL}
+        },
+        {&hf_btatt_body_composition_measurement_soft_lean_mass_kg,
+            {"Soft Lean Mass [kg]", "btatt.body_composition_measurement.soft_lean_mass.kg",
+            FT_UINT16, BASE_DEC, NULL, 0x0,
+            NULL, HFILL}
+        },
+        {&hf_btatt_body_composition_measurement_body_water_mass_lb,
+            {"Body Water Mass [lb]", "btatt.body_composition_measurement.body_water_mass.lb",
+            FT_UINT16, BASE_DEC, NULL, 0x0,
+            NULL, HFILL}
+        },
+        {&hf_btatt_body_composition_measurement_body_water_mass_kg,
+            {"Body Water Mass [kg]", "btatt.body_composition_measurement.body_water_mass.kg",
+            FT_UINT16, BASE_DEC, NULL, 0x0,
+            NULL, HFILL}
+        },
+        {&hf_btatt_body_composition_measurement_impedance,
+            {"Impedance", "btatt.body_composition_measurement.impedance",
+            FT_UINT16, BASE_DEC, NULL, 0x0,
+            NULL, HFILL}
+        },
+        {&hf_btatt_body_composition_measurement_weight_lb,
+            {"Weight [lb]", "btatt.body_composition_measurement.weight.lb",
+            FT_UINT16, BASE_DEC, NULL, 0x0,
+            NULL, HFILL}
+        },
+        {&hf_btatt_body_composition_measurement_weight_kg,
+            {"Weight [kg]", "btatt.body_composition_measurement.weight.kg",
+            FT_UINT16, BASE_DEC, NULL, 0x0,
+            NULL, HFILL}
+        },
+        {&hf_btatt_body_composition_measurement_height_inches,
+            {"Height [inches]", "btatt.body_composition_measurement.height.inches",
+            FT_UINT16, BASE_DEC, NULL, 0x0,
+            NULL, HFILL}
+        },
+        {&hf_btatt_body_composition_measurement_height_meter,
+            {"Height [meter]", "btatt.body_composition_measurement.height.meter",
+            FT_UINT16, BASE_DEC, NULL, 0x0,
+            NULL, HFILL}
+        },
+        {&hf_btatt_weight_measurement_flags,
+            {"Flags", "btatt.weight_measurement.flags",
+            FT_UINT8, BASE_HEX, NULL, 0x0,
+            NULL, HFILL}
+        },
+        {&hf_btatt_weight_measurement_flags_reserved,
+            {"Reserved", "btatt.weight_measurement.flags.reserved",
+            FT_UINT8, BASE_HEX, NULL, 0xF0,
+            NULL, HFILL}
+        },
+        {&hf_btatt_weight_measurement_flags_bmi_and_height,
+            {"BMI and Height", "btatt.weight_measurement.flags.bmi_and_height",
+            FT_BOOLEAN, 8, NULL, 0x08,
+            NULL, HFILL}
+        },
+        {&hf_btatt_weight_measurement_flags_user_id,
+            {"User ID", "btatt.weight_measurement.flags.user_id",
+            FT_BOOLEAN, 8, NULL, 0x04,
+            NULL, HFILL}
+        },
+        {&hf_btatt_weight_measurement_flags_timestamp,
+            {"Timestamp", "btatt.weight_measurement.flags.timestamp",
+            FT_BOOLEAN, 8, NULL, 0x02,
+            NULL, HFILL}
+        },
+        {&hf_btatt_weight_measurement_flags_measurement_units,
+            {"Measurement Units", "btatt.weight_measurement.flags.measurement_units",
+            FT_BOOLEAN, 8, TFS(&weight_measurement_flags_measurement_units_tfs), 0x01,
+            NULL, HFILL}
+        },
+        {&hf_btatt_weight_measurement_weight_lb,
+            {"Weight [lb]", "btatt.weight_measurement.weight.lb",
+            FT_UINT16, BASE_DEC, NULL, 0x0,
+            NULL, HFILL}
+        },
+        {&hf_btatt_weight_measurement_weight_kg,
+            {"Weight [kg]", "btatt.weight_measurement.weight.kg",
+            FT_UINT16, BASE_DEC, NULL, 0x0,
+            NULL, HFILL}
+        },
+        {&hf_btatt_weight_measurement_timestamp,
+            {"Timestamp", "btatt.weight_measurement.timestamp",
+            FT_NONE, BASE_NONE, NULL, 0x0,
+            NULL, HFILL}
+        },
+        {&hf_btatt_weight_measurement_user_id,
+            {"User ID", "btatt.weight_measurement.user_id",
+            FT_UINT8, BASE_DEC, NULL, 0x0,
+            NULL, HFILL}
+        },
+        {&hf_btatt_weight_measurement_bmi,
+            {"BMI", "btatt.weight_measurement.bmi",
+            FT_UINT16, BASE_DEC, NULL, 0x0,
+            NULL, HFILL}
+        },
+        {&hf_btatt_weight_measurement_height_in,
+            {"Height [in]", "btatt.weight_measurement.height.in",
+            FT_UINT16, BASE_DEC, NULL, 0x0,
+            NULL, HFILL}
+        },
+        {&hf_btatt_weight_measurement_height_m,
+            {"Height [m]", "btatt.weight_measurement.height.m",
+            FT_UINT16, BASE_DEC, NULL, 0x0,
+            NULL, HFILL}
+        },
+        {&hf_btatt_user_control_point_opcode,
+            {"Opcode", "btatt.user_control_point.opcode",
+            FT_UINT8, BASE_HEX, VALS(user_control_point_opcode_vals), 0x0,
+            NULL, HFILL}
+        },
+        {&hf_btatt_user_control_point_request_opcode,
+            {"Request Opcode", "btatt.user_control_point.request_opcode",
+            FT_UINT8, BASE_HEX, VALS(user_control_point_opcode_vals), 0x0,
+            NULL, HFILL}
+        },
+        {&hf_btatt_user_control_point_response_value,
+            {"Response Value", "btatt.user_control_point.response_value",
+            FT_UINT8, BASE_HEX, VALS(user_control_point_response_value_vals), 0x0,
+            NULL, HFILL}
+        },
+        {&hf_btatt_user_control_point_consent_code,
+            {"Consent Code", "btatt.user_control_point.consent_code",
+            FT_UINT16, BASE_HEX, NULL, 0x0,
+            NULL, HFILL}
+        },
+        {&hf_btatt_cgm_measurement_size,
+            {"Size", "btatt.cgm_measurement.size",
+            FT_UINT16, BASE_DEC, NULL, 0x0,
+            NULL, HFILL}
+        },
+        {&hf_btatt_cgm_measurement_flags,
+            {"Flags", "btatt.cgm_measurement.flags",
+            FT_UINT8, BASE_HEX, NULL, 0x0,
+            NULL, HFILL}
+        },
+        {&hf_btatt_cgm_measurement_flags_cgm_trend_information,
+            {"CGM Trend Information", "btatt.cgm_measurement.flags.cgm_trend_information",
+            FT_BOOLEAN, 8, NULL, 0x80,
+            NULL, HFILL}
+        },
+        {&hf_btatt_cgm_measurement_flags_cgm_quality,
+            {"CGM Quality", "btatt.cgm_measurement.flags.cgm_quality",
+            FT_BOOLEAN, 8, NULL, 0x40,
+            NULL, HFILL}
+        },
+        {&hf_btatt_cgm_measurement_flags_reserved,
+            {"Reserved", "btatt.cgm_measurement.flags.reserved",
+            FT_UINT8, BASE_HEX, NULL, 0x38,
+            NULL, HFILL}
+        },
+        {&hf_btatt_cgm_measurement_flags_sensor_status_annunciation_warning,
+            {"Sensor Status Annunciation - Warning", "btatt.cgm_measurement.flags.sensor_status_annunciation.warning",
+            FT_BOOLEAN, 8, NULL, 0x04,
+            NULL, HFILL}
+        },
+        {&hf_btatt_cgm_measurement_flags_sensor_status_annunciation_cal_temp,
+            {"Sensor Status Annunciation - Cal/Temp", "btatt.cgm_measurement.flags.sensor_status_annunciation.cal_temp",
+            FT_BOOLEAN, 8, NULL, 0x02,
+            NULL, HFILL}
+        },
+        {&hf_btatt_cgm_measurement_flags_sensor_status_annunciation_status,
+            {"Sensor Status Annunciation - Status", "btatt.cgm_measurement.flags.sensor_status_annunciation.status",
+            FT_BOOLEAN, 8, NULL, 0x01,
+            NULL, HFILL}
+        },
+        {&hf_btatt_cgm_measurement_glucose_concentration,
+            {"Glucose Concentration", "btatt.cgm_measurement.glucose_concentration",
+            FT_IEEE_11073_SFLOAT, BASE_FLOAT, NULL, 0x0,
+            NULL, HFILL}
+        },
+        {&hf_btatt_cgm_measurement_time_offset,
+            {"Time Offset", "btatt.cgm_measurement.time_offset",
+            FT_UINT16, BASE_DEC, NULL, 0x0,
+            NULL, HFILL}
+        },
+        {&hf_btatt_cgm_sensor_status_annunciation,
+            {"Sensor Status Annunciation", "btatt.cgm.sensor_status_annunciation",
+            FT_NONE, BASE_NONE, NULL, 0x0,
+            NULL, HFILL}
+        },
+        {&hf_btatt_cgm_sensor_status_annunciation_status,
+            {"Status", "btatt.cgm.sensor_status_annunciation.status",
+            FT_UINT8, BASE_HEX, NULL, 0x0,
+            NULL, HFILL}
+        },
+        {&hf_btatt_cgm_sensor_status_annunciation_status_reserved,
+            {"Reserved", "btatt.cgm.sensor_status_annunciation.status.reserved",
+            FT_UINT8, BASE_HEX, NULL, 0xC0,
+            NULL, HFILL}
+        },
+        {&hf_btatt_cgm_sensor_status_annunciation_status_general_device_fault_has_occurred_in_the_sensor,
+            {"General Device Fault has Occurred in the Sensor", "btatt.cgm.sensor_status_annunciation.status.general_device_fault_has_occurred_in_the_sensor",
+            FT_BOOLEAN, 8, NULL, 0x20,
+            NULL, HFILL}
+        },
+        {&hf_btatt_cgm_sensor_status_annunciation_status_device_specific_alert,
+            {"Device Specific Alert", "btatt.cgm.sensor_status_annunciation.status.device_specific_alert",
+            FT_BOOLEAN, 8, NULL, 0x10,
+            NULL, HFILL}
+        },
+        {&hf_btatt_cgm_sensor_status_annunciation_status_sensor_malfunction,
+            {"Sensor Malfunction", "btatt.cgm.sensor_status_annunciation.status.sensor_malfunction",
+            FT_BOOLEAN, 8, NULL, 0x08,
+            NULL, HFILL}
+        },
+        {&hf_btatt_cgm_sensor_status_annunciation_status_sensor_type_incorrect_for_device,
+            {"Sensor Type Incorrect for Device", "btatt.cgm.sensor_status_annunciation.status.sensor_type_incorrect_for_device",
+            FT_BOOLEAN, 8, NULL, 0x04,
+            NULL, HFILL}
+        },
+        {&hf_btatt_cgm_sensor_status_annunciation_status_device_battery_low,
+            {"Device Battery Low", "btatt.cgm.sensor_status_annunciation.status.device_battery_low",
+            FT_BOOLEAN, 8, NULL, 0x02,
+            NULL, HFILL}
+        },
+        {&hf_btatt_cgm_sensor_status_annunciation_status_session_stopped,
+            {"Session Stopped", "btatt.cgm.sensor_status_annunciation.status.session_stopped",
+            FT_BOOLEAN, 8, NULL, 0x01,
+            NULL, HFILL}
+        },
+        {&hf_btatt_cgm_sensor_status_annunciation_cal_temp,
+            {"Cal/Temp", "btatt.cgm.sensor_status_annunciation.cal_temp",
+            FT_UINT8, BASE_HEX, NULL, 0x0,
+            NULL, HFILL}
+        },
+        {&hf_btatt_cgm_sensor_status_annunciation_cal_temp_reserved,
+            {"Reserved", "btatt.cgm.sensor_status_annunciation.cal_temp.reserved",
+            FT_UINT8, BASE_HEX, NULL, 0xC0,
+            NULL, HFILL}
+        },
+        {&hf_btatt_cgm_sensor_status_annunciation_cal_temp_sensor_temperature_too_low_for_valid_test_result_at_time_of_measurement,
+            {"Sensor Temperature too Low for Valid Test Result at Time of Measurement", "btatt.cgm.sensor_status_annunciation.cal_temp.sensor_temperature_too_low_for_valid_test_result_at_time_of_measurement",
+            FT_BOOLEAN, 8, NULL, 0x20,
+            NULL, HFILL}
+        },
+        {&hf_btatt_cgm_sensor_status_annunciation_cal_temp_sensor_temperature_too_high_for_valid_test_result_at_time_of_measurement,
+            {"Sensor Temperature too High for Valid Test Result at Time of Measurement", "btatt.cgm_measurement.sensor_cal_temp_annunciation.cal_temp.sensor_temperature_too_high_for_valid_test_result_at_time_of_measurement",
+            FT_BOOLEAN, 8, NULL, 0x10,
+            NULL, HFILL}
+        },
+        {&hf_btatt_cgm_sensor_status_annunciation_cal_temp_calibration_required,
+            {"Calibration Required", "btatt.cgm_measurement.sensor_cal_temp_annunciation.cal_temp.calibration_required",
+            FT_BOOLEAN, 8, NULL, 0x08,
+            NULL, HFILL}
+        },
+        {&hf_btatt_cgm_sensor_status_annunciation_cal_temp_calibration_recommended,
+            {"Calibration Recommended", "btatt.cgm_measurement.sensor_cal_temp_annunciation.cal_temp.calibration_recommended",
+            FT_BOOLEAN, 8, NULL, 0x04,
+            NULL, HFILL}
+        },
+        {&hf_btatt_cgm_sensor_status_annunciation_cal_temp_calibration_not_allowed,
+            {"Calibration not Allowed", "btatt.cgm_measurement.sensor_cal_temp_annunciation.cal_temp.calibration_not_allowed",
+            FT_BOOLEAN, 8, NULL, 0x02,
+            NULL, HFILL}
+        },
+        {&hf_btatt_cgm_sensor_status_annunciation_cal_temp_time_synchronization_between_sensor_and_collector_required,
+            {"Time Synchronization between Sensor and Collector Required", "btatt.cgm_measurement.sensor_cal_temp_annunciation.cal_temp.time_synchronization_between_sensor_and_collector_required",
+            FT_BOOLEAN, 8, NULL, 0x01,
+            NULL, HFILL}
+        },
+        {&hf_btatt_cgm_sensor_status_annunciation_warning,
+            {"Warning", "btatt.cgm.sensor_status_annunciation.warning",
+            FT_UINT8, BASE_HEX, NULL, 0x0,
+            NULL, HFILL}
+        },
+        {&hf_btatt_cgm_sensor_status_annunciation_warning_sensor_result_higher_than_the_device_can_process,
+            {"Sensor Result Higher than the Device Can Process", "btatt.cgm.sensor_status_annunciation.warning.sensor_result_higher_than_the_device_can_process",
+            FT_BOOLEAN, 8, NULL, 0x80,
+            NULL, HFILL}
+        },
+        {&hf_btatt_cgm_sensor_status_annunciation_warning_sensor_result_lower_than_the_device_can_process,
+            {"Sensor Result Lower than the Device Can Process", "btatt.cgm_measurement.sensor_warning_annunciation.warning.sensor_result_lower_than_the_device_can_process",
+            FT_BOOLEAN, 8, NULL, 0x40,
+            NULL, HFILL}
+        },
+        {&hf_btatt_cgm_sensor_status_annunciation_warning_sensor_rate_of_increase_exceeded,
+            {"Sensor Rate of Increase Exceeded", "btatt.cgm_measurement.sensor_warning_annunciation.warning.sensor_rate_of_increase_exceeded",
+            FT_BOOLEAN, 8, NULL, 0x20,
+            NULL, HFILL}
+        },
+        {&hf_btatt_cgm_sensor_status_annunciation_warning_sensor_rate_of_decrease_exceeded,
+            {"Sensor Rate of Decrease Exceeded", "btatt.cgm_measurement.sensor_warning_annunciation.warning.sensor_rate_of_decrease_exceeded",
+            FT_BOOLEAN, 8, NULL, 0x10,
+            NULL, HFILL}
+        },
+        {&hf_btatt_cgm_sensor_status_annunciation_warning_sensor_result_higher_than_the_hyper_level,
+            {"Sensor Result Higher than the Hyper Level", "btatt.cgm_measurement.sensor_warning_annunciation.warning.sensor_result_higher_than_the_hyper_level",
+            FT_BOOLEAN, 8, NULL, 0x08,
+            NULL, HFILL}
+        },
+        {&hf_btatt_cgm_sensor_status_annunciation_warning_sensor_result_lower_than_the_hypo_level,
+            {"Sensor Result Lower than the Hypo Level", "btatt.cgm_measurement.sensor_warning_annunciation.warning.sensor_result_lower_than_the_hypo_level",
+            FT_BOOLEAN, 8, NULL, 0x04,
+            NULL, HFILL}
+        },
+        {&hf_btatt_cgm_sensor_status_annunciation_warning_sensor_result_higher_than_the_patient_high_level,
+            {"Sensor Result Higher than the Patient High Level", "btatt.cgm_measurement.sensor_warning_annunciation.warning.sensor_result_higher_than_the_patient_high_level",
+            FT_BOOLEAN, 8, NULL, 0x02,
+            NULL, HFILL}
+        },
+        {&hf_btatt_cgm_sensor_status_annunciation_warning_sensor_result_lower_than_the_patient_low_level,
+            {"Sensor Result Lower than the Patient Low Level", "btatt.cgm_measurement.sensor_warning_annunciation.warning.sensor_result_lower_than_the_patient_low_level",
+            FT_BOOLEAN, 8, NULL, 0x01,
+            NULL, HFILL}
+        },
+        {&hf_btatt_cgm_measurement_trend_information,
+            {"Trend Information", "btatt.cgm_measurement.trend_information",
+            FT_IEEE_11073_SFLOAT, BASE_FLOAT, NULL, 0x0,
+            NULL, HFILL}
+        },
+        {&hf_btatt_cgm_measurement_quality,
+            {"Quality", "btatt.cgm_measurement.quality",
+            FT_IEEE_11073_SFLOAT, BASE_FLOAT, NULL, 0x0,
+            NULL, HFILL}
+        },
+        {&hf_btatt_cgm_e2e_crc,
+            {"E2E-CRC", "btatt.cgm.e2e_crc.",
+            FT_UINT16, BASE_HEX, NULL, 0x0,
+            NULL, HFILL}
+        },
+        {&hf_btatt_cgm_feature_feature,
+            {"Feature", "btatt.cgm_feature.feature",
+            FT_UINT24, BASE_HEX, NULL, 0x0,
+            NULL, HFILL}
+        },
+        {&hf_btatt_cgm_feature_feature_reserved,
+            {"Reserved", "btatt.cgm_feature.feature.reserved",
+            FT_UINT24, BASE_HEX, NULL, 0xFE0000,
+            NULL, HFILL}
+        },
+        {&hf_btatt_cgm_feature_feature_quality,
+            {"Quality", "btatt.cgm_feature.feature.quality",
+            FT_BOOLEAN, 24, NULL, 0x010000,
+            NULL, HFILL}
+        },
+        {&hf_btatt_cgm_feature_feature_trend_information,
+            {"Trend Information", "btatt.cgm_feature.feature.trend_information",
+            FT_BOOLEAN, 24, NULL, 0x008000,
+            NULL, HFILL}
+        },
+        {&hf_btatt_cgm_feature_feature_multiple_sessions,
+            {"Multiple Sessions", "btatt.cgm_feature.feature.multiple_sessions",
+            FT_BOOLEAN, 24, NULL, 0x004000,
+            NULL, HFILL}
+        },
+        {&hf_btatt_cgm_feature_feature_multiple_bond,
+            {"Multiple Bond", "btatt.cgm_feature.feature.multiple_bond",
+            FT_BOOLEAN, 24, NULL, 0x002000,
+            NULL, HFILL}
+        },
+        {&hf_btatt_cgm_feature_feature_e2e_crc,
+            {"E2E-CRC", "btatt.cgm_feature.feature.e2e_crc",
+            FT_BOOLEAN, 24, NULL, 0x001000,
+            NULL, HFILL}
+        },
+        {&hf_btatt_cgm_feature_feature_general_device_fault,
+            {"General Device Fault", "btatt.cgm_feature.feature.general_device_fault",
+            FT_BOOLEAN, 24, NULL, 0x000800,
+            NULL, HFILL}
+        },
+        {&hf_btatt_cgm_feature_feature_sensor_type_error_detection,
+            {"Sensor Type Error Detection", "btatt.cgm_feature.feature.sensor_type_error_detection",
+            FT_BOOLEAN, 24, NULL, 0x000400,
+            NULL, HFILL}
+        },
+        {&hf_btatt_cgm_feature_feature_low_battery_detection,
+            {"Low Battery Detection", "btatt.cgm_feature.feature.low_battery_detection",
+            FT_BOOLEAN, 24, NULL, 0x000200,
+            NULL, HFILL}
+        },
+        {&hf_btatt_cgm_feature_feature_sensor_result_high_low_detection,
+            {"Sensor Result High-Low Detection", "btatt.cgm_feature.feature.sensor_result_high_low_detection",
+            FT_BOOLEAN, 24, NULL, 0x000100,
+            NULL, HFILL}
+        },
+        {&hf_btatt_cgm_feature_feature_sensor_temperature_high_low_detection,
+            {"Sensor Temperature High-Low Detection", "btatt.cgm_feature.feature.sensor_temperature_high_low_detection",
+            FT_BOOLEAN, 24, NULL, 0x000080,
+            NULL, HFILL}
+        },
+        {&hf_btatt_cgm_feature_feature_sensor_malfunction_detection,
+            {"Sensor Malfunction Detection", "btatt.cgm_feature.feature.sensor_malfunction_detection",
+            FT_BOOLEAN, 24, NULL, 0x000040,
+            NULL, HFILL}
+        },
+        {&hf_btatt_cgm_feature_feature_device_specific_alert,
+            {"Device Specific Alert", "btatt.cgm_feature.feature.device_specific_alert",
+            FT_BOOLEAN, 24, NULL, 0x000020,
+            NULL, HFILL}
+        },
+        {&hf_btatt_cgm_feature_feature_rate_of_increase_decrease_alerts,
+            {"Rate of Increase Decrease Alerts", "btatt.cgm_feature.feature.rate_of_increase_decrease_alerts",
+            FT_BOOLEAN, 24, NULL, 0x000010,
+            NULL, HFILL}
+        },
+        {&hf_btatt_cgm_feature_feature_hyper_alerts,
+            {"Hyper Alerts", "btatt.cgm_feature.feature.hyper_alerts",
+            FT_BOOLEAN, 24, NULL, 0x000008,
+            NULL, HFILL}
+        },
+        {&hf_btatt_cgm_feature_feature_hypo_alerts,
+            {"Hypo Alerts", "btatt.cgm_feature.feature.hypo_alerts",
+            FT_BOOLEAN, 24, NULL, 0x000004,
+            NULL, HFILL}
+        },
+        {&hf_btatt_cgm_feature_feature_patient_high_low_alerts,
+            {"Patient High-Low Alerts", "btatt.cgm_feature.feature.patient_high_low_alerts",
+            FT_BOOLEAN, 24, NULL, 0x000002,
+            NULL, HFILL}
+        },
+        {&hf_btatt_cgm_feature_feature_calibration,
+            {"Calibration", "btatt.cgm_feature.feature.calibration",
+            FT_BOOLEAN, 24, NULL, 0x000001,
+            NULL, HFILL}
+        },
+        {&hf_btatt_cgm_type_and_sample_location,
+            {"Type and Sample Location", "btatt.cgm.type_and_sample_location",
+            FT_UINT8, BASE_HEX, NULL, 0x0,
+            NULL, HFILL}
+        },
+        {&hf_btatt_cgm_type,
+            {"Type and Sample Location", "btatt.cgm.type_and_sample_location.type",
+            FT_UINT8, BASE_HEX, VALS(cgm_feature_type_vals), 0xF0,
+            NULL, HFILL}
+        },
+        {&hf_btatt_cgm_sample_location,
+            {"Sample Location", "btatt.cgm.type_and_sample_location.sample_location",
+            FT_UINT8, BASE_HEX, VALS(cgm_feature_sample_location_vals), 0x0F,
+            NULL, HFILL}
+        },
+        {&hf_btatt_cgm_time_offset,
+            {"Time Offset", "btatt.cgm.time_offset",
+            FT_UINT16, BASE_DEC, NULL, 0x0,
+            NULL, HFILL}
+        },
+        {&hf_btatt_cgm_status,
+            {"Status", "btatt.cgm.status",
+            FT_UINT24, BASE_HEX, NULL, 0x0,
+            NULL, HFILL}
+        },
+        {&hf_btatt_cgm_session_start_time,
+            {"Session Start Time", "btatt.cgm.session_start_time",
+            FT_NONE, BASE_NONE, NULL, 0x0,
+            NULL, HFILL}
+        },
+        {&hf_btatt_cgm_session_run_time,
+            {"Session Run Time", "btatt.cgm.session_run_time",
+            FT_UINT16, BASE_DEC, NULL, 0x0,
+            NULL, HFILL}
+        },
+        {&hf_btatt_cgm_specific_ops_control_point_opcode,
+            {"Opcode", "btatt.cgm_specific_ops_control_point.opcode",
+            FT_UINT8, BASE_HEX, VALS(cgm_specific_ops_control_point_opcode_vals), 0x0,
+            NULL, HFILL}
+        },
+        {&hf_btatt_cgm_specific_ops_control_point_operand,
+            {"Operand", "btatt.cgm_specific_ops_control_point.operand",
+            FT_NONE, BASE_NONE, NULL, 0x0,
+            NULL, HFILL}
+        },
+        {&hf_btatt_cgm_specific_ops_control_point_operand_communication_interval,
+            {"Communication Interval", "btatt.cgm_specific_ops_control_point.operand.communication_interval",
+            FT_UINT8, BASE_DEC, NULL, 0x0,
+            NULL, HFILL}
+        },
+        {&hf_btatt_cgm_specific_ops_control_point_calibration_glucose_concentration,
+            {"Calibration Glucose Concentration", "btatt.cgm_specific_ops_control_point.operand.calibration_glucose_concentration",
+            FT_IEEE_11073_SFLOAT, BASE_FLOAT, NULL, 0x0,
+            NULL, HFILL}
+        },
+        {&hf_btatt_cgm_specific_ops_control_point_calibration_time,
+            {"Calibration Time", "btatt.cgm_specific_ops_control_point.operand.calibration_time",
+            FT_UINT16, BASE_DEC, NULL, 0x0,
+            NULL, HFILL}
+        },
+        {&hf_btatt_cgm_specific_ops_control_point_next_calibration_time,
+            {"Next Calibration Time", "btatt.cgm_specific_ops_control_point.operand.next_calibration_time",
+            FT_UINT16, BASE_DEC, NULL, 0x0,
+            NULL, HFILL}
+        },
+        {&hf_btatt_cgm_specific_ops_control_point_calibration_data_record_number,
+            {"Calibration Data Record Number", "btatt.cgm_specific_ops_control_point.operand.calibration_data_record_number",
+            FT_UINT16, BASE_DEC, NULL, 0x0,
+            NULL, HFILL}
+        },
+        {&hf_btatt_cgm_specific_ops_control_point_calibration_status,
+            {"Calibration Status", "btatt.cgm_specific_ops_control_point.operand.calibration_status",
+            FT_UINT8, BASE_DEC, NULL, 0x0,
+            NULL, HFILL}
+        },
+        {&hf_btatt_cgm_specific_ops_control_point_calibration_status_reserved,
+            {"Reserved", "btatt.cgm_specific_ops_control_point.operand.calibration_status.reserved",
+            FT_UINT8, BASE_DEC, NULL, 0xF8,
+            NULL, HFILL}
+        },
+        {&hf_btatt_cgm_specific_ops_control_point_calibration_status_pending,
+            {"Pending", "btatt.cgm_specific_ops_control_point.operand.calibration_status.pending",
+            FT_BOOLEAN, 8, NULL, 0x04,
+            NULL, HFILL}
+        },
+        {&hf_btatt_cgm_specific_ops_control_point_calibration_status_out_of_range,
+            {"Out of Range", "btatt.cgm_specific_ops_control_point.operand.calibration_status.out_of_range",
+            FT_BOOLEAN, 8, NULL, 0x02,
+            NULL, HFILL}
+        },
+        {&hf_btatt_cgm_specific_ops_control_point_calibration_status_rejected,
+            {"Rejected", "btatt.cgm_specific_ops_control_point.operand.calibration_status.rejected",
+            FT_BOOLEAN, 8, NULL, 0x01,
+            NULL, HFILL}
+        },
+        {&hf_btatt_cgm_specific_ops_control_point_operand_calibration_data_record_number,
+            {"Calibration Data Record Number", "btatt.cgm_specific_ops_control_point.operand.calibration_data_record_number",
+            FT_UINT16, BASE_DEC, NULL, 0x0,
+            NULL, HFILL}
+        },
+        {&hf_btatt_cgm_specific_ops_control_point_operand_alert_level,
+            {"Alert Level [mg/dL]", "btatt.cgm_specific_ops_control_point.operand.alert_level",
+            FT_IEEE_11073_SFLOAT, BASE_FLOAT, NULL, 0x0,
+            NULL, HFILL}
+        },
+        {&hf_btatt_cgm_specific_ops_control_point_operand_alert_level_rate,
+            {"Alert Level Rate [mg/dL/min]", "btatt.cgm_specific_ops_control_point.operand.alert_level_rate",
+            FT_IEEE_11073_SFLOAT, BASE_FLOAT, NULL, 0x0,
+            NULL, HFILL}
+        },
+        {&hf_btatt_cgm_specific_ops_control_point_request_opcode,
+            {"Request Opcode", "btatt.cgm_specific_ops_control_point.request_opcode",
+            FT_UINT8, BASE_HEX, VALS(cgm_specific_ops_control_point_opcode_vals), 0x0,
+            NULL, HFILL}
+        },
+        {&hf_btatt_cgm_specific_ops_control_point_response_code,
+            {"Response Code", "btatt.cgm_specific_ops_control_point.response_code",
+            FT_UINT8, BASE_HEX, VALS(cgm_specific_ops_control_point_response_code_vals), 0x0,
+            NULL, HFILL}
+        },
+        {&hf_btatt_uri,
+            {"URI", "btatt.uri",
+            FT_STRING, BASE_NONE, NULL, 0x0,
+            NULL, HFILL}
+        },
+        {&hf_btatt_http_headers,
+            {"HTTP Headers", "btatt.http_headers",
+            FT_STRING, BASE_NONE, NULL, 0x0,
+            NULL, HFILL}
+        },
+        {&hf_btatt_http_status_code,
+            {"HTTP Status Code", "btatt.http_status_code",
+            FT_UINT16, BASE_DEC, VALS(vals_http_status_code), 0x0,
+            NULL, HFILL}
+        },
+        {&hf_btatt_http_data_status,
+            {"HTTP Data Status", "btatt.http_data_status",
+            FT_UINT8, BASE_HEX, NULL, 0x0,
+            NULL, HFILL}
+        },
+        {&hf_btatt_http_data_status_headers_received,
+            {"Headers Received", "btatt.http_data_status.headers_received",
+            FT_BOOLEAN, 8, NULL, 0x01,
+            NULL, HFILL}
+        },
+        {&hf_btatt_http_data_status_headers_truncated,
+            {"Headers Truncated", "btatt.http_data_status.headers_truncated",
+            FT_BOOLEAN, 8, NULL, 0x02,
+            NULL, HFILL}
+        },
+        {&hf_btatt_http_data_status_body_received,
+            {"Body Received", "btatt.http_data_status.body_received",
+            FT_BOOLEAN, 8, NULL, 0x04,
+            NULL, HFILL}
+        },
+        {&hf_btatt_http_data_status_body_truncated,
+            {"Body Truncated", "btatt.http_data_status.body_truncated",
+            FT_BOOLEAN, 8, NULL, 0x08,
+            NULL, HFILL}
+        },
+        {&hf_btatt_http_data_status_reserved,
+            {"Reserved", "btatt.http_data_status.reserved",
+            FT_UINT8, BASE_HEX, NULL, 0xF0,
+            NULL, HFILL}
+        },
+        {&hf_btatt_http_entity_body,
+            {"HTTP Entity Body", "btatt.http_entity_body",
+            FT_STRING, BASE_NONE, NULL, 0x0,
+            NULL, HFILL}
+        },
+        {&hf_btatt_http_control_point_opcode,
+            {"Opcode", "btatt.control_point.opcode",
+            FT_UINT8, BASE_HEX, VALS(http_control_point_opcode_vals), 0x0,
+            NULL, HFILL}
+        },
+        {&hf_btatt_https_security,
+            {"HTTPS Security", "btatt.https_security",
+            FT_UINT8, BASE_HEX, VALS(https_security_vals), 0x0,
+            NULL, HFILL}
+        },
+        {&hf_btatt_tds_opcode,
+            {"Opcode", "btatt.tds.opcode",
+            FT_UINT8, BASE_HEX, VALS(tds_opcode_vals), 0x0,
+            NULL, HFILL}
+        },
+        {&hf_btatt_tds_organization_id,
+            {"Organization ID", "btatt.tds.organization_id",
+            FT_UINT8, BASE_HEX, VALS(tds_organization_id_vals), 0x0,
+            NULL, HFILL}
+        },
+        {&hf_btatt_tds_result_code,
+            {"Result Code", "btatt.tds.result_code",
+            FT_UINT8, BASE_HEX, VALS(tds_result_code_vals), 0x0,
+            NULL, HFILL}
+        },
+        {&hf_btatt_tds_data,
+            {"Data", "btatt.tds.data",
+            FT_BYTES, BASE_NONE, NULL, 0x0,
+            NULL, HFILL}
+        },
+        {&hf_btatt_ots_feature_oacp,
+            {"OACP Features", "btatt.ots.oacp",
+            FT_UINT32, BASE_HEX, NULL, 0x0,
+            NULL, HFILL}
+        },
+        {&hf_btatt_ots_feature_oacp_reserved,
+            {"Reserved", "btatt.ots.oacp.reserved",
+            FT_BOOLEAN, 32, NULL, 0xFFFFFC00,
+            NULL, HFILL}
+        },
+        {&hf_btatt_ots_feature_oacp_abort,
+            {"Abort", "btatt.ots.oacp.abort",
+            FT_BOOLEAN, 32, NULL, 0x00000200,
+            NULL, HFILL}
+        },
+        {&hf_btatt_ots_feature_oacp_patching_of_object,
+            {"Patching of Object", "btatt.ots.oacp.patching_of_object",
+            FT_BOOLEAN, 32, NULL, 0x00000100,
+            NULL, HFILL}
+        },
+        {&hf_btatt_ots_feature_oacp_truncation_of_objects,
+            {"Truncation of Objects", "btatt.ots.oacp.truncation_of_objects",
+            FT_BOOLEAN, 32, NULL, 0x00000080,
+            NULL, HFILL}
+        },
+        {&hf_btatt_ots_feature_oacp_appending_additional_data_to_object,
+            {"Appending Additional Data to Object", "btatt.ots.oacp.appending_additional_data_to_object",
+            FT_BOOLEAN, 32, NULL, 0x00000040,
+            NULL, HFILL}
+        },
+        {&hf_btatt_ots_feature_oacp_write,
+            {"Write", "btatt.ots.oacp.write",
+            FT_BOOLEAN, 32, NULL, 0x00000020,
+            NULL, HFILL}
+        },
+        {&hf_btatt_ots_feature_oacp_read,
+            {"Read", "btatt.ots.oacp.read",
+            FT_BOOLEAN, 32, NULL, 0x00000010,
+            NULL, HFILL}
+        },
+        {&hf_btatt_ots_feature_oacp_execute,
+            {"Execute", "btatt.ots.oacp.execute",
+            FT_BOOLEAN, 32, NULL, 0x00000008,
+            NULL, HFILL}
+        },
+        {&hf_btatt_ots_feature_oacp_calculate_checksum,
+            {"Calculate Checksum", "btatt.ots.oacp.calculate_checksum",
+            FT_BOOLEAN, 32, NULL, 0x00000004,
+            NULL, HFILL}
+        },
+        {&hf_btatt_ots_feature_oacp_delete,
+            {"Delete", "btatt.ots.oacp.delete",
+            FT_BOOLEAN, 32, NULL, 0x00000002,
+            NULL, HFILL}
+        },
+        {&hf_btatt_ots_feature_oacp_create,
+            {"Create", "btatt.ots.oacp.create",
+            FT_BOOLEAN, 32, NULL, 0x00000001,
+            NULL, HFILL}
+        },
+        {&hf_btatt_ots_feature_olcp,
+            {"OLCP Features", "btatt.ots.olcp",
+            FT_UINT32, BASE_HEX, NULL, 0x0,
+            NULL, HFILL}
+        },
+        {&hf_btatt_ots_feature_olcp_reserved,
+            {"Reserved", "btatt.ots.olcp.reserved",
+            FT_BOOLEAN, 32, NULL, 0xFFFFFFF0,
+            NULL, HFILL}
+        },
+        {&hf_btatt_ots_feature_olcp_clear_marking,
+            {"Clear Marking", "btatt.ots.olcp.clear_marking",
+            FT_BOOLEAN, 32, NULL, 0x00000008,
+            NULL, HFILL}
+        },
+        {&hf_btatt_ots_feature_olcp_request_number_of_objects,
+            {"Request Number of Objects", "btatt.ots.olcp.request_number_of_objects",
+            FT_BOOLEAN, 32, NULL, 0x00000004,
+            NULL, HFILL}
+        },
+        {&hf_btatt_ots_feature_olcp_order,
+            {"Order", "btatt.ots.olcp.order",
+            FT_BOOLEAN, 32, NULL, 0x00000002,
+            NULL, HFILL}
+        },
+        {&hf_btatt_ots_feature_olcp_go_to,
+            {"Go To", "btatt.ots.olcp.go_to",
+            FT_BOOLEAN, 32, NULL, 0x00000001,
+            NULL, HFILL}
+        },
+        {&hf_btatt_ots_object_name,
+            {"Object Name", "btatt.ots.object_name",
+            FT_STRING, STR_UNICODE, NULL, 0x0,
+            NULL, HFILL}
+        },
+        {&hf_btatt_ots_current_size,
+            {"Current Size", "btatt.ots.current_size",
+            FT_UINT32, BASE_DEC, NULL, 0x0,
+            NULL, HFILL}
+        },
+        {&hf_btatt_ots_allocated_size,
+            {"Allocated Size", "btatt.ots.allocated_size",
+            FT_UINT32, BASE_DEC, NULL, 0x0,
+            NULL, HFILL}
+        },
+        {&hf_btatt_ots_object_id,
+            {"Object ID", "btatt.ots.object_id",
+            FT_UINT48, BASE_HEX, NULL, 0x0,
+            NULL, HFILL}
+        },
+        {&hf_btatt_ots_properties,
+            {"Properties", "btatt.ots.properties",
+            FT_UINT32, BASE_HEX, NULL, 0x0,
+            NULL, HFILL}
+        },
+        {&hf_btatt_ots_properties_reserved,
+            {"Reserved", "btatt.ots.properties.reserved",
+            FT_BOOLEAN, 32, NULL, 0xFFFFFF00,
+            NULL, HFILL}
+        },
+        {&hf_btatt_ots_properties_mark,
+            {"Mark", "btatt.ots.properties.mark",
+            FT_BOOLEAN, 32, NULL, 0x00000080,
+            NULL, HFILL}
+        },
+        {&hf_btatt_ots_properties_patch,
+            {"Patch", "btatt.ots.properties.patch",
+            FT_BOOLEAN, 32, NULL, 0x00000040,
+            NULL, HFILL}
+        },
+        {&hf_btatt_ots_properties_truncate,
+            {"Truncate", "btatt.ots.properties.truncate",
+            FT_BOOLEAN, 32, NULL, 0x00000020,
+            NULL, HFILL}
+        },
+        {&hf_btatt_ots_properties_append,
+            {"Append", "btatt.ots.properties.append",
+            FT_BOOLEAN, 32, NULL, 0x00000010,
+            NULL, HFILL}
+        },
+        {&hf_btatt_ots_properties_write,
+            {"Write", "btatt.ots.properties.write",
+            FT_BOOLEAN, 32, NULL, 0x00000008,
+            NULL, HFILL}
+        },
+        {&hf_btatt_ots_properties_read,
+            {"Read", "btatt.ots.properties.read",
+            FT_BOOLEAN, 32, NULL, 0x00000004,
+            NULL, HFILL}
+        },
+        {&hf_btatt_ots_properties_execute,
+            {"Execute", "btatt.ots.properties.execute",
+            FT_BOOLEAN, 32, NULL, 0x00000002,
+            NULL, HFILL}
+        },
+        {&hf_btatt_ots_properties_delete,
+            {"Delete", "btatt.ots.properties.delete",
+            FT_BOOLEAN, 32, NULL, 0x00000001,
+            NULL, HFILL}
+        },
+        {&hf_btatt_ots_flags,
+            {"Properties", "btatt.ots.flags",
+            FT_UINT8, BASE_HEX, NULL, 0x0,
+            NULL, HFILL}
+        },
+        {&hf_btatt_ots_flags_reserved,
+            {"Reserved", "btatt.ots.flags.reserved",
+            FT_BOOLEAN, 8, NULL, 0xE0,
+            NULL, HFILL}
+        },
+        {&hf_btatt_ots_flags_object_deletion,
+            {"Object Deletion", "btatt.ots.flags.object_deletion",
+            FT_BOOLEAN, 8, NULL, 0x10,
+            NULL, HFILL}
+        },
+        {&hf_btatt_ots_flags_object_creation,
+            {"Object Creation", "btatt.ots.flags.object_creation",
+            FT_BOOLEAN, 8, NULL, 0x08,
+            NULL, HFILL}
+        },
+        {&hf_btatt_ots_flags_change_occured_to_the_object_metadata,
+            {"Change Occured to the Object Metadata", "btatt.ots.flags.change_occured_to_the_object_metadata",
+            FT_BOOLEAN, 8, NULL, 0x04,
+            NULL, HFILL}
+        },
+        {&hf_btatt_ots_flags_change_occured_to_the_object_contents,
+            {"Change Occured to the Object Contents", "btatt.ots.flags.change_occured_to_the_object_contents",
+            FT_BOOLEAN, 8, NULL, 0x02,
+            NULL, HFILL}
+        },
+        {&hf_btatt_ots_flags_source_of_change,
+            {"Source of Change", "btatt.ots.flags.source_of_change",
+            FT_BOOLEAN, 8, TFS(&tfs_client_server), 0x01,
+            NULL, HFILL}
+        },
+        {&hf_btatt_ots_action_opcode,
+            {"Opcode", "btatt.ots.action.opcode",
+            FT_UINT8, BASE_HEX, VALS(ots_action_opcode_vals), 0x0,
+            NULL, HFILL}
+        },
+        {&hf_btatt_ots_size,
+            {"Size", "btatt.ots.size",
+            FT_UINT32, BASE_DEC, NULL, 0x0,
+            NULL, HFILL}
+        },
+        {&hf_btatt_ots_offset,
+            {"Offset", "btatt.ots.offset",
+            FT_UINT32, BASE_DEC, NULL, 0x0,
+            NULL, HFILL}
+        },
+        {&hf_btatt_ots_length,
+            {"Length", "btatt.ots.length",
+            FT_UINT32, BASE_DEC, NULL, 0x0,
+            NULL, HFILL}
+        },
+        {&hf_btatt_ots_execute_data,
+            {"Execute Data", "btatt.ots.execute_data",
+            FT_BYTES, BASE_NONE, NULL, 0x0,
+            NULL, HFILL}
+        },
+        {&hf_btatt_ots_action_response_opcode,
+            {"Response Opcode", "btatt.ots.action.response_opcode",
+            FT_UINT8, BASE_HEX, VALS(ots_action_opcode_vals), 0x0,
+            NULL, HFILL}
+        },
+        {&hf_btatt_ots_action_result_code,
+            {"Result Code", "btatt.ots.action.result_code",
+            FT_UINT8, BASE_HEX, VALS(ots_action_result_code_vals), 0x0,
+            NULL, HFILL}
+        },
+        {&hf_btatt_ots_checksum,
+            {"Checksum", "btatt.ots.checksum",
+            FT_UINT32, BASE_DEC_HEX, NULL, 0x0,
+            NULL, HFILL}
+        },
+        {&hf_btatt_ots_list_opcode,
+            {"Opcode", "btatt.ots.list.opcode",
+            FT_UINT8, BASE_HEX, VALS(ots_list_opcode_vals), 0x0,
+            NULL, HFILL}
+        },
+        {&hf_btatt_ots_list_order,
+            {"Order", "btatt.ots.list.order",
+            FT_UINT8, BASE_HEX, VALS(ots_list_order_vals), 0x0,
+            NULL, HFILL}
+        },
+        {&hf_btatt_ots_list_response_opcode,
+            {"Response Opcode", "btatt.ots.list.response_opcode",
+            FT_UINT8, BASE_HEX, VALS(ots_list_opcode_vals), 0x0,
+            NULL, HFILL}
+        },
+        {&hf_btatt_ots_list_result_code,
+            {"Result Code", "btatt.ots.list.result_code",
+            FT_UINT8, BASE_HEX, VALS(ots_list_result_code_vals), 0x0,
+            NULL, HFILL}
+        },
+        {&hf_btatt_ots_list_total_number_of_objects,
+            {"Total Number of Objects", "btatt.ots.list.total_number_of_objects",
+            FT_UINT32, BASE_DEC, NULL, 0x0,
+            NULL, HFILL}
+        },
+        {&hf_btatt_ots_filter,
+            {"Filter", "btatt.ots.filter",
+            FT_UINT8, BASE_HEX, VALS(ots_filter_vals), 0x0,
+            NULL, HFILL}
+        },
+        {&hf_btatt_ots_size_from,
+            {"Size From", "btatt.ots.size_from",
+            FT_UINT32, BASE_DEC, NULL, 0x0,
+            NULL, HFILL}
+        },
+        {&hf_btatt_ots_size_to,
+            {"Size To", "btatt.ots.size_to",
+            FT_UINT32, BASE_DEC, NULL, 0x0,
+            NULL, HFILL}
+        },
+        {&hf_btatt_ots_name_string,
+            {"Name String", "btatt.ots.name_string",
+            FT_STRING, STR_UNICODE, NULL, 0x0,
+            NULL, HFILL}
+        },
+        {&hf_btatt_ots_object_first_created,
+            {"First Created", "btatt.ots.first_created",
+            FT_NONE, BASE_NONE, NULL, 0x0,
+            NULL, HFILL}
+        },
+        {&hf_btatt_ots_object_last_modified,
+            {"Last Modified", "btatt.ots.last_modified",
+            FT_NONE, BASE_NONE, NULL, 0x0,
+            NULL, HFILL}
+        },
+        {&hf_btatt_valid_range_lower_inclusive_value,
+            {"Lower Inclusive Value", "btatt.valid_range.lower_inclusive_value",
+            FT_NONE, BASE_NONE, NULL, 0x0,
+            NULL, HFILL}
+        },
+        {&hf_btatt_valid_range_upper_inclusive_value,
+            {"Upper Inclusive Value", "btatt.valid_range.upper_inclusive_value",
+            FT_NONE, BASE_NONE, NULL, 0x0,
+            NULL, HFILL}
+        },
         {&hf_request_in_frame,
             {"Request in Frame", "btatt.request_in_frame",
             FT_FRAMENUM, BASE_NONE, FRAMENUM_TYPE(FT_FRAMENUM_RESPONSE), 0x0,
@@ -6857,16 +14007,22 @@ proto_register_btatt(void)
         &ett_btatt_value,
         &ett_btatt_opcode,
         &ett_btatt_handle,
-        &ett_btatt_characteristic_properties,
-        &ett_btgatt
+        &ett_btatt_characteristic_properties
     };
 
     static ei_register_info ei[] = {
-        { &ei_btatt_uuid_format_unknown, { "btatt.uuid_format.unknown", PI_PROTOCOL, PI_WARN, "Unknown format", EXPFILL }},
-        { &ei_btatt_handle_too_few,      { "btatt.handle.too_few",      PI_PROTOCOL, PI_WARN, "Too few handles, should be 2 or more", EXPFILL }},
-        { &ei_btatt_mtu_exceeded,        { "btatt.mtu.exceeded",        PI_PROTOCOL, PI_WARN, "Packet size exceed current ATT_MTU", EXPFILL }},
-        { &ei_btatt_mtu_full,            { "btatt.mtu.full",            PI_PROTOCOL, PI_NOTE, "Reached ATT_MTU. Attribute value may be longer.", EXPFILL }},
-        { &ei_btatt_undecoded,           { "btatt.undecoded",           PI_PROTOCOL, PI_UNDECODED, "Undecoded", EXPFILL }},
+        { &ei_btatt_uuid_format_unknown,    { "btatt.uuid_format.unknown",            PI_PROTOCOL,  PI_WARN, "Unknown format", EXPFILL }},
+        { &ei_btatt_handle_too_few,         { "btatt.handle.too_few",                 PI_PROTOCOL,  PI_WARN, "Too few handles, should be 2 or more", EXPFILL }},
+        { &ei_btatt_mtu_exceeded,           { "btatt.mtu.exceeded",                   PI_PROTOCOL,  PI_WARN, "Packet size exceed current ATT_MTU", EXPFILL }},
+        { &ei_btatt_mtu_full,               { "btatt.mtu.full",                       PI_PROTOCOL,  PI_NOTE, "Reached ATT_MTU. Attribute value may be longer.", EXPFILL }},
+        { &ei_btatt_consent_out_of_bounds,  { "btatt.consent.out_of_bounds",          PI_PROTOCOL,  PI_WARN, "Consent Code is out of bounds (0 to 9999)", EXPFILL }},
+        { &ei_btatt_cgm_size_too_small,     { "btatt.cgm_measurement.size.too_small", PI_PROTOCOL,  PI_WARN, "Size too small (6 or geater)", EXPFILL }},
+        { &ei_btatt_opcode_invalid_request, { "btatt.opcode.invalid_request" ,        PI_PROTOCOL,  PI_WARN, "Invalid request", EXPFILL }},
+        { &ei_btatt_opcode_invalid_response,{ "btatt.opcode.invalid_response",        PI_PROTOCOL,  PI_WARN, "Invalid response", EXPFILL }},
+        { &ei_btatt_invalid_usage,          { "btatt.invalid_usage",                  PI_PROTOCOL,  PI_WARN, "Invalid usage of this characteristic with this opcode", EXPFILL }},
+        { &ei_btatt_bad_data,               { "btatt.bad_data",                       PI_PROTOCOL,  PI_WARN, "Bad Data", EXPFILL }},
+        { &ei_btatt_unexpected_data,        { "btatt.unexpected_data",                PI_PROTOCOL,  PI_WARN, "Unexpected Data", EXPFILL }},
+        { &ei_btatt_undecoded,              { "btatt.undecoded",                      PI_UNDECODED, PI_NOTE, "Undecoded", EXPFILL }},
     };
 
     static build_valid_func btatt_handle_da_build_value[1] = {btatt_handle_value};
@@ -6875,26 +14031,12 @@ proto_register_btatt(void)
             1, 0, &btatt_handle_da_values, NULL, NULL,
             decode_as_default_populate_list, decode_as_default_reset, decode_as_default_change, NULL};
 
-    static build_valid_func btatt_uuid16_da_build_value[1] = {btatt_uuid16_value};
-    static decode_as_value_t btatt_uuid16_da_values = {btatt_uuid16_prompt, 1, btatt_uuid16_da_build_value};
-    static decode_as_t btatt_uuid16_da = {"btatt", "ATT UUID16", "btatt.uuid16",
-            1, 0, &btatt_uuid16_da_values, NULL, NULL,
-            decode_as_default_populate_list, decode_as_default_reset, decode_as_default_change, NULL};
-
-    static build_valid_func btatt_uuid128_da_build_value[1] = {btatt_uuid128_value};
-    static decode_as_value_t btatt_uuid128_da_values = {btatt_uuid128_prompt, 1, btatt_uuid128_da_build_value};
-    static decode_as_t btatt_uuid128_da = {"btatt", "ATT UUID128", "btatt.uuid128",
-            1, 0, &btatt_uuid128_da_values, NULL, NULL,
-            decode_as_default_populate_list, decode_as_default_reset, decode_as_default_change, NULL};
-
     /* Register the protocol name and description */
     proto_btatt = proto_register_protocol("Bluetooth Attribute Protocol", "BT ATT", "btatt");
 
-    btatt_handle = new_register_dissector("btatt", dissect_btatt, proto_btatt);
+    btatt_handle = register_dissector("btatt", dissect_btatt, proto_btatt);
 
-    att_handle_dissector_table  = register_dissector_table("btatt.handle",  "BT ATT Handle",  FT_UINT16, BASE_HEX);
-    att_uuid16_dissector_table  = register_dissector_table("btatt.uuid16",  "BT ATT UUID16",  FT_UINT16, BASE_HEX);
-    att_uuid128_dissector_table = register_dissector_table("btatt.uuid128", "BT ATT UUID128", FT_STRING,  BASE_NONE);
+    att_handle_dissector_table = register_dissector_table("btatt.handle", "BT ATT Handle", proto_btatt, FT_UINT16, BASE_HEX, DISSECTOR_TABLE_NOT_ALLOW_DUPLICATE);
 
     /* Required function calls to register the header fields and subtrees used */
     proto_register_field_array(proto_btatt, hf, array_length(hf));
@@ -6913,18 +14055,18 @@ proto_register_btatt(void)
             "Version of protocol supported by this dissector.");
 
     register_decode_as(&btatt_handle_da);
-    register_decode_as(&btatt_uuid16_da);
-    register_decode_as(&btatt_uuid128_da);
 }
 
 void
 proto_reg_handoff_btatt(void)
 {
-    gint i_array;
+    gint                i_array;
+    GString            *uuid_str = g_string_new("");
 
-    usb_hid_boot_keyboard_input_report_handle  = find_dissector("usbhid.boot_report.keyboard.input");
-    usb_hid_boot_keyboard_output_report_handle = find_dissector("usbhid.boot_report.keyboard.output");
-    usb_hid_boot_mouse_input_report_handle     = find_dissector("usbhid.boot_report.mouse.input");
+    http_handle = find_dissector_add_dependency("http", proto_btatt);
+    usb_hid_boot_keyboard_input_report_handle  = find_dissector_add_dependency("usbhid.boot_report.keyboard.input", proto_btatt);
+    usb_hid_boot_keyboard_output_report_handle = find_dissector_add_dependency("usbhid.boot_report.keyboard.output", proto_btatt);
+    usb_hid_boot_mouse_input_report_handle     = find_dissector_add_dependency("usbhid.boot_report.mouse.input", proto_btatt);
 
     dissector_add_uint("btl2cap.psm", BTL2CAP_PSM_ATT, btatt_handle);
     dissector_add_uint("btl2cap.cid", BTL2CAP_FIXED_CID_ATT, btatt_handle);
@@ -6936,7 +14078,7 @@ proto_reg_handoff_btatt(void)
         gchar *short_name;
         gchar *abbrev;
         dissector_handle_t  handle_tmp;
-        gint proto_tmp = -1;
+        gint                proto_tmp;
 
         if (bluetooth_uuid_vals[i_array].value < 0x1800) {
             continue;
@@ -6946,17 +14088,132 @@ proto_reg_handoff_btatt(void)
             continue;
         }
 
-        name       = wmem_strdup_printf(wmem_epan_scope(), "Bluetooth GATT Attribute %s (UUID 0x%04x)",
-                bluetooth_uuid_vals[i_array].strptr, bluetooth_uuid_vals[i_array].value);
-        short_name = wmem_strdup_printf(wmem_epan_scope(), "BT GATT %s (UUID 0x%04x)",
-                bluetooth_uuid_vals[i_array].strptr, bluetooth_uuid_vals[i_array].value);
-        abbrev     = wmem_strdup_printf(wmem_epan_scope(), "btgatt.uuid0x%04x",
-                bluetooth_uuid_vals[i_array].value);
+        g_string_printf(uuid_str, "0x%04x", bluetooth_uuid_vals[i_array].value);
+        name       = wmem_strconcat(wmem_epan_scope(), "Bluetooth GATT Attribute ",
+                bluetooth_uuid_vals[i_array].strptr, " (UUID ", uuid_str->str, ")", NULL);
+        short_name = wmem_strconcat(wmem_epan_scope(), "BT GATT ",
+                bluetooth_uuid_vals[i_array].strptr, " (UUID ", uuid_str->str, ")", NULL);
+        abbrev     = wmem_strconcat(wmem_epan_scope(), "btgatt.uuid", uuid_str->str, NULL);
 
         proto_tmp = proto_register_protocol(name, short_name, abbrev);
-        handle_tmp = new_register_dissector(short_name, dissect_btgatt, proto_tmp);
+        handle_tmp = register_dissector(abbrev, dissect_btgatt, proto_tmp);
 
         dissector_add_for_decode_as("btatt.handle", handle_tmp);
+    }
+    g_string_free(uuid_str, TRUE);
+}
+
+void
+proto_register_btgatt(void)
+{
+    static hf_register_info hf[] = {
+        {&hf_gatt_nordic_uart_tx,
+            {"UART Tx", "btgatt.nordic.uart_tx.text",
+            FT_STRING, BASE_NONE, NULL, 0x0,
+            NULL, HFILL}
+        },
+        {&hf_gatt_nordic_uart_rx,
+            {"UART Rx", "btgatt.nordic.uart_rx.text",
+            FT_STRING, BASE_NONE, NULL, 0x0,
+            NULL, HFILL}
+        },
+        {&hf_gatt_nordic_dfu_packet,
+            {"Packet", "btgatt.nordic.dfu.packet.data",
+            FT_BYTES, BASE_NONE, NULL, 0x0,
+            NULL, HFILL}
+        },
+        {&hf_gatt_nordic_dfu_control_point_opcode,
+            {"Opcode", "btgatt.nordic.dfu.control_point.opcode",
+            FT_UINT8, BASE_DEC, VALS(nordic_dfu_control_point_opcode_vals), 0x0,
+            NULL, HFILL}
+        },
+        {&hf_gatt_nordic_dfu_control_point_init_packet,
+            {"Init Packet", "btgatt.nordic.dfu.control_point.init_packet",
+            FT_UINT8, BASE_HEX, VALS(nordic_dfu_control_point_init_packet_vals), 0x0,
+            NULL, HFILL}
+        },
+        {&hf_gatt_nordic_dfu_control_point_image_type,
+            {"Image Type", "btgatt.nordic.dfu.control_point.image_type",
+            FT_UINT8, BASE_HEX, VALS(nordic_dfu_control_point_image_type_vals), 0x0,
+            NULL, HFILL}
+        },
+        {&hf_gatt_nordic_dfu_control_point_number_of_bytes,
+            {"Number of Bytes of Firmware Image Received", "btgatt.nordic.dfu.control_point.number_of_bytes",
+            FT_UINT32, BASE_DEC, NULL, 0x0,
+            NULL, HFILL}
+        },
+        {&hf_gatt_nordic_dfu_control_point_number_of_packets,
+            {"Number of Packets", "btgatt.nordic.dfu.control_point.number_of_packets",
+            FT_UINT16, BASE_DEC, NULL, 0x0,
+            NULL, HFILL}
+        },
+        {&hf_gatt_nordic_dfu_control_point_request_opcode,
+            {"Request Opcode", "btgatt.nordic.dfu.control_point.request_opcode",
+            FT_UINT8, BASE_DEC, VALS(nordic_dfu_control_point_opcode_vals), 0x0,
+            NULL, HFILL}
+        },
+        {&hf_gatt_nordic_dfu_control_point_response_value,
+            {"Response Value", "btgatt.nordic.dfu.control_point.response_value",
+            FT_UINT8, BASE_DEC, VALS(nordic_dfu_control_point_response_value_vals), 0x0,
+            NULL, HFILL}
+        }
+    };
+
+
+    static gint *ett[] = {
+        &ett_btgatt
+    };
+
+    proto_btgatt = proto_register_protocol("Bluetooth GATT Attribute Protocol", "BT GATT", "btgatt");
+
+    btgatt_handle = register_dissector("btgatt", dissect_btgatt, proto_btgatt);
+
+    proto_register_field_array(proto_btgatt, hf, array_length(hf));
+    proto_register_subtree_array(ett, array_length(ett));
+}
+
+void
+proto_reg_handoff_btgatt(void)
+{
+    gint                i_array;
+    struct uuid_dissectors_t {
+        const gchar *uuid;
+
+        const gchar *name;
+        const gchar *short_name;
+        const gchar *abbrev_name;
+
+        int (*dissect_func)(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data);
+    } uuid_dissectors[] = {
+        { "6e400001-b5a3-f393-e0a9-e50e24dcca9e", "Bluetooth GATT Nordic UART Service",      "Nordic UART Service",      "btgatt.nordic.uart",               NULL},
+        { "6e400002-b5a3-f393-e0a9-e50e24dcca9e", "Bluetooth GATT Nordic UART Tx",           "Nordic UART Tx",           "btgatt.nordic.uart_tx",            dissect_btgatt_nordic_uart_tx},
+        { "6e400003-b5a3-f393-e0a9-e50e24dcca9e", "Bluetooth GATT Nordic UART Rx",           "Nordic UART Rx",           "btgatt.nordic.uart_rx",            dissect_btgatt_nordic_uart_rx},
+        { "00001530-1212-efde-1523-785feabcd123", "Bluetooth GATT Nordic DFU Service",       "Nordic DFU Service",       "btgatt.nordic.dfu",                NULL},
+        { "00001531-1212-efde-1523-785feabcd123", "Bluetooth GATT Nordic DFU Control Point", "Nordic DFU Control Point", "btgatt.nordic.dfu.control_point",  dissect_btgatt_nordic_dfu_control_point},
+        { "00001532-1212-efde-1523-785feabcd123", "Bluetooth GATT Nordic DFU Packet",        "Nordic DFU Packet",        "btgatt.nordic.dfu.packet",         dissect_btgatt_nordic_dfu_packet},
+
+        { NULL, NULL, NULL, NULL, NULL},
+    };
+
+    i_array = 0;
+
+    while (uuid_dissectors[i_array].uuid) {
+        dissector_handle_t  handle_tmp;
+        gint                proto_tmp;
+
+        wmem_tree_insert_string(bluetooth_uuids, uuid_dissectors[i_array].uuid, (gchar *) uuid_dissectors[i_array].short_name, 0);
+
+        if (!uuid_dissectors[i_array].dissect_func) {
+            i_array += 1;
+            continue;
+        }
+
+        proto_tmp  = proto_register_protocol(uuid_dissectors[i_array].name, uuid_dissectors[i_array].short_name, uuid_dissectors[i_array].abbrev_name);
+        handle_tmp = register_dissector(uuid_dissectors[i_array].abbrev_name, uuid_dissectors[i_array].dissect_func, proto_tmp);
+
+        dissector_add_string("bluetooth.uuid", uuid_dissectors[i_array].uuid, handle_tmp);
+        dissector_add_for_decode_as("btatt.handle", handle_tmp);
+        i_array += 1;
     }
 }
 

@@ -83,8 +83,8 @@ static gint ett_hpteam = -1;
  * packets received by the machine.
  */
 
-static void
-dissect_hpteam(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
+static int
+dissect_hpteam(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data _U_)
 {
 
 	col_set_str(pinfo->cinfo, COL_PROTOCOL, "HP NIC Team");
@@ -98,6 +98,7 @@ dissect_hpteam(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
 		hpteam_tree = proto_item_add_subtree(hpteam_item, ett_hpteam);
 		proto_tree_add_item(hpteam_tree, hf_hpteam, tvb, 0, -1, ENC_NA);
 	}
+	return tvb_captured_length(tvb);
 }
 
 void proto_register_hpteam(void)
@@ -124,7 +125,7 @@ void proto_register_hpteam(void)
 	proto_hpteam = proto_register_protocol ("HP NIC Teaming Heartbeat", "HPTEAM", "hpteam");
 
 	/*Tied into the LLC dissector so register the OUI with LLC*/
-	llc_add_oui(OUI_HP_2, "llc.hpteam_pid", "LLC Hewlett Packard OUI PID", &hf_pid);
+	llc_add_oui(OUI_HP_2, "llc.hpteam_pid", "LLC Hewlett Packard OUI PID", &hf_pid, proto_hpteam);
 	proto_register_field_array(proto_hpteam, hf_data, array_length(hf_data));
 	proto_register_subtree_array(ett, array_length(ett));
 	register_dissector("hpteam", dissect_hpteam, proto_hpteam);

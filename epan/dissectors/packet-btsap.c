@@ -708,7 +708,7 @@ proto_register_btsap(void)
     };
 
     proto_btsap = proto_register_protocol("Bluetooth SAP Profile", "BT SAP", "btsap");
-    btsap_handle = new_register_dissector("btsap", dissect_btsap, proto_btsap);
+    btsap_handle = register_dissector("btsap", dissect_btsap, proto_btsap);
 
     proto_register_field_array(proto_btsap, hf, array_length(hf));
     proto_register_subtree_array(ett, array_length(ett));
@@ -729,9 +729,9 @@ proto_register_btsap(void)
 void
 proto_reg_handoff_btsap(void)
 {
-    gsm_sim_cmd_handle = find_dissector("gsm_sim.command");
-    gsm_sim_resp_handle = find_dissector("gsm_sim.response");
-    iso7816_atr_handle = find_dissector("iso7816.atr");
+    gsm_sim_cmd_handle = find_dissector_add_dependency("gsm_sim.command", proto_btsap);
+    gsm_sim_resp_handle = find_dissector_add_dependency("gsm_sim.response", proto_btsap);
+    iso7816_atr_handle = find_dissector_add_dependency("iso7816.atr", proto_btsap);
 
     dissector_add_string("bluetooth.uuid",  "112d", btsap_handle);
 

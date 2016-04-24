@@ -62,6 +62,7 @@
 #define VENDOR_NETSCREEN             3224
 #define VENDOR_NOMADIX               3309
 #define VENDOR_T_MOBILE              3414 /* Former VoiceStream Wireless, Inc. */
+#define VENDOR_BROADBAND_FORUM       3561 /* Former ADSL Forum */
 #define VENDOR_ZTE                   3902
 #define VENDOR_SIEMENS               4329
 #define VENDOR_CABLELABS             4491
@@ -76,6 +77,7 @@
 #define VENDOR_INTERLINK             6728
 #define VENDOR_CNCTC                 7951
 #define VENDOR_COLUBRIS              8744
+#define VENDOR_BARRACUDA            10704 /* Former phion Information Technologies */
 #define VENDOR_ERICSSON_PKT_CORE    10923
 #define VENDOR_COLUMBIA_UNIVERSITY  11862
 #define VENDOR_THE3GPP              10415

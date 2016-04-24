@@ -194,21 +194,29 @@
       </attribute>
       <layout class="QVBoxLayout" name="verticalLayout_4">
        <item>
-        <widget class="QLabel" name="label_plugins">
-         <property name="text">
-          <string/>
-         </property>
-         <property name="textFormat">
-          <enum>Qt::RichText</enum>
-         </property>
-         <property name="alignment">
-          <set>Qt::AlignHCenter|Qt::AlignTop</set>
-         </property>
-         <property name="openExternalLinks">
+        <widget class="QTextEdit" name="te_plugins">
+         <property name="tabChangesFocus">
           <bool>true</bool>
          </property>
-         <property name="textInteractionFlags">
-          <set>Qt::TextBrowserInteraction</set>
+         <property name="readOnly">
+          <bool>true</bool>
+         </property>
+        </widget>
+       </item>
+      </layout>
+     </widget>
+     <widget class="QWidget" name="tab_shortcuts">
+      <attribute name="title">
+       <string>Keyboard Shortcuts</string>
+      </attribute>
+      <layout class="QVBoxLayout" name="verticalLayout_shortcuts">
+       <item>
+        <widget class="QTextEdit" name="te_shortcuts">
+         <property name="tabChangesFocus">
+          <bool>true</bool>
+         </property>
+         <property name="readOnly">
+          <bool>true</bool>
          </property>
         </widget>
        </item>
@@ -243,7 +251,6 @@
   </layout>
  </widget>
  <resources>
-  <include location="../../image/toolbar.qrc"/>
   <include location="../../image/about.qrc"/>
  </resources>
  <connections>

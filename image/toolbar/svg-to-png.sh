@@ -52,22 +52,24 @@ ICONS="
     go-last
     go-next
     go-previous
-    media-playback-start
     x-capture-file-close
     x-capture-file-save
     x-capture-file-reload
+    x-capture-filter-bookmark
+    x-capture-filter-bookmark.active
+    x-capture-filter-bookmark.selected
     x-capture-options
     x-capture-restart
     x-capture-start.on
     x-capture-start
     x-capture-stop
     x-colorize-packets
+    x-display-filter-bookmark
+    x-display-filter-bookmark.active
+    x-display-filter-bookmark.selected
     x-filter-apply
     x-filter-apply.active
     x-filter-apply.selected
-    x-filter-bookmark
-    x-filter-bookmark.active
-    x-filter-bookmark.selected
     x-filter-clear
     x-filter-clear.active
     x-filter-clear.selected
@@ -84,7 +86,8 @@ ICONS="
 
 QRC_FILES=""
 
-for SIZE in 12x12 14x14 16x16 24x14 24x14 ; do
+# 12x12
+for SIZE in 14x14 16x16 24x14 24x14 ; do
     WIDTH=${SIZE/x*/}
     HEIGHT=${SIZE/*x/}
     SIZE_DIR=${SIZE}

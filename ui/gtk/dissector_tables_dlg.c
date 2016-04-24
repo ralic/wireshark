@@ -102,7 +102,7 @@ typedef struct dissector_tables_trees dissector_tables_trees_t;
 static void
 proto_add_to_list(dissector_tables_tree_info_t *tree_info,
                   GtkTreeStore *store,
-                  gchar        *str,
+                  const gchar  *str,
                   const gchar  *proto_name)
 {
     gtk_tree_store_insert_with_values(store, &tree_info->new_iter, &tree_info->iter, G_MAXINT,
@@ -113,14 +113,15 @@ proto_add_to_list(dissector_tables_tree_info_t *tree_info,
 
 static void
 decode_proto_add_to_list (const gchar *table_name _U_, ftenum_t selector_type,
-                          gpointer key, gpointer value _U_, gpointer user_data)
+                          gpointer key, gpointer value, gpointer user_data)
 {
     GtkTreeStore       *store;
     const gchar        *proto_name;
     dtbl_entry_t       *dtbl_entry;
     dissector_handle_t  handle;
     guint32             port;
-    gchar              *str;
+    gchar              *int_str;
+    const gchar        *dissector_name_str;
     dissector_tables_tree_info_t *tree_info;
 
     tree_info = (dissector_tables_tree_info_t *)user_data;
@@ -138,21 +139,24 @@ decode_proto_add_to_list (const gchar *table_name _U_, ftenum_t selector_type,
         case FT_UINT32:
             port = GPOINTER_TO_UINT(key);
             /* Hack: Use fixed width rj str so alpha sort (strcmp) will sort field numerically */
-            str = g_strdup_printf ("%10d", port);
-            proto_add_to_list(tree_info, store, str, proto_name);
-            g_free (str);
+            int_str = g_strdup_printf ("%10d", port);
+            proto_add_to_list(tree_info, store, int_str, proto_name);
+            g_free (int_str);
             break;
 
         case FT_STRING:
         case FT_STRINGZ:
         case FT_UINT_STRING:
         case FT_STRINGZPAD:
-            str = (gchar*) key;
-            proto_add_to_list(tree_info, store, str, proto_name);
+            proto_add_to_list(tree_info, store, (const gchar*)key, proto_name);
             break;
 
         case FT_BYTES:
-            proto_add_to_list(tree_info, store, (gchar*)dissector_handle_get_dissector_name(handle), proto_name);
+        case FT_GUID:
+            dissector_name_str = dissector_handle_get_dissector_name(handle);
+            if (dissector_name_str == NULL)
+                dissector_name_str = "<Unknown>";
+            proto_add_to_list(tree_info, store, dissector_name_str, proto_name);
             break;
 
         default:
@@ -180,7 +184,7 @@ table_name_add_to_list(dissector_tables_tree_info_t  *tree_info,
 
 static void
 display_heur_dissector_table_entries(const char *table_name _U_,
-    heur_dtbl_entry_t *dtbl_entry, gpointer user_data)
+    struct heur_dtbl_entry *dtbl_entry, gpointer user_data)
 {
     dissector_tables_tree_info_t *tree_info  = (dissector_tables_tree_info_t*)user_data;
     GtkTreeStore                 *store;
@@ -199,7 +203,7 @@ display_heur_dissector_table_entries(const char *table_name _U_,
 }
 
 static void
-display_heur_dissector_table_names(const char *table_name, heur_dissector_list_t *list, gpointer w)
+display_heur_dissector_table_names(const char *table_name, struct heur_dissector_list *list, gpointer w)
 {
     dissector_tables_trees_t      *dis_tbl_trees;
     dissector_tables_tree_info_t  *tree_info;
@@ -216,7 +220,7 @@ display_heur_dissector_table_names(const char *table_name, heur_dissector_list_t
 }
 
 static void
-display_dissector_table_names(const char *table_name, const char *ui_name, gpointer w)
+display_dissector_table_names(const char *table_name, const char *ui_name, void *w)
 {
     dissector_tables_trees_t      *dis_tbl_trees;
     dissector_tables_tree_info_t  *tree_info;
@@ -239,6 +243,7 @@ display_dissector_table_names(const char *table_name, const char *ui_name, gpoin
             table_name_add_to_list(tree_info, dis_tbl_trees->str_tree_wgt, table_name, ui_name);
             break;
         case FT_BYTES:
+        case FT_GUID:
             table_name_add_to_list(tree_info, dis_tbl_trees->custom_tree_wgt, table_name, ui_name);
             break;
         default:
@@ -393,7 +398,7 @@ dissector_tables_dlg_init(void)
     g_signal_connect(dissector_tables_dlg_w, "destroy", G_CALLBACK(win_destroy_cb), NULL);
 
     /* Fill the table with data */
-    dissector_all_tables_foreach_table(display_dissector_table_names, (gpointer)&dis_tbl_trees, NULL);
+    dissector_all_tables_foreach_table(display_dissector_table_names, &dis_tbl_trees, NULL);
 
     dissector_all_heur_tables_foreach_table(display_heur_dissector_table_names, (gpointer)&dis_tbl_trees, NULL);
 

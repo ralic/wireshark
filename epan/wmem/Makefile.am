@@ -19,19 +19,16 @@
 # along with this program; if not, write to the Free Software
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 
-if HAVE_WARNINGS_AS_ERRORS
-AM_CFLAGS = -Werror
-endif
-
 include Makefile.common
+include $(top_srcdir)/Makefile.am.inc
 
-AM_CPPFLAGS = \
-	-I$(top_srcdir) \
-	$(LIBWMEM_CFLAGS)
+AM_CPPFLAGS = $(INCLUDEDIRS) $(WS_CPPFLAGS) $(LIBWMEM_CFLAGS) \
+	$(GLIB_CFLAGS)
 
 noinst_LTLIBRARIES = libwmem.la
 
-noinst_PROGRAMS = wmem_test
+EXTRA_PROGRAMS = wmem_test
+
 wmem_test_LDADD = \
 	libwmem.la \
 	$(GLIB_LIBS)
@@ -54,8 +51,8 @@ libwmem_la_SOURCES =	\
 
 EXTRA_DIST = \
 	Makefile.common	\
-	Makefile.nmake \
-	wmem_test.c
+	Makefile.nmake	\
+	CMakeLists.txt
 
 checkapi:
 	$(PERL) $(top_srcdir)/tools/checkAPIs.pl -g termoutput -build \

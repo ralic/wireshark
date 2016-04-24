@@ -54,6 +54,7 @@ set(WIRETAP_FILES
 	logcat_text.c
 	merge.c
 	mpeg.c
+	mplog.c
 	mime_file.c
 	mp2t.c
 	netmon.c
@@ -79,13 +80,15 @@ set(WIRETAP_FILES
 	vms.c
 	vwr.c
 	wtap.c
+	wtap_opttypes.c
+	${CMAKE_SOURCE_DIR}/ws_version_info.c
 )
 
-if (WERROR)
+if (WERROR_COMMON_FLAGS)
 	set_source_files_properties(
 		${WIRETAP_FILES}
 		PROPERTIES
-		COMPILE_FLAGS -Werror
+		COMPILE_FLAGS ${WERROR_COMMON_FLAGS}
 	)
 endif()
 
@@ -110,7 +113,9 @@ add_library(wiretap ${LINK_MODE_LIB}
 	${CMAKE_BINARY_DIR}/image/wiretap.rc
 )
 
-set(FULL_SO_VERSION "0.0.10")
+add_dependencies(wiretap version)
+
+set(FULL_SO_VERSION "0.0.0")
 
 set_target_properties(wiretap PROPERTIES
 	COMPILE_DEFINITIONS "WS_BUILD_DLL"

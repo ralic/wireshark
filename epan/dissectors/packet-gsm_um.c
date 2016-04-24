@@ -47,7 +47,6 @@ static gint ett_gsm_um = -1;
 
 static dissector_handle_t lapdm_handle;
 static dissector_handle_t dtap_handle;
-static dissector_handle_t data_handle;
 
 static gboolean dcs1800_gsm = TRUE;
 
@@ -110,8 +109,8 @@ decode_arfcn(guint16 arfcn, const char **band, guint *uplink, guint *downlink)
 }
 
 
-static void
-dissect_gsm_um(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
+static int
+dissect_gsm_um(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data _U_)
 {
 	proto_tree *gsm_um_tree = NULL;
 	proto_item *ti;
@@ -215,7 +214,7 @@ dissect_gsm_um(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
 			}
 			else {
 				/* Either RACH, or something invalid */
-				call_dissector(data_handle, tvb, pinfo, tree);
+				call_data_dissector(tvb, pinfo, tree);
 			}
 			break;
 		case GSM_UM_CHANNEL_SACCH:
@@ -224,9 +223,10 @@ dissect_gsm_um(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
 			call_dissector(lapdm_handle, tvb, pinfo, tree);
 			break;
 		default:
-			call_dissector(data_handle, tvb, pinfo, tree);
+			call_data_dissector(tvb, pinfo, tree);
 			break;
 	}
+	return tvb_captured_length(tvb);
 }
 
 void
@@ -296,9 +296,8 @@ proto_reg_handoff_gsm_um(void)
 {
 	dissector_handle_t gsm_um_handle;
 
-	lapdm_handle = find_dissector("lapdm");
-	dtap_handle = find_dissector("gsm_a_dtap");
-	data_handle = find_dissector("data");
+	lapdm_handle = find_dissector_add_dependency("lapdm", proto_gsm_um);
+	dtap_handle = find_dissector_add_dependency("gsm_a_dtap", proto_gsm_um);
 
 	gsm_um_handle = create_dissector_handle(dissect_gsm_um, proto_gsm_um);
 

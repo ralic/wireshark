@@ -29,27 +29,11 @@
 #include <locale.h>
 #include <limits.h>
 
-#ifdef HAVE_UNISTD_H
-#include <unistd.h>
-#endif
-
 #ifdef HAVE_GETOPT_H
 #include <getopt.h>
 #endif
 
 #include <errno.h>
-
-#ifdef HAVE_FCNTL_H
-#include <fcntl.h>
-#endif
-
-#ifdef HAVE_SYS_STAT_H
-# include <sys/stat.h>
-#endif
-
-#ifdef HAVE_LIBZ
-#include <zlib.h>      /* to get the libz version number */
-#endif
 
 #ifndef HAVE_GETOPT_LONG
 #include "wsutil/wsgetopt.h"
@@ -68,8 +52,7 @@
 #include <wsutil/file_util.h>
 #include <wsutil/privileges.h>
 #include <wsutil/report_err.h>
-#include <wsutil/ws_diag_control.h>
-#include <wsutil/ws_version_info.h>
+#include <ws_version_info.h>
 
 #include "globals.h"
 #include <epan/timestamp.h>
@@ -739,29 +722,8 @@ print_current_user(void) {
 }
 
 static void
-get_tfshark_compiled_version_info(GString *str)
-{
-  /* LIBZ */
-#ifdef HAVE_LIBZ
-  g_string_append(str, "with libz ");
-#ifdef ZLIB_VERSION
-  g_string_append(str, ZLIB_VERSION);
-#else /* ZLIB_VERSION */
-  g_string_append(str, "(version unknown)");
-#endif /* ZLIB_VERSION */
-#else /* HAVE_LIBZ */
-  g_string_append(str, "without libz");
-#endif /* HAVE_LIBZ */
-}
-
-static void
 get_tfshark_runtime_version_info(GString *str)
 {
-  /* zlib */
-#if defined(HAVE_LIBZ) && !defined(_WIN32)
-  g_string_append_printf(str, ", with libz %s", zlibVersion());
-#endif
-
   /* stuff used by libwireshark */
   epan_get_runtime_version_info(str);
 }
@@ -773,13 +735,11 @@ main(int argc, char *argv[])
   GString             *runtime_info_str;
   char                *init_progfile_dir_error;
   int                  opt;
-DIAG_OFF(cast-qual)
   static const struct option long_options[] = {
-    {(char *)"help", no_argument, NULL, 'h'},
-    {(char *)"version", no_argument, NULL, 'v'},
+    {"help", no_argument, NULL, 'h'},
+    {"version", no_argument, NULL, 'v'},
     {0, 0, 0, 0 }
   };
-DIAG_ON(cast-qual)
   gboolean             arg_error = FALSE;
 
   char                *gpf_path, *pf_path;
@@ -849,7 +809,7 @@ DIAG_ON(cast-qual)
   /*
    * Attempt to get the pathname of the executable file.
    */
-  init_progfile_dir_error = init_progfile_dir(argv[0], (void *)main);
+  init_progfile_dir_error = init_progfile_dir(argv[0], main);
   if (init_progfile_dir_error != NULL) {
     fprintf(stderr, "tfshark: Can't get pathname of tfshark program: %s.\n",
             init_progfile_dir_error);
@@ -858,8 +818,7 @@ DIAG_ON(cast-qual)
   initialize_funnel_ops();
 
   /* Get the compile-time version information string */
-  comp_info_str = get_compiled_version_info(get_tfshark_compiled_version_info,
-                                            epan_get_compiled_version_info);
+  comp_info_str = get_compiled_version_info(NULL, epan_get_compiled_version_info);
 
   /* Get the run-time version information string */
   runtime_info_str = get_runtime_version_info(get_tfshark_runtime_version_info);
@@ -968,7 +927,9 @@ DIAG_ON(cast-qual)
      "-G" flag, as the "-G" flag dumps information registered by the
      dissectors, and we must do it before we read the preferences, in
      case any dissectors register preferences. */
-  epan_init(register_all_protocols, register_all_protocol_handoffs, NULL, NULL);
+  if (!epan_init(register_all_protocols, register_all_protocol_handoffs, NULL,
+                 NULL))
+    return 2;
 
   /* Register all tap listeners; we do this before we parse the arguments,
      as the "-z" argument can specify a registered tap. */
@@ -1747,7 +1708,7 @@ process_packet_second_pass(capture_file *cf, epan_dissect_t *edt, frame_data *fd
   return passed || fdata->flags.dependent_of_displayed;
 }
 
-gboolean
+static gboolean
 local_wtap_read(capture_file *cf, struct wtap_pkthdr* file_phdr _U_, int *err, gchar **err_info _U_, gint64 *data_offset _U_, guint8** data_buffer)
 {
     /* int bytes_read; */

@@ -38,11 +38,14 @@
 
 #include "cfile.h"
 
+class QElapsedTimer;
+
 class PacketListModel : public QAbstractItemModel
 {
     Q_OBJECT
 public:
     explicit PacketListModel(QObject *parent = 0, capture_file *cf = NULL);
+    ~PacketListModel();
     void setCaptureFile(capture_file *cf);
     QModelIndex index(int row, int column,
                       const QModelIndex & = QModelIndex()) const;
@@ -55,7 +58,7 @@ public:
     int columnCount(const QModelIndex & = QModelIndex()) const;
     QVariant data(const QModelIndex &d_index, int role) const;
     QVariant headerData(int section, Qt::Orientation orientation,
-                             int role = Qt::DisplayRole) const;
+                        int role = Qt::DisplayRole | Qt::ToolTipRole) const;
 
     gint appendPacket(frame_data *fdata);
     frame_data *getRowFdata(int row);
@@ -69,11 +72,14 @@ public:
     void setDisplayedFrameIgnore(gboolean set);
     void toggleFrameRefTime(const QModelIndex &rt_index);
     void unsetAllFrameRefTime();
-    void setSizeHintEnabled(bool enable) { size_hint_enabled_ = enable; }
+    void applyTimeShift();
+
+    void setMaximiumRowHeight(int height);
 
 signals:
     void goToPacket(int);
-    void itemHeightChanged(const QModelIndex &ih_index) const;
+    void maxLineCountChanged(const QModelIndex &ih_index) const;
+    void itemHeightChanged(const QModelIndex &ih_index);
     void pushBusyStatus(const QString &status);
     void popBusyStatus();
 
@@ -82,26 +88,30 @@ signals:
     void popProgressStatus();
 
 public slots:
-    void setMonospaceFont(const QFont &mono_font, int row_height);
     void sort(int column, Qt::SortOrder order = Qt::AscendingOrder);
+    void flushVisibleRows();
+    void dissectIdle(bool reset = false);
 
 private:
     capture_file *cap_file_;
-    QFont mono_font_;
     QList<QString> col_names_;
-    QVector<PacketListRecord *> visible_rows_;
     QVector<PacketListRecord *> physical_rows_;
+    QVector<PacketListRecord *> visible_rows_;
+    QVector<PacketListRecord *> new_visible_rows_;
     QMap<int, int> number_to_row_;
 
-    bool size_hint_enabled_;
-    int row_height_;
-    int line_spacing_;
+    int max_row_height_; // px
+    int max_line_count_;
 
     static int sort_column_;
     static int text_sort_column_;
     static Qt::SortOrder sort_order_;
     static capture_file *sort_cap_file_;
     static bool recordLessThan(PacketListRecord *r1, PacketListRecord *r2);
+
+    QElapsedTimer *idle_dissection_timer_;
+    int idle_dissection_row_;
+
 
 private slots:
     void emitItemHeightChanged(const QModelIndex &ih_index);

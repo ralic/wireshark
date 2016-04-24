@@ -262,12 +262,17 @@ topic_action_url(topic_action_e action)
     case(HELP_FOLLOW_STREAM_DIALOG):
         url = user_guide_url("ChAdvFollowTCPSection.html");
         break;
+    case(HELP_SHOW_PACKET_BYTES_DIALOG):
+        url = user_guide_url("ChAdvShowPacketBytes.html");
+        break;
     case(HELP_EXPERT_INFO_DIALOG):
         url = user_guide_url("ChAdvExpert.html");
         break;
+#ifdef HAVE_EXTCAP
     case(HELP_EXTCAP_OPTIONS_DIALOG):
         url = user_guide_url("ChExtcapOptions.html");
         break;
+#endif
     case(HELP_STATS_SUMMARY_DIALOG):
         url = user_guide_url("ChStatSummary.html");
         break;
@@ -346,7 +351,14 @@ topic_action_url(topic_action_e action)
         url = user_guide_url("ChTelRTPAnalysis.html");
         break;
     case(HELP_NEW_PACKET_DIALOG):
-        return user_guide_url("ChapterWork.html#ChWorkPacketSepView");
+        url = user_guide_url("ChapterWork.html#ChWorkPacketSepView");
+        break;
+    case(HELP_IAX2_ANALYSIS_DIALOG):
+        url = user_guide_url("ChTelIAX2Analysis.html");
+        break;
+    case(HELP_TELEPHONY_RTP_PLAYER_DIALOG):
+        url = user_guide_url("ChTelRtpPlayer.html");
+        break;
 
     case(TOPIC_ACTION_NONE):
     default:

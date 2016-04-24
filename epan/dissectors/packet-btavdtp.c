@@ -359,11 +359,11 @@ static const enum_val_t pref_vdp_codec[] = {
 /* APT-X Codec */
 static int  proto_aptx                            = -1;
 static int  hf_aptx_data                          = -1;
-static int  hf_aptx_cummulative_frame_duration    = -1;
+static int  hf_aptx_cumulative_frame_duration    = -1;
 static int  hf_aptx_delta_time                    = -1;
 static int  hf_aptx_avrcp_song_position           = -1;
 static int  hf_aptx_delta_time_from_the_beginning = -1;
-static int  hf_aptx_cummulative_duration          = -1;
+static int  hf_aptx_cumulative_duration          = -1;
 static int  hf_aptx_diff                          = -1;
 static gint ett_aptx                              = -1;
 static dissector_handle_t aptx_handle;
@@ -444,6 +444,43 @@ static const value_string error_code_vals[] = {
     { 0x29,  "Unsupported Configuration" },
     /* ACP to INT, Procedure Error Codes */
     { 0x31,  "Bad State" },
+    /* GAVDTP */
+    { 0x80,  "The Service Category Stated is Invalid" },
+    { 0x81,  "Lack of Resource New Stream Context" },
+    /* A2DP */
+    { 0xC1,  "Invalid Codec Type" },
+    { 0xC2,  "Not Supported Codec Type" },
+    { 0xC3,  "Invalid Sampling Frequency" },
+    { 0xC4,  "Not Supported Sampling Frequency" },
+    { 0xC5,  "Invalid Channel Mode" },
+    { 0xC6,  "Not Supported Channel Mode" },
+    { 0xC7,  "Invalid Subbands" },
+    { 0xC8,  "Not Supported Subbands" },
+    { 0xC9,  "Invalid Allocation Method" },
+    { 0xCA,  "Not Supported Allocation Method" },
+    { 0xCB,  "Invalid Minimum Bitpool Value" },
+    { 0xCC,  "Not Supported Minimum Bitpool Value" },
+    { 0xCD,  "Invalid Maximum Bitpool Value" },
+    { 0xCE,  "Not Supported Maximum Bitpool Value" },
+    { 0xCF,  "Invalid Layer" },
+    { 0xD0,  "Not Supported Layer" },
+    { 0xD1,  "Not Supported CRC" },
+    { 0xD2,  "Not Supported MPF" },
+    { 0xD3,  "Not Supported VBR" },
+    { 0xD4,  "Invalid Bit Rate" },
+    { 0xD5,  "Not Supported Bit Rate" },
+    { 0xD6,  "Invalid Object Type" },
+    { 0xD7,  "Not Supported Object Type" },
+    { 0xD8,  "Invalid Channels" },
+    { 0xD9,  "Not Supported Channels" },
+    { 0xDA,  "Invalid Version" },
+    { 0xDB,  "Not Supported Version" },
+    { 0xDC,  "Not Supported Maximum SUL" },
+    { 0xDD,  "Invalid Block Length" },
+    { 0xE0,  "Invalid Content Protection Type" },
+    { 0xE1,  "Invalid Content Protection Format" },
+    { 0xE2,  "Invalid Coded Parameter" },
+    { 0xE3,  "Not Supported Codec Parameter" },
     { 0, NULL }
 };
 
@@ -677,7 +714,7 @@ dissect_sep(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, gint offset,
         if (!pinfo->fd->flags.visited) {
             sep_entry_t     *sep_data;
             wmem_tree_key_t  key[7];
-            guint32          frame_number = pinfo->fd->num;
+            guint32          frame_number = pinfo->num;
 
             key[0].length = 1;
             key[0].key    = &interface_id;
@@ -1316,7 +1353,7 @@ dissect_btavdtp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data)
     chandle = l2cap_data->chandle;
     psm = l2cap_data->psm;
     cid = l2cap_data->cid;
-    frame_number = pinfo->fd->num;
+    frame_number = pinfo->num;
 
     key[0].length = 1;
     key[0].key    = &interface_id;
@@ -1332,10 +1369,10 @@ dissect_btavdtp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data)
     subtree = (wmem_tree_t *) wmem_tree_lookup32_array(channels, key);
     channels_info = (subtree) ? (channels_info_t *) wmem_tree_lookup32_le(subtree, frame_number) : NULL;
     if (!(channels_info &&
-            ((*channels_info->adapter_disconnect_in_frame >= pinfo->fd->num &&
-            *channels_info->hci_disconnect_in_frame >= pinfo->fd->num &&
-            *channels_info->l2cap_disconnect_in_frame >= pinfo->fd->num &&
-            channels_info->disconnect_in_frame >= pinfo->fd->num) ||
+            ((*channels_info->adapter_disconnect_in_frame >= pinfo->num &&
+            *channels_info->hci_disconnect_in_frame >= pinfo->num &&
+            *channels_info->l2cap_disconnect_in_frame >= pinfo->num &&
+            channels_info->disconnect_in_frame >= pinfo->num) ||
             (*channels_info->adapter_disconnect_in_frame == 0 ||
             *channels_info->hci_disconnect_in_frame == 0 ||
             *channels_info->l2cap_disconnect_in_frame == 0 ||
@@ -1409,7 +1446,7 @@ dissect_btavdtp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data)
                 media_packet_info_t          *previous_media_packet_info;
                 media_packet_info_t          *current_media_packet_info;
                 nstime_t                      first_abs_ts;
-                gdouble                       cummulative_frame_duration;
+                gdouble                       cumulative_frame_duration;
                 gdouble                       avrcp_song_position = -1.0;
                 btavrcp_song_position_data_t *song_position_data;
 
@@ -1428,10 +1465,10 @@ dissect_btavdtp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data)
                 if (media_stream_number_value) {
                     sep_data.stream_number         = media_stream_number_value->stream_number;
                     if (media_stream_number_value->stream_start_in_frame == 0)
-                        media_stream_number_value->stream_start_in_frame = pinfo->fd->num;
+                        media_stream_number_value->stream_start_in_frame = pinfo->num;
 
                     if (!pinfo->fd->flags.visited)
-                        media_stream_number_value->stream_end_in_frame = pinfo->fd->num;
+                        media_stream_number_value->stream_end_in_frame = pinfo->num;
 
                     sep_data.stream_start_in_frame = media_stream_number_value->stream_start_in_frame;
                     sep_data.stream_end_in_frame   = media_stream_number_value->stream_end_in_frame;
@@ -1472,7 +1509,7 @@ dissect_btavdtp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data)
                 if (previous_media_packet_info && previous_media_packet_info->stream_number == sep_data.stream_number ) {
                     sep_data.previous_media_packet_info = previous_media_packet_info;
                     first_abs_ts = previous_media_packet_info->first_abs_ts;
-                    cummulative_frame_duration = previous_media_packet_info->cummulative_frame_duration;
+                    cumulative_frame_duration = previous_media_packet_info->cumulative_frame_duration;
                     if (avrcp_song_position == -1.0)
                         avrcp_song_position = previous_media_packet_info->avrcp_song_position;
                     else
@@ -1480,12 +1517,12 @@ dissect_btavdtp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data)
                 } else {
                     if (avrcp_song_position == -1.0)
                         avrcp_song_position = 0.0;
-                    first_abs_ts = pinfo->fd->abs_ts;
-                    cummulative_frame_duration = 0.0;
+                    first_abs_ts = pinfo->abs_ts;
+                    cumulative_frame_duration = 0.0;
                     sep_data.previous_media_packet_info = (media_packet_info_t *) wmem_new(wmem_epan_scope(), media_packet_info_t);
-                    sep_data.previous_media_packet_info->abs_ts = pinfo->fd->abs_ts;
+                    sep_data.previous_media_packet_info->abs_ts = pinfo->abs_ts;
                     sep_data.previous_media_packet_info->first_abs_ts = first_abs_ts;
-                    sep_data.previous_media_packet_info->cummulative_frame_duration = cummulative_frame_duration;
+                    sep_data.previous_media_packet_info->cumulative_frame_duration = cumulative_frame_duration;
                     sep_data.previous_media_packet_info->avrcp_song_position = avrcp_song_position;
                     sep_data.previous_media_packet_info->stream_number = sep_data.stream_number;
                 }
@@ -1500,9 +1537,9 @@ dissect_btavdtp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data)
                         avrcp_song_position = 0.0;
 
                     current_media_packet_info = wmem_new(wmem_file_scope(), media_packet_info_t);
-                    current_media_packet_info->abs_ts = pinfo->fd->abs_ts;
+                    current_media_packet_info->abs_ts = pinfo->abs_ts;
                     current_media_packet_info->first_abs_ts = first_abs_ts;
-                    current_media_packet_info->cummulative_frame_duration = cummulative_frame_duration;
+                    current_media_packet_info->cumulative_frame_duration = cumulative_frame_duration;
                     current_media_packet_info->avrcp_song_position = avrcp_song_position;
                     current_media_packet_info->stream_number = sep_data.stream_number;
 
@@ -1902,8 +1939,8 @@ dissect_btavdtp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data)
                 break;
             }
             if (!pinfo->fd->flags.visited && message_type == MESSAGE_TYPE_ACCEPT &&
-                    channels_info->disconnect_in_frame > pinfo->fd->num) {
-                channels_info->disconnect_in_frame = pinfo->fd->num;
+                    channels_info->disconnect_in_frame > pinfo->num) {
+                channels_info->disconnect_in_frame = pinfo->num;
             }
             break;
         case SIGNAL_ID_SUSPEND:
@@ -1939,8 +1976,8 @@ dissect_btavdtp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data)
                 break;
             }
             if (!pinfo->fd->flags.visited && message_type == MESSAGE_TYPE_ACCEPT &&
-                    channels_info->disconnect_in_frame > pinfo->fd->num) {
-                channels_info->disconnect_in_frame = pinfo->fd->num;
+                    channels_info->disconnect_in_frame > pinfo->num) {
+                channels_info->disconnect_in_frame = pinfo->num;
             }
             break;
         case SIGNAL_ID_SECURITY_CONTROL:
@@ -2688,7 +2725,7 @@ proto_register_btavdtp(void)
     };
 
     proto_btavdtp = proto_register_protocol("Bluetooth AVDTP Protocol", "BT AVDTP", "btavdtp");
-    btavdtp_handle = new_register_dissector("btavdtp", dissect_btavdtp, proto_btavdtp);
+    btavdtp_handle = register_dissector("btavdtp", dissect_btavdtp, proto_btavdtp);
 
     proto_register_field_array(proto_btavdtp, hf, array_length(hf));
     proto_register_subtree_array(ett, array_length(ett));
@@ -2725,7 +2762,7 @@ dissect_aptx(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data)
     proto_tree          *aptx_tree;
     proto_item          *pitem;
     bta2dp_codec_info_t *info;
-    gdouble              cummulative_frame_duration = 0;
+    gdouble              cumulative_frame_duration = 0;
 
     info = (bta2dp_codec_info_t *) data;
 
@@ -2758,7 +2795,7 @@ dissect_aptx(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data)
 
     proto_tree_add_item(aptx_tree, hf_aptx_data, tvb, 0, -1, ENC_NA);
 
-    while (info && info->configuration && info->configuration_length >= 9) {
+    if (info && info->configuration && info->configuration_length >= 9) {
         gboolean fail = FALSE;
         gdouble expected_speed_data;
         gdouble frame_duration;
@@ -2785,7 +2822,7 @@ dissect_aptx(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data)
         }
 
         if (fail)
-            break;
+            return tvb_reported_length(tvb);
 
         switch (info->configuration[8] & 0x0F) {
         case 0x01:
@@ -2801,23 +2838,23 @@ dissect_aptx(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data)
         }
 
         if (fail)
-            break;
+            return tvb_reported_length(tvb);
 
         sample_bits = 16;
 
         expected_speed_data = frequency * (sample_bits / 8.0) * number_of_channels;
         frame_duration = (((double) frame_length / (double) expected_speed_data) * 1000.0);
 
-        cummulative_frame_duration = (tvb_reported_length(tvb) / 4.0) * frame_duration;
+        cumulative_frame_duration = (tvb_reported_length(tvb) / 4.0) * frame_duration;
 
-        pitem = proto_tree_add_double(aptx_tree, hf_aptx_cummulative_frame_duration, tvb, 0, 0, cummulative_frame_duration);
+        pitem = proto_tree_add_double(aptx_tree, hf_aptx_cumulative_frame_duration, tvb, 0, 0, cumulative_frame_duration);
         proto_item_append_text(pitem, " ms");
         PROTO_ITEM_SET_GENERATED(pitem);
 
         if (info && info->previous_media_packet_info && info->current_media_packet_info) {
             nstime_t  delta;
 
-            nstime_delta(&delta, &pinfo->fd->abs_ts, &info->previous_media_packet_info->abs_ts);
+            nstime_delta(&delta, &pinfo->abs_ts, &info->previous_media_packet_info->abs_ts);
             pitem = proto_tree_add_double(aptx_tree, hf_aptx_delta_time, tvb, 0, 0, nstime_to_msec(&delta));
             proto_item_append_text(pitem, " ms");
             PROTO_ITEM_SET_GENERATED(pitem);
@@ -2826,24 +2863,22 @@ dissect_aptx(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data)
             proto_item_append_text(pitem, " ms");
             PROTO_ITEM_SET_GENERATED(pitem);
 
-            nstime_delta(&delta, &pinfo->fd->abs_ts, &info->previous_media_packet_info->first_abs_ts);
+            nstime_delta(&delta, &pinfo->abs_ts, &info->previous_media_packet_info->first_abs_ts);
             pitem = proto_tree_add_double(aptx_tree, hf_aptx_delta_time_from_the_beginning, tvb, 0, 0, nstime_to_msec(&delta));
             proto_item_append_text(pitem, " ms");
             PROTO_ITEM_SET_GENERATED(pitem);
 
             if (!pinfo->fd->flags.visited)
-                info->current_media_packet_info->cummulative_frame_duration += cummulative_frame_duration;
+                info->current_media_packet_info->cumulative_frame_duration += cumulative_frame_duration;
 
-            pitem = proto_tree_add_double(aptx_tree, hf_aptx_cummulative_duration, tvb, 0, 0, info->previous_media_packet_info->cummulative_frame_duration);
+            pitem = proto_tree_add_double(aptx_tree, hf_aptx_cumulative_duration, tvb, 0, 0, info->previous_media_packet_info->cumulative_frame_duration);
             proto_item_append_text(pitem, " ms");
             PROTO_ITEM_SET_GENERATED(pitem);
 
-            pitem = proto_tree_add_double(aptx_tree, hf_aptx_diff, tvb, 0, 0, info->previous_media_packet_info->cummulative_frame_duration - nstime_to_msec(&delta));
+            pitem = proto_tree_add_double(aptx_tree, hf_aptx_diff, tvb, 0, 0, info->previous_media_packet_info->cumulative_frame_duration - nstime_to_msec(&delta));
             proto_item_append_text(pitem, " ms");
             PROTO_ITEM_SET_GENERATED(pitem);
         }
-
-        break;
     }
 
     return tvb_reported_length(tvb);
@@ -2858,8 +2893,8 @@ proto_register_aptx(void)
             FT_BYTES, BASE_NONE, NULL, 0x00,
             NULL, HFILL }
         },
-        { &hf_aptx_cummulative_frame_duration,
-            { "Cummulative Frame Duration",      "aptx.cummulative_frame_duration",
+        { &hf_aptx_cumulative_frame_duration,
+            { "Cumulative Frame Duration",      "aptx.cumulative_frame_duration",
             FT_DOUBLE, BASE_NONE, NULL, 0x00,
             NULL, HFILL }
         },
@@ -2878,8 +2913,8 @@ proto_register_aptx(void)
             FT_DOUBLE, BASE_NONE, NULL, 0x00,
             NULL, HFILL }
         },
-        { &hf_aptx_cummulative_duration,
-            { "Cummulative Music Duration",      "aptx.cummulative_music_duration",
+        { &hf_aptx_cumulative_duration,
+            { "Cumulative Music Duration",      "aptx.cumulative_music_duration",
             FT_DOUBLE, BASE_NONE, NULL, 0x00,
             NULL, HFILL }
         },
@@ -2898,7 +2933,7 @@ proto_register_aptx(void)
     proto_register_field_array(proto_bta2dp, hf, array_length(hf));
     proto_register_subtree_array(ett, array_length(ett));
 
-    aptx_handle = new_register_dissector("aptx", dissect_aptx, proto_aptx);
+    aptx_handle = register_dissector("aptx", dissect_aptx, proto_aptx);
 }
 
 
@@ -3038,7 +3073,7 @@ dissect_bta2dp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data)
     bta2dp_codec_info.current_media_packet_info  = sep_data.current_media_packet_info;
 
 #if RTP_PLAYER_WORKAROUND == TRUE
-    /* XXX: Workaround to get multiple RTP streams, because converation are too
+    /* XXX: Workaround to get multiple RTP streams, because conversations are too
        weak to recognize Bluetooth streams (key is: guint32 interface_id, guint32 adapter_id, guint32 chandle, guint32 cid, guint32 direction -> guint32 stream_number) */
     pinfo->srcport = sep_data.stream_number;
     pinfo->destport = sep_data.stream_number;
@@ -3047,7 +3082,7 @@ dissect_bta2dp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data)
     if (bta2dp_codec_info.content_protection_type == 0 && codec_dissector == aptx_handle) {
         call_dissector_with_data(aptx_handle, tvb, pinfo, tree, &bta2dp_codec_info);
     } else {
-        bluetooth_add_address(pinfo, &pinfo->net_dst, sep_data.stream_number, "BT A2DP", pinfo->fd->num, FALSE, &bta2dp_codec_info);
+        bluetooth_add_address(pinfo, &pinfo->net_dst, sep_data.stream_number, "BT A2DP", pinfo->num, FALSE, &bta2dp_codec_info);
         call_dissector(rtp_handle, tvb, pinfo, tree);
     }
     offset += tvb_reported_length_remaining(tvb, offset);
@@ -3116,7 +3151,7 @@ proto_register_bta2dp(void)
     proto_register_field_array(proto_bta2dp, hf, array_length(hf));
     proto_register_subtree_array(ett, array_length(ett));
 
-    bta2dp_handle = new_register_dissector("bta2dp", dissect_bta2dp, proto_bta2dp);
+    bta2dp_handle = register_dissector("bta2dp", dissect_bta2dp, proto_bta2dp);
 
     module = prefs_register_protocol(proto_bta2dp, NULL);
     prefs_register_static_text_preference(module, "a2dp.version",
@@ -3137,13 +3172,13 @@ proto_register_bta2dp(void)
 void
 proto_reg_handoff_bta2dp(void)
 {
-    sbc_handle = find_dissector("sbc");
-    mp2t_handle = find_dissector("mp2t");
-    mpeg_audio_handle = find_dissector("mpeg-audio");
+    sbc_handle = find_dissector_add_dependency("sbc", proto_bta2dp);
+    mp2t_handle = find_dissector_add_dependency("mp2t", proto_bta2dp);
+    mpeg_audio_handle = find_dissector_add_dependency("mpeg-audio", proto_bta2dp);
 /* TODO: ATRAC dissector does not exist yet */
-    atrac_handle = find_dissector("atrac");
+    atrac_handle = find_dissector_add_dependency("atrac", proto_bta2dp);
 
-    rtp_handle   = find_dissector("rtp");
+    rtp_handle   = find_dissector_add_dependency("rtp", proto_bta2dp);
 
     dissector_add_string("bluetooth.uuid", "110a", bta2dp_handle);
     dissector_add_string("bluetooth.uuid", "110b", bta2dp_handle);
@@ -3274,13 +3309,13 @@ dissect_btvdp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data)
     btvdp_codec_info.content_protection_type = sep_data.content_protection_type;
 
 #if RTP_PLAYER_WORKAROUND == TRUE
-    /* XXX: Workaround to get multiple RTP streams, because converation are too
+    /* XXX: Workaround to get multiple RTP streams, because conversations are too
        weak to recognize Bluetooth streams (key is: guint32 interface_id, guint32 adapter_id, guint32 chandle, guint32 cid, guint32 direction -> guint32 stream_number) */
     pinfo->srcport = sep_data.stream_number;
     pinfo->destport = sep_data.stream_number;
 #endif
 
-    bluetooth_add_address(pinfo, &pinfo->net_dst, 0, "BT VDP", pinfo->fd->num, TRUE, &btvdp_codec_info);
+    bluetooth_add_address(pinfo, &pinfo->net_dst, 0, "BT VDP", pinfo->num, TRUE, &btvdp_codec_info);
     call_dissector(rtp_handle, tvb, pinfo, tree);
     offset += tvb_reported_length_remaining(tvb, offset);
 
@@ -3352,7 +3387,7 @@ proto_register_btvdp(void)
     };
 
     proto_btvdp = proto_register_protocol("Bluetooth VDP Profile", "BT VDP", "btvdp");
-    btvdp_handle = new_register_dissector("btvdp", dissect_btvdp, proto_btvdp);
+    btvdp_handle = register_dissector("btvdp", dissect_btvdp, proto_btvdp);
     proto_register_field_array(proto_bta2dp, hf, array_length(hf));
     proto_register_subtree_array(ett, array_length(ett));
     expert_btavdtp = expert_register_protocol(proto_btvdp);
@@ -3377,10 +3412,10 @@ proto_register_btvdp(void)
 void
 proto_reg_handoff_btvdp(void)
 {
-    h263_handle = find_dissector("h263");
-    mp4v_es_handle = find_dissector("mp4v-es");
+    h263_handle = find_dissector_add_dependency("h263", proto_btvdp);
+    mp4v_es_handle = find_dissector_add_dependency("mp4v-es", proto_btvdp);
 
-    rtp_handle   = find_dissector("rtp");
+    rtp_handle   = find_dissector_add_dependency("rtp", proto_btvdp);
 
     dissector_add_string("bluetooth.uuid", "1303", btvdp_handle);
     dissector_add_string("bluetooth.uuid", "1304", btvdp_handle);
@@ -3438,7 +3473,7 @@ proto_register_bta2dp_content_protection_header_scms_t(void)
     proto_register_field_array(proto_bta2dp_cph_scms_t, hf, array_length(hf));
     proto_register_subtree_array(ett, array_length(ett));
 
-    new_register_dissector("bta2dp_content_protection_header_scms_t", dissect_a2dp_cp_scms_t, proto_bta2dp_cph_scms_t);
+    register_dissector("bta2dp_content_protection_header_scms_t", dissect_a2dp_cp_scms_t, proto_bta2dp_cph_scms_t);
 }
 
 static gint
@@ -3488,7 +3523,7 @@ proto_register_btvdp_content_protection_header_scms_t(void)
     proto_register_field_array(proto_btvdp_cph_scms_t, hf, array_length(hf));
     proto_register_subtree_array(ett, array_length(ett));
 
-    new_register_dissector("btvdp_content_protection_header_scms_t", dissect_vdp_cp_scms_t, proto_btvdp_cph_scms_t);
+    register_dissector("btvdp_content_protection_header_scms_t", dissect_vdp_cp_scms_t, proto_btvdp_cph_scms_t);
 }
 
 /*

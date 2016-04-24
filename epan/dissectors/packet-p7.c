@@ -1,11 +1,11 @@
 /* Do not modify this file. Changes will be overwritten.                      */
 /* Generated automatically by the ASN.1 to Wireshark dissector compiler       */
 /* packet-p7.c                                                                */
-/* ../../tools/asn2wrs.py -b -L -C -p p7 -c ./p7.cnf -s ./packet-p7-template -D . -O ../../epan/dissectors MSAbstractService.asn MSGeneralAttributeTypes.asn MSAccessProtocol.asn MSUpperBounds.asn */
+/* asn2wrs.py -b -L -C -p p7 -c ./p7.cnf -s ./packet-p7-template -D . -O ../.. MSAbstractService.asn MSGeneralAttributeTypes.asn MSAccessProtocol.asn MSUpperBounds.asn */
 
 /* Input file: packet-p7-template.c */
 
-#line 1 "../../asn1/p7/packet-p7-template.c"
+#line 1 "./asn1/p7/packet-p7-template.c"
 /* packet-p7.c
  * Routines for X.413 (P7) packet dissection
  * Graeme Lunt 2007
@@ -64,7 +64,7 @@ static int proto_p7 = -1;
 
 
 /*--- Included file: packet-p7-val.h ---*/
-#line 1 "../../asn1/p7/packet-p7-val.h"
+#line 1 "./asn1/p7/packet-p7-val.h"
 #define op_ms_submission_control       2
 #define op_ms_message_submission       3
 #define op_ms_probe_submission         4
@@ -121,11 +121,11 @@ static int proto_p7 = -1;
 #define ub_ua_restrictions             16
 
 /*--- End of included file: packet-p7-val.h ---*/
-#line 58 "../../asn1/p7/packet-p7-template.c"
+#line 58 "./asn1/p7/packet-p7-template.c"
 
 
 /*--- Included file: packet-p7-hf.c ---*/
-#line 1 "../../asn1/p7/packet-p7-hf.c"
+#line 1 "./asn1/p7/packet-p7-hf.c"
 static int hf_p7_AutoActionType_PDU = -1;         /* AutoActionType */
 static int hf_p7_AutoActionError_PDU = -1;        /* AutoActionError */
 static int hf_p7_EntryType_PDU = -1;              /* EntryType */
@@ -493,13 +493,13 @@ static int hf_p7_T_entry_class_problem_entry_class_not_subscribed = -1;
 static int hf_p7_T_entry_class_problem_inappropriate_entry_class = -1;
 
 /*--- End of included file: packet-p7-hf.c ---*/
-#line 60 "../../asn1/p7/packet-p7-template.c"
+#line 60 "./asn1/p7/packet-p7-template.c"
 
 /* Initialize the subtree pointers */
 static gint ett_p7 = -1;
 
 /*--- Included file: packet-p7-ett.c ---*/
-#line 1 "../../asn1/p7/packet-p7-ett.c"
+#line 1 "./asn1/p7/packet-p7-ett.c"
 static gint ett_p7_Attribute = -1;
 static gint ett_p7_AttributeValues = -1;
 static gint ett_p7_AutoActionRegistration = -1;
@@ -635,11 +635,11 @@ static gint ett_p7_RTSE_apdus = -1;
 static gint ett_p7_RTABapdu = -1;
 
 /*--- End of included file: packet-p7-ett.c ---*/
-#line 64 "../../asn1/p7/packet-p7-template.c"
+#line 64 "./asn1/p7/packet-p7-template.c"
 
 
 /*--- Included file: packet-p7-table.c ---*/
-#line 1 "../../asn1/p7/packet-p7-table.c"
+#line 1 "./asn1/p7/packet-p7-table.c"
 
 /* P7 ABSTRACT-OPERATIONS */
 const value_string p7_opr_code_string_vals[] = {
@@ -678,11 +678,11 @@ static const value_string p7_err_code_string_vals[] = {
 
 
 /*--- End of included file: packet-p7-table.c ---*/
-#line 66 "../../asn1/p7/packet-p7-template.c"
+#line 66 "./asn1/p7/packet-p7-template.c"
 
 
 /*--- Included file: packet-p7-fn.c ---*/
-#line 1 "../../asn1/p7/packet-p7-fn.c"
+#line 1 "./asn1/p7/packet-p7-fn.c"
 /*--- Cyclic dependencies ---*/
 
 /* Filter -> Filter/and -> Filter */
@@ -4123,11 +4123,11 @@ static int dissect_RTSE_apdus_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, pro
 
 
 /*--- End of included file: packet-p7-fn.c ---*/
-#line 68 "../../asn1/p7/packet-p7-template.c"
+#line 68 "./asn1/p7/packet-p7-template.c"
 
 
 /*--- Included file: packet-p7-table11.c ---*/
-#line 1 "../../asn1/p7/packet-p7-table11.c"
+#line 1 "./asn1/p7/packet-p7-table11.c"
 
 static const ros_opr_t p7_opr_tab[] = {
   /* ms-bind */
@@ -4150,15 +4150,15 @@ static const ros_opr_t p7_opr_tab[] = {
   { op_ms_message_submission ,	dissect_MSMessageSubmissionArgument_PDU,	dissect_MSMessageSubmissionResult_PDU },
   /* ms-probe-submission */
   { op_ms_probe_submission   ,	dissect_MSProbeSubmissionArgument_PDU,	dissect_MSProbeSubmissionResult_PDU },
-  { 0,				(new_dissector_t)(-1),	(new_dissector_t)(-1) },
+  { 0,				(dissector_t)(-1),	(dissector_t)(-1) },
 };
 
 
 /*--- End of included file: packet-p7-table11.c ---*/
-#line 70 "../../asn1/p7/packet-p7-template.c"
+#line 70 "./asn1/p7/packet-p7-template.c"
 
 /*--- Included file: packet-p7-table21.c ---*/
-#line 1 "../../asn1/p7/packet-p7-table21.c"
+#line 1 "./asn1/p7/packet-p7-table21.c"
 
 static const ros_err_t p7_err_tab[] = {
   /* ms-bind-error*/
@@ -4189,12 +4189,12 @@ static const ros_err_t p7_err_tab[] = {
   { err_modify_error,	dissect_ModifyErrorParameter_PDU },
   /* entry-class-error*/
   { err_entry_class_error,	dissect_EntryClassErrorParameter_PDU },
-  { 0,	(new_dissector_t)(-1) },
+  { 0,	(dissector_t)(-1) },
 };
 
 
 /*--- End of included file: packet-p7-table21.c ---*/
-#line 71 "../../asn1/p7/packet-p7-template.c"
+#line 71 "./asn1/p7/packet-p7-template.c"
 
 static const ros_info_t p7_ros_info = {
   "P7",
@@ -4215,7 +4215,7 @@ void proto_register_p7(void) {
   {
 
 /*--- Included file: packet-p7-hfarr.c ---*/
-#line 1 "../../asn1/p7/packet-p7-hfarr.c"
+#line 1 "./asn1/p7/packet-p7-hfarr.c"
     { &hf_p7_AutoActionType_PDU,
       { "AutoActionType", "p7.AutoActionType",
         FT_OID, BASE_NONE, NULL, 0,
@@ -5674,7 +5674,7 @@ void proto_register_p7(void) {
         NULL, HFILL }},
 
 /*--- End of included file: packet-p7-hfarr.c ---*/
-#line 90 "../../asn1/p7/packet-p7-template.c"
+#line 90 "./asn1/p7/packet-p7-template.c"
   };
 
   /* List of subtrees */
@@ -5682,7 +5682,7 @@ void proto_register_p7(void) {
     &ett_p7,
 
 /*--- Included file: packet-p7-ettarr.c ---*/
-#line 1 "../../asn1/p7/packet-p7-ettarr.c"
+#line 1 "./asn1/p7/packet-p7-ettarr.c"
     &ett_p7_Attribute,
     &ett_p7_AttributeValues,
     &ett_p7_AutoActionRegistration,
@@ -5818,7 +5818,7 @@ void proto_register_p7(void) {
     &ett_p7_RTABapdu,
 
 /*--- End of included file: packet-p7-ettarr.c ---*/
-#line 96 "../../asn1/p7/packet-p7-template.c"
+#line 96 "./asn1/p7/packet-p7-template.c"
   };
   module_t *p7_module;
 
@@ -5846,38 +5846,38 @@ void proto_reg_handoff_p7(void) {
 
 
 /*--- Included file: packet-p7-dis-tab.c ---*/
-#line 1 "../../asn1/p7/packet-p7-dis-tab.c"
-  new_register_ber_oid_dissector("2.6.4.3.42", dissect_ReportLocation_PDU, proto_p7, "id-att-ac-correlated-report-list");
-  new_register_ber_oid_dissector("2.6.4.3.76", dissect_SequenceNumber_PDU, proto_p7, "id-att-ac-report-subject-entry");
-  new_register_ber_oid_dissector("2.6.4.3.43", dissect_ReportSummary_PDU, proto_p7, "id-att-ac-report-summary");
-  new_register_ber_oid_dissector("2.6.4.3.44", dissect_PerRecipientReport_PDU, proto_p7, "id-att-ac-uncorrelated-report-list");
-  new_register_ber_oid_dissector("2.6.4.3.46", dissect_AutoActionError_PDU, proto_p7, "id-att-auto-action-error");
-  new_register_ber_oid_dissector("2.6.4.3.48", dissect_SequenceNumber_PDU, proto_p7, "id-att-auto-action-subject-entry");
-  new_register_ber_oid_dissector("2.6.4.3.49", dissect_AutoActionType_PDU, proto_p7, "id-att-auto-action-type");
-  new_register_ber_oid_dissector("2.6.4.3.0", dissect_SequenceNumber_PDU, proto_p7, "id-att-child-sequence-numbers");
-  new_register_ber_oid_dissector("2.6.4.3.10", dissect_MS_EIT_PDU, proto_p7, "id-att-converted-EITs");
-  new_register_ber_oid_dissector("2.6.4.3.11", dissect_CreationTime_PDU, proto_p7, "id-att-creation-time");
-  new_register_ber_oid_dissector("2.6.4.3.50", dissect_DeferredDeliveryCancellationTime_PDU, proto_p7, "id-att-deferred-delivery-cancellation-time");
-  new_register_ber_oid_dissector("2.6.4.3.52", dissect_DeletionTime_PDU, proto_p7, "id-att-deletion-time");
-  new_register_ber_oid_dissector("2.6.4.3.12", dissect_MS_EIT_PDU, proto_p7, "id-att-delivered-EITs");
-  new_register_ber_oid_dissector("2.6.4.3.16", dissect_EntryType_PDU, proto_p7, "id-att-entry-type");
-  new_register_ber_oid_dissector("2.6.4.3.57", dissect_MessageGroupName_PDU, proto_p7, "id-att-message-group-name");
-  new_register_ber_oid_dissector("2.6.4.3.61", dissect_SubmissionError_PDU, proto_p7, "id-att-ms-submission-error");
-  new_register_ber_oid_dissector("2.6.4.3.25", dissect_MS_EIT_PDU, proto_p7, "id-att-original-EITs");
-  new_register_ber_oid_dissector("2.6.4.3.29", dissect_SequenceNumber_PDU, proto_p7, "id-att-parent-sequence-number");
-  new_register_ber_oid_dissector("2.6.4.3.15", dissect_RetrievalStatus_PDU, proto_p7, "id-att-retrieval-status");
-  new_register_ber_oid_dissector("2.6.4.3.39", dissect_SequenceNumber_PDU, proto_p7, "id-att-sequence-number");
-  new_register_ber_oid_dissector("2.6.4.3.79", dissect_SignatureVerificationStatus_PDU, proto_p7, "id-att-signature-verification-status");
-  new_register_ber_oid_dissector("2.6.4.3.73", dissect_StoragePeriod_PDU, proto_p7, "id-att-storage-period");
-  new_register_ber_oid_dissector("2.6.4.3.74", dissect_StorageTime_PDU, proto_p7, "id-att-storage-time");
-  new_register_ber_oid_dissector("2.6.4.9.5", dissect_ChangeCredentialsAlgorithms_PDU, proto_p7, "id-ext-protected-change-credentials-capability");
-  new_register_ber_oid_dissector("2.6.4.9.3", dissect_OriginatorToken_PDU, proto_p7, "id-ext-originator-token");
-  new_register_ber_oid_dissector("2.6.4.9.4", dissect_ProtectedChangeCredentials_PDU, proto_p7, "id-ext-protected-change-credentials");
-  new_register_ber_oid_dissector("2.6.0.2.10""id-as-ms-rtse", dissect_RTSE_apdus_PDU, proto_p7, "");
+#line 1 "./asn1/p7/packet-p7-dis-tab.c"
+  register_ber_oid_dissector("2.6.4.3.42", dissect_ReportLocation_PDU, proto_p7, "id-att-ac-correlated-report-list");
+  register_ber_oid_dissector("2.6.4.3.76", dissect_SequenceNumber_PDU, proto_p7, "id-att-ac-report-subject-entry");
+  register_ber_oid_dissector("2.6.4.3.43", dissect_ReportSummary_PDU, proto_p7, "id-att-ac-report-summary");
+  register_ber_oid_dissector("2.6.4.3.44", dissect_PerRecipientReport_PDU, proto_p7, "id-att-ac-uncorrelated-report-list");
+  register_ber_oid_dissector("2.6.4.3.46", dissect_AutoActionError_PDU, proto_p7, "id-att-auto-action-error");
+  register_ber_oid_dissector("2.6.4.3.48", dissect_SequenceNumber_PDU, proto_p7, "id-att-auto-action-subject-entry");
+  register_ber_oid_dissector("2.6.4.3.49", dissect_AutoActionType_PDU, proto_p7, "id-att-auto-action-type");
+  register_ber_oid_dissector("2.6.4.3.0", dissect_SequenceNumber_PDU, proto_p7, "id-att-child-sequence-numbers");
+  register_ber_oid_dissector("2.6.4.3.10", dissect_MS_EIT_PDU, proto_p7, "id-att-converted-EITs");
+  register_ber_oid_dissector("2.6.4.3.11", dissect_CreationTime_PDU, proto_p7, "id-att-creation-time");
+  register_ber_oid_dissector("2.6.4.3.50", dissect_DeferredDeliveryCancellationTime_PDU, proto_p7, "id-att-deferred-delivery-cancellation-time");
+  register_ber_oid_dissector("2.6.4.3.52", dissect_DeletionTime_PDU, proto_p7, "id-att-deletion-time");
+  register_ber_oid_dissector("2.6.4.3.12", dissect_MS_EIT_PDU, proto_p7, "id-att-delivered-EITs");
+  register_ber_oid_dissector("2.6.4.3.16", dissect_EntryType_PDU, proto_p7, "id-att-entry-type");
+  register_ber_oid_dissector("2.6.4.3.57", dissect_MessageGroupName_PDU, proto_p7, "id-att-message-group-name");
+  register_ber_oid_dissector("2.6.4.3.61", dissect_SubmissionError_PDU, proto_p7, "id-att-ms-submission-error");
+  register_ber_oid_dissector("2.6.4.3.25", dissect_MS_EIT_PDU, proto_p7, "id-att-original-EITs");
+  register_ber_oid_dissector("2.6.4.3.29", dissect_SequenceNumber_PDU, proto_p7, "id-att-parent-sequence-number");
+  register_ber_oid_dissector("2.6.4.3.15", dissect_RetrievalStatus_PDU, proto_p7, "id-att-retrieval-status");
+  register_ber_oid_dissector("2.6.4.3.39", dissect_SequenceNumber_PDU, proto_p7, "id-att-sequence-number");
+  register_ber_oid_dissector("2.6.4.3.79", dissect_SignatureVerificationStatus_PDU, proto_p7, "id-att-signature-verification-status");
+  register_ber_oid_dissector("2.6.4.3.73", dissect_StoragePeriod_PDU, proto_p7, "id-att-storage-period");
+  register_ber_oid_dissector("2.6.4.3.74", dissect_StorageTime_PDU, proto_p7, "id-att-storage-time");
+  register_ber_oid_dissector("2.6.4.9.5", dissect_ChangeCredentialsAlgorithms_PDU, proto_p7, "id-ext-protected-change-credentials-capability");
+  register_ber_oid_dissector("2.6.4.9.3", dissect_OriginatorToken_PDU, proto_p7, "id-ext-originator-token");
+  register_ber_oid_dissector("2.6.4.9.4", dissect_ProtectedChangeCredentials_PDU, proto_p7, "id-ext-protected-change-credentials");
+  register_ber_oid_dissector("2.6.0.2.10""id-as-ms-rtse", dissect_RTSE_apdus_PDU, proto_p7, "");
 
 
 /*--- End of included file: packet-p7-dis-tab.c ---*/
-#line 122 "../../asn1/p7/packet-p7-template.c"
+#line 122 "./asn1/p7/packet-p7-template.c"
 
   /* APPLICATION CONTEXT */
 

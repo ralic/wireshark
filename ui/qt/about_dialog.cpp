@@ -37,25 +37,30 @@
 #include <epan/wslua/init_wslua.h>
 #endif
 
-#include "../log.h"
-#include "../register.h"
+#include "../../log.h"
+#include "../../register.h"
 
 #include "ui/alert_box.h"
 #include "ui/last_open_dir.h"
 #include "ui/help_url.h"
 #include "ui/text_import_scanner.h"
-#include "ui/utf8_entities.h"
+#include <wsutil/utf8_entities.h>
 
 #include "file.h"
 #include "wsutil/file_util.h"
 #include "wsutil/tempfile.h"
 #include "wsutil/plugins.h"
 #include "wsutil/copyright_info.h"
-#include "wsutil/ws_version_info.h"
+#include "ws_version_info.h"
+
+#ifdef HAVE_EXTCAP
+#include "extcap.h"
+#endif
 
 #include "qt_ui_utils.h"
 
 #include <QFontMetrics>
+#include <QKeySequence>
 #include <QTextStream>
 #include <QUrl>
 
@@ -81,7 +86,7 @@ const QString AboutDialog::about_folders_row(const char *name, const QString dir
 
 static void plugins_add_description(const char *name, const char *version,
                                     const char *types, const char *filename,
-                                    void *user_data )
+                                    void *user_data)
 {
     QList<QStringList> *plugin_data = (QList<QStringList> *)user_data;
     QStringList plugin_row = QStringList() << name << version << types << filename;
@@ -113,14 +118,36 @@ const QString AboutDialog::plugins_scan()
                 .arg(plugin_row[2]) // Type
                 .arg(short_file);
     }
+
+#ifdef HAVE_EXTCAP
+    GHashTable * tools = extcap_tools_list();
+    if (tools && g_hash_table_size(tools) > 0) {
+        QString short_file;
+        GList * walker = g_list_first(g_hash_table_get_keys(tools));
+        while (walker) {
+            extcap_info * tool = (extcap_info *)g_hash_table_lookup(tools, walker->data);
+            if (tool) {
+                short_file = fontMetrics().elidedText(tool->full_path, Qt::ElideMiddle, one_em*22);
+                plugin_table += QString("<tr><td>%1</td><td>%2</td><td>%3</td><td>%4</td></tr>\n")
+                       .arg(tool->basename) // Name
+                       .arg(tool->version) // Version
+                       .arg("extcap") // Type
+                       .arg(short_file);
+            }
+            walker = g_list_next(walker);
+        }
+    }
+#endif
+
     return plugin_table;
 }
 
-AboutDialog::AboutDialog(QWidget *) :
+AboutDialog::AboutDialog(QWidget *parent) :
     QDialog(NULL),
     ui(new Ui::AboutDialog)
 {
     ui->setupUi(this);
+    setAttribute(Qt::WA_DeleteOnClose, true);
     QFile f_authors;
     QFile f_license;
     const char *constpath;
@@ -156,7 +183,7 @@ AboutDialog::AboutDialog(QWidget *) :
 
 /* Check if it is a dev release... (VERSION_MINOR is odd in dev release) */
 #if VERSION_MINOR & 1
-        ui->label_logo->setPixmap( QPixmap( ":/about/wssplash_dev.png" ) );
+        ui->label_logo->setPixmap(QPixmap(":/about/wssplash_dev.png"));
 #endif
 
 
@@ -265,7 +292,46 @@ AboutDialog::AboutDialog(QWidget *) :
     message += plugins_scan();
 
     message += "</table>";
-    ui->label_plugins->setText(message);
+    ui->te_plugins->setHtml(message);
+
+    /* Shortcuts */
+    bool have_shortcuts = false;
+
+    if (parent) {
+        message = "<h3>Main Window Keyboard Shortcuts</h3>\n";
+        message += QString("<table cellpadding=\"%1\">\n").arg(one_em / 4);
+        message += "<tr><th align=\"left\">Shortcut</th><th align=\"left\">Name</th><th align=\"left\">Description</th></tr>\n";
+
+        QMap<QString, QPair<QString, QString> > shortcuts; // name -> (shortcut, description)
+        foreach (const QWidget *child, parent->findChildren<QWidget *>()) {
+            // Recent items look funny here.
+            if (child->objectName().compare("menuOpenRecentCaptureFile") == 0) continue;
+            foreach (const QAction *action, child->actions()) {
+
+                if (!action->shortcut().isEmpty()) {
+                    QString name = action->text();
+                    name.replace('&', "");
+                    shortcuts[name] = QPair<QString, QString>(action->shortcut().toString(QKeySequence::NativeText), action->toolTip());
+                }
+            }
+        }
+
+        QStringList names = shortcuts.keys();
+        names.sort();
+        foreach (const QString &name, names) {
+            message += QString("<tr><td>%1</td><td>%2</td><td>%3</td></tr>\n")
+                    .arg(shortcuts[name].first)
+                    .arg(name)
+                    .arg(shortcuts[name].second);
+            have_shortcuts = true;
+        }
+
+        message += "</table>";
+        ui->te_shortcuts->setHtml(message);
+
+    }
+
+    ui->te_shortcuts->setVisible(have_shortcuts);
 
     /* License */
 

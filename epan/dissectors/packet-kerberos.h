@@ -1,11 +1,11 @@
 /* Do not modify this file. Changes will be overwritten.                      */
 /* Generated automatically by the ASN.1 to Wireshark dissector compiler       */
 /* packet-kerberos.h                                                          */
-/* ../../tools/asn2wrs.py -b -p kerberos -c ./kerberos.cnf -s ./packet-kerberos-template -D . -O ../../epan/dissectors KerberosV5Spec2.asn k5.asn RFC3244.asn */
+/* asn2wrs.py -b -p kerberos -c ./kerberos.cnf -s ./packet-kerberos-template -D . -O ../.. KerberosV5Spec2.asn k5.asn RFC3244.asn */
 
 /* Input file: packet-kerberos-template.h */
 
-#line 1 "../../asn1/kerberos/packet-kerberos-template.h"
+#line 1 "./asn1/kerberos/packet-kerberos-template.h"
 /* packet-kerberos.h
  * Routines for kerberos packet dissection
  * Copyright 2007, Anders Broman <anders.broman@ericsson.com>
@@ -108,14 +108,69 @@ void read_keytab_file_from_preferences(void);
 
 #endif /* HAVE_KERBEROS */
 
+/* encryption type constants */
+#define KRB5_ENCTYPE_NULL		0
+#define KRB5_ENCTYPE_DES_CBC_CRC	1
+#define KRB5_ENCTYPE_DES_CBC_MD4	2
+#define KRB5_ENCTYPE_DES_CBC_MD5	3
+#define KRB5_ENCTYPE_DES_CBC_RAW	4
+#define KRB5_ENCTYPE_DES3_CBC_SHA	5
+#define KRB5_ENCTYPE_DES3_CBC_RAW	6
+#define KRB5_ENCTYPE_DES_HMAC_SHA1	8
+#define KRB5_ENCTYPE_DSA_SHA1_CMS	9
+#define KRB5_ENCTYPE_RSA_MD5_CMS	10
+#define KRB5_ENCTYPE_RSA_SHA1_CMS	11
+#define KRB5_ENCTYPE_RC2_CBC_ENV	12
+#define KRB5_ENCTYPE_RSA_ENV		13
+#define KRB5_ENCTYPE_RSA_ES_OEAP_ENV	14
+#define KRB5_ENCTYPE_DES_EDE3_CBC_ENV	15
+#define KRB5_ENCTYPE_DES3_CBC_SHA1	16
+#define KRB5_ENCTYPE_AES128_CTS_HMAC_SHA1_96 17
+#define KRB5_ENCTYPE_AES256_CTS_HMAC_SHA1_96 18
+#define KRB5_ENCTYPE_DES_CBC_MD5_NT	20
+#define KERB_ENCTYPE_RC4_HMAC		23
+#define KERB_ENCTYPE_RC4_HMAC_EXP	24
+#define KRB5_ENCTYPE_UNKNOWN		0x1ff
+#define KRB5_ENCTYPE_LOCAL_DES3_HMAC_SHA1	0x7007
+#define KRB5_ENCTYPE_RC4_PLAIN_EXP	0xffffff73
+#define KRB5_ENCTYPE_RC4_PLAIN		0xffffff74
+#define KRB5_ENCTYPE_RC4_PLAIN_OLD_EXP	0xffffff78
+#define KRB5_ENCTYPE_RC4_HMAC_OLD_EXP	0xffffff79
+#define KRB5_ENCTYPE_RC4_PLAIN_OLD	0xffffff7a
+#define KRB5_ENCTYPE_RC4_HMAC_OLD	0xffffff7b
+#define KRB5_ENCTYPE_DES_PLAIN		0xffffff7c
+#define KRB5_ENCTYPE_RC4_SHA		0xffffff7d
+#define KRB5_ENCTYPE_RC4_LM		0xffffff7e
+#define KRB5_ENCTYPE_RC4_PLAIN2		0xffffff7f
+#define KRB5_ENCTYPE_RC4_MD4		0xffffff80
 
 
 /*--- Included file: packet-kerberos-exp.h ---*/
-#line 1 "../../asn1/kerberos/packet-kerberos-exp.h"
+#line 1 "./asn1/kerberos/packet-kerberos-exp.h"
+
+/* enumerated values for Applications */
+#define KERBEROS_APPLICATIONS_TICKET   1
+#define KERBEROS_APPLICATIONS_AUTHENTICATOR   2
+#define KERBEROS_APPLICATIONS_ENCTICKETPART   3
+#define KERBEROS_APPLICATIONS_AS_REQ  10
+#define KERBEROS_APPLICATIONS_AS_REP  11
+#define KERBEROS_APPLICATIONS_TGS_REQ  12
+#define KERBEROS_APPLICATIONS_TGS_REP  13
+#define KERBEROS_APPLICATIONS_AP_REQ  14
+#define KERBEROS_APPLICATIONS_AP_REP  15
+#define KERBEROS_APPLICATIONS_KRB_SAFE  20
+#define KERBEROS_APPLICATIONS_KRB_PRIV  21
+#define KERBEROS_APPLICATIONS_KRB_CRED  22
+#define KERBEROS_APPLICATIONS_ENCASREPPART  25
+#define KERBEROS_APPLICATIONS_ENCTGSREPPART  26
+#define KERBEROS_APPLICATIONS_ENCAPREPPART  27
+#define KERBEROS_APPLICATIONS_ENCKRBPRIVPART  28
+#define KERBEROS_APPLICATIONS_ENCKRBCREDPART  29
+#define KERBEROS_APPLICATIONS_KRB_ERROR  30
 int dissect_kerberos_ChangePasswdData(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_);
 
 /*--- End of included file: packet-kerberos-exp.h ---*/
-#line 105 "../../asn1/kerberos/packet-kerberos-template.h"
+#line 140 "./asn1/kerberos/packet-kerberos-template.h"
 
 #ifdef __cplusplus
 }

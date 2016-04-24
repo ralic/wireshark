@@ -255,7 +255,7 @@ const int capture_item_    = 1;
 const int pref_ptr_col_ = 0;
 
 PreferencesDialog::PreferencesDialog(QWidget *parent) :
-    QDialog(parent),
+    GeometryStateDialog(parent),
     pd_ui_(new Ui::PreferencesDialog),
     cur_line_edit_(NULL),
     cur_combo_box_(NULL)
@@ -266,6 +266,8 @@ PreferencesDialog::PreferencesDialog(QWidget *parent) :
     // Some classes depend on pref_ptr_to_pref_ so this MUST be called after
     // fill_advanced_prefs.
     pd_ui_->setupUi(this);
+    loadGeometry();
+
     setWindowTitle(wsApp->windowTitleString(tr("Preferences")));
     pd_ui_->advancedTree->invisibleRootItem()->addChildren(tmp_item.takeChildren());
     QTreeWidgetItemIterator pref_it(pd_ui_->advancedTree, QTreeWidgetItemIterator::NoChildren);
@@ -522,13 +524,14 @@ void PreferencesDialog::on_prefsTree_currentItemChanged(QTreeWidgetItem *current
     }
 }
 
-void PreferencesDialog::on_advancedSearchLineEdit_textEdited(const QString &search_str)
+void PreferencesDialog::on_advancedSearchLineEdit_textEdited(const QString &search_re)
 {
     // Hide or show each branch
     QTreeWidgetItemIterator branch_it(pd_ui_->advancedTree);
+    QRegExp regex(search_re, Qt::CaseInsensitive);
     while (*branch_it) {
         if ((*branch_it)->data(pref_ptr_col_, Qt::UserRole).value<pref_t *>() == NULL) {
-            (*branch_it)->setHidden(!search_str.isEmpty());
+            (*branch_it)->setHidden(!search_re.isEmpty());
         }
         ++branch_it;
     }
@@ -541,9 +544,9 @@ void PreferencesDialog::on_advancedSearchLineEdit_textEdited(const QString &sear
         if ((*pref_it)->data(pref_ptr_col_, Qt::UserRole).value<pref_t *>()) {
             QTreeWidgetItem *parent = (*pref_it)->parent();
 
-            if (search_str.isEmpty() ||
-                (*pref_it)->text(0).contains(search_str, Qt::CaseInsensitive) ||
-                (*pref_it)->toolTip(0).contains(search_str, Qt::CaseInsensitive)) {
+            if (search_re.isEmpty() ||
+                (*pref_it)->text(0).contains(regex) ||
+                (*pref_it)->toolTip(0).contains(regex)) {
                 hidden = false;
             }
 
@@ -627,7 +630,7 @@ void PreferencesDialog::on_advancedTree_itemActivated(QTreeWidgetItem *item, int
             }
             if (!filename.isEmpty()) {
                 g_free((void *)pref->stashed_val.string);
-                pref->stashed_val.string = qstring_strdup(filename);
+                pref->stashed_val.string = qstring_strdup(QDir::toNativeSeparators(filename));
                 updateItem(*item);
             }
             break;

@@ -22,16 +22,15 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  *
  * Protocol ref:
- * http://tools.ietf.org/html/draft-davie-stt-06
+ * http://tools.ietf.org/html/draft-davie-stt-07
  */
-
 
 #include "config.h"
 
+#include <epan/packet.h>
 #include <epan/expert.h>
 #include <epan/in_cksum.h>
 #include <epan/ipproto.h>
-#include <epan/packet.h>
 #include <epan/prefs.h>
 #include <epan/reassemble.h>
 #include <epan/to_str.h>
@@ -140,7 +139,6 @@ static expert_field ei_stt_l4_offset = EI_INIT;
 static expert_field ei_stt_mss = EI_INIT;
 
 static dissector_handle_t eth_handle;
-static dissector_handle_t data_handle;
 
 /* From Table G-2 of IEEE standard 802.1Q-2005 */
 static const value_string pri_vals[] = {
@@ -574,7 +572,7 @@ dissect_stt(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
     if (!is_seg) {
         call_dissector(eth_handle, next_tvb, pinfo, tree);
     } else {
-        call_dissector(data_handle, next_tvb, pinfo, tree);
+        call_data_dissector(next_tvb, pinfo, tree);
     }
 
     pinfo->fragmented = frag_save;
@@ -987,8 +985,12 @@ proto_register_stt(void)
 void
 proto_reg_handoff_stt(void)
 {
-    eth_handle = find_dissector("eth");
-    data_handle = find_dissector("data");
+    /*
+     * The I-D doesn't explicity indicate that the FCS isn't present
+     * in the tunneled Ethernet frames, but it is missing from the
+     * captures attached to bug 10282.
+     */
+    eth_handle = find_dissector_add_dependency("eth_withoutfcs", proto_stt);
 
     heur_dissector_add("ip", dissect_stt_heur, "Stateless Transport Tunneling over IP", "stt_ip", proto_stt, HEURISTIC_ENABLE);
 }

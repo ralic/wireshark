@@ -816,7 +816,7 @@ void proto_register_olsr(void) {
 
     { &hf_olsr_netmask,
       { "Netmask", "olsr.netmask",
-        FT_IPv4, BASE_NONE, NULL, 0,
+        FT_IPv4, BASE_NETMASK, NULL, 0,
         NULL, HFILL
       }
     },
@@ -994,7 +994,7 @@ void proto_register_olsr(void) {
 void proto_reg_handoff_olsr(void) {
   dissector_handle_t olsr_handle;
 
-  olsr_handle = new_create_dissector_handle(dissect_olsr, proto_olsr);
+  olsr_handle = create_dissector_handle(dissect_olsr, proto_olsr);
   dissector_add_uint("udp.port", UDP_PORT_OLSR, olsr_handle);
 }
 

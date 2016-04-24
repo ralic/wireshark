@@ -47,7 +47,6 @@ void proto_reg_handoff_irsir(void);
 void proto_register_irsir(void);
 
 /** Protocol handles. */
-static dissector_handle_t data_handle;
 static dissector_handle_t irda_handle;
 
 /** Protocol fields. */
@@ -123,8 +122,8 @@ checksum_data(tvbuff_t *tvb, proto_tree *tree)
 
 
 /** Dissects an SIR packet. */
-static void
-dissect_sir(tvbuff_t *tvb, packet_info *pinfo, proto_tree *root)
+static int
+dissect_sir(tvbuff_t *tvb, packet_info *pinfo, proto_tree *root, void* data _U_)
 {
 	gint offset = 0;
 	gint bof_offset;
@@ -140,7 +139,7 @@ dissect_sir(tvbuff_t *tvb, packet_info *pinfo, proto_tree *root)
 				pinfo->desegment_offset = offset;
 				pinfo->desegment_len = 1;
 			}
-			return;
+			return tvb_captured_length(tvb);
 		} else {
 			guint preamble_len = bof_offset - offset;
 			gint data_offset = bof_offset + 1;
@@ -171,6 +170,7 @@ dissect_sir(tvbuff_t *tvb, packet_info *pinfo, proto_tree *root)
 		}
 		offset = eof_offset + 1;
 	}
+    return tvb_captured_length(tvb);
 }
 
 
@@ -180,10 +180,7 @@ proto_reg_handoff_irsir(void)
 {
 	dissector_add_uint("tcp.port", TCP_PORT_SIR, find_dissector("sir"));
 
-	data_handle = find_dissector("data");
 	irda_handle = find_dissector("irda");
-	if (irda_handle == NULL)
-		irda_handle = data_handle;
 }
 
 

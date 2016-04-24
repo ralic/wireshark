@@ -58,8 +58,6 @@ static gint ett_can = -1;
 
 static int proto_can = -1;
 
-static dissector_handle_t data_handle;
-
 #define LINUX_CAN_STD   0
 #define LINUX_CAN_EXT   1
 #define LINUX_CAN_RTR   2
@@ -98,8 +96,8 @@ static gpointer can_value(packet_info *pinfo _U_)
 	return 0;
 }
 
-static void
-dissect_socketcan(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
+static int
+dissect_socketcan(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data _U_)
 {
 	proto_tree *can_tree;
 	proto_item *ti;
@@ -154,8 +152,9 @@ dissect_socketcan(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
 	   have a unique identifier to determine subdissector */
 	if (!dissector_try_uint_new(subdissector_table, 0, next_tvb, pinfo, tree, FALSE, &can_id))
 	{
-		call_dissector(data_handle, next_tvb, pinfo, tree);
+		call_data_dissector(next_tvb, pinfo, tree);
 	}
+	return tvb_captured_length(tvb);
 }
 
 void
@@ -228,12 +227,13 @@ proto_register_socketcan(void)
 		"CAN",				/* short name */
 		"can"				/* abbrev     */
 		);
+	register_dissector("can", dissect_socketcan, proto_can);
 
 	proto_register_field_array(proto_can, hf, array_length(hf));
 	proto_register_subtree_array(ett, array_length(ett));
 
 	subdissector_table = register_dissector_table("can.subdissector",
-		"CAN next level dissector", FT_UINT32, BASE_HEX);
+		"CAN next level dissector", proto_can, FT_UINT32, BASE_HEX, DISSECTOR_TABLE_NOT_ALLOW_DUPLICATE);
 
 	can_module = prefs_register_protocol(proto_can, NULL);
 
@@ -250,8 +250,6 @@ proto_reg_handoff_socketcan(void)
 	can_handle = create_dissector_handle(dissect_socketcan, proto_can);
 	dissector_add_uint("wtap_encap", WTAP_ENCAP_SOCKETCAN, can_handle);
 	dissector_add_uint("sll.ltype", LINUX_SLL_P_CAN, can_handle);
-
-	data_handle    = find_dissector("data");
 }
 
 /*

@@ -7,6 +7,9 @@ include(FindCygwin)
 
 if(ENABLE_PDF_GUIDES)
     find_package(FOP)
+    if(${FOP_EXECUTABLE} STREQUAL "FOP_EXECUTABLE-NOTFOUND")
+        message(FATAL_ERROR "fop wasn't found, but is necessary for building PDFs." )
+    endif()
 endif()
 
 if(ENABLE_CHM_GUIDES)
@@ -75,7 +78,6 @@ endif()
 MACRO(XML2HTML _target_dep _dir_pfx _mode _dbk_source _gfx_sources)
     # We depend on the docbook target to avoid parallel builds.
     SET(_dbk_dep ${_target_dep}_docbook)
-    #SET(_validated ${_dir_pfx}.validated)
 
     IF(${_mode} STREQUAL "chunked")
         SET(_basedir ${_dir_pfx}_html_chunked)
@@ -124,8 +126,8 @@ MACRO(XML2HTML _target_dep _dir_pfx _mode _dbk_source _gfx_sources)
             ${_STYLESHEET}
             ${_dbk_source}
         DEPENDS
+            generate_${_dbk_source}
             ${_dbk_dep}
-            #${_validated}
             ${_gfx_deps}
     )
     IF(NOT WIN32)
@@ -169,6 +171,7 @@ MACRO(XML2PDF _target_dep _output _dbk_source _stylesheet _paper)
             ${_output}.fo
             ${_output}
         DEPENDS
+            generate_${_dbk_source}
             ${_dbk_dep}
             ${_stylesheet}
     )
@@ -214,6 +217,7 @@ MACRO(XML2HHP _target_dep _guide _docbooksource)
             --nonet custom_layer_chm.xsl
             ${_docbook_plain_title}
         DEPENDS
+            generate_${_docbooksource}
             ${_dbk_dep}
             # AsciiDoc uses UTF-8 by default, which is unsupported by HTML
             # Help. We may want to render an ISO-8859-1 version, or get rid

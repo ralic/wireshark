@@ -272,7 +272,7 @@
 
 #define TRY \
 {\
-	except_t *exc; \
+	except_t *volatile exc; \
 	volatile int except_state = 0; \
 	static const except_id_t catch_spec[] = { \
 		{ XCEPT_GROUP_WIRESHARK, XCEPT_CODE_ANY } }; \
@@ -371,6 +371,10 @@
 	if ((cond)) \
 		except_throw(XCEPT_GROUP_WIRESHARK, (x), (y)); \
 } G_STMT_END
+
+/* Throws a formatted message, its memory is cleared after catching it. */
+#define THROW_FORMATTED(x, ...) \
+	except_throwf(XCEPT_GROUP_WIRESHARK, (x), __VA_ARGS__)
 
 #define GET_MESSAGE			except_message(exc)
 

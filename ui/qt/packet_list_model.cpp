@@ -32,28 +32,35 @@
 #include "ui/packet_list_utils.h"
 #include "ui/recent.h"
 
-#include "color.h"
-#include "color_filters.h"
+#include <epan/color_filters.h>
 #include "frame_tvbuff.h"
 
 #include "color_utils.h"
 #include "wireshark_application.h"
 
 #include <QColor>
+#include <QElapsedTimer>
 #include <QFontMetrics>
 #include <QModelIndex>
 #include <QElapsedTimer>
 
 PacketListModel::PacketListModel(QObject *parent, capture_file *cf) :
     QAbstractItemModel(parent),
-    size_hint_enabled_(true),
-    row_height_(-1),
-    line_spacing_(0)
+    max_row_height_(0),
+    max_line_count_(1),
+    idle_dissection_row_(0)
 {
     setCaptureFile(cf);
-    connect(this, SIGNAL(itemHeightChanged(QModelIndex)),
+    PacketListRecord::clearStringPool();
+    connect(this, SIGNAL(maxLineCountChanged(QModelIndex)),
             this, SLOT(emitItemHeightChanged(QModelIndex)),
             Qt::QueuedConnection);
+    idle_dissection_timer_ = new QElapsedTimer();
+}
+
+PacketListModel::~PacketListModel()
+{
+    delete idle_dissection_timer_;
 }
 
 void PacketListModel::setCaptureFile(capture_file *cf)
@@ -87,33 +94,36 @@ int PacketListModel::packetNumberToRow(int packet_num) const
 guint PacketListModel::recreateVisibleRows()
 {
     int pos = visible_rows_.count();
-    PacketListRecord *record;
 
     beginResetModel();
     visible_rows_.clear();
     number_to_row_.clear();
-    if (cap_file_) {
-        PacketListRecord::resetColumns(&cap_file_->cinfo);
-    }
-
     endResetModel();
+
     beginInsertRows(QModelIndex(), pos, pos);
-    foreach (record, physical_rows_) {
+    foreach (PacketListRecord *record, physical_rows_) {
         if (record->frameData()->flags.passed_dfilter || record->frameData()->flags.ref_time) {
             visible_rows_ << record;
             number_to_row_[record->frameData()->num] = visible_rows_.count() - 1;
         }
     }
     endInsertRows();
+    idle_dissection_row_ = 0;
     return visible_rows_.count();
 }
 
 void PacketListModel::clear() {
     beginResetModel();
+    qDeleteAll(physical_rows_);
     physical_rows_.clear();
     visible_rows_.clear();
+    new_visible_rows_.clear();
     number_to_row_.clear();
+    PacketListRecord::clearStringPool();
     endResetModel();
+    max_row_height_ = 0;
+    max_line_count_ = 1;
+    idle_dissection_row_ = 0;
 }
 
 void PacketListModel::resetColumns()
@@ -234,13 +244,28 @@ void PacketListModel::unsetAllFrameRefTime()
     dataChanged(index(0, 0), index(rowCount() - 1, columnCount() - 1));
 }
 
-void PacketListModel::setMonospaceFont(const QFont &mono_font, int row_height)
+void PacketListModel::applyTimeShift()
 {
-    QFontMetrics fm(mono_font_);
-    mono_font_ = mono_font;
-    row_height_ = row_height;
-    line_spacing_ = fm.lineSpacing();
+    resetColumns();
+    dataChanged(index(0, 0), index(rowCount() - 1, columnCount() - 1));
 }
+
+void PacketListModel::setMaximiumRowHeight(int height)
+{
+    max_row_height_ = height;
+    // As the QTreeView uniformRowHeights documentation says,
+    // "The height is obtained from the first item in the view. It is
+    //  updated when the data changes on that item."
+    dataChanged(index(0, 0), index(0, columnCount() - 1));
+}
+
+//void PacketListModel::setMonospaceFont(const QFont &mono_font, int row_height)
+//{
+//    QFontMetrics fm(mono_font_);
+//    mono_font_ = mono_font;
+//    row_height_ = row_height;
+//    line_spacing_ = fm.lineSpacing();
+//}
 
 // The Qt MVC documentation suggests using QSortFilterProxyModel for sorting
 // and filtering. That seems like overkill but it might be something we want
@@ -344,7 +369,7 @@ bool PacketListModel::recordLessThan(PacketListRecord *r1, PacketListRecord *r2)
             header_field_info *hfi;
 
             // Column comes from custom data
-            hfi = proto_registrar_get_byname(sort_cap_file_->cinfo.columns[sort_column_].col_custom_field);
+            hfi = proto_registrar_get_byname(sort_cap_file_->cinfo.columns[sort_column_].col_custom_fields);
 
             if (hfi == NULL) {
                 cmp_val = frame_data_compare(sort_cap_file_->epan, r1->frameData(), r2->frameData(), COL_NUMBER);
@@ -389,9 +414,18 @@ bool PacketListModel::recordLessThan(PacketListRecord *r1, PacketListRecord *r2)
     }
 }
 
+// ::data is const so we have to make changes here.
 void PacketListModel::emitItemHeightChanged(const QModelIndex &ih_index)
 {
-    emit dataChanged(ih_index, ih_index);
+    if (!ih_index.isValid()) return;
+
+    PacketListRecord *record = static_cast<PacketListRecord*>(ih_index.internalPointer());
+    if (!record) return;
+
+    if (record->lineCount() > max_line_count_) {
+        max_line_count_ = record->lineCount();
+        emit itemHeightChanged(ih_index);
+    }
 }
 
 int PacketListModel::rowCount(const QModelIndex &parent) const
@@ -420,8 +454,6 @@ QVariant PacketListModel::data(const QModelIndex &d_index, int role) const
         return QVariant();
 
     switch (role) {
-    case Qt::FontRole:
-        return mono_font_;
     case Qt::TextAlignmentRole:
         switch(recent_get_column_xalign(d_index.column())) {
         case COLUMN_XALIGN_RIGHT:
@@ -475,30 +507,28 @@ QVariant PacketListModel::data(const QModelIndex &d_index, int role) const
         // Assume each line count is 1. If the line count changes, emit
         // itemHeightChanged which triggers another redraw (including a
         // fetch of SizeHintRole and DisplayRole) in the next event loop.
-        if (column == 0 && record->lineCountChanged())
-            emit itemHeightChanged(d_index);
+        if (column == 0 && record->lineCountChanged() && record->lineCount() > max_line_count_) {
+            emit maxLineCountChanged(d_index);
+        }
         return column_string;
     }
     case Qt::SizeHintRole:
     {
-        if (size_hint_enabled_) {
-            // We assume that inter-line spacing is 0.
-            QSize size = QSize(-1, row_height_ + ((record->lineCount() - 1) * line_spacing_));
+        // If this is the first row and column, return the maximum row height...
+        if (d_index.row() < 1 && d_index.column() < 1 && max_row_height_ > 0) {
+            QSize size = QSize(-1, max_row_height_);
             return size;
-        } else {
-            // Used by PacketList::sizeHintForColumn
-            return QVariant();
         }
+        // ...otherwise punt so that the item delegate can correctly calculate the item width.
+        return QVariant();
     }
     default:
         return QVariant();
     }
-
-    return QVariant();
 }
 
 QVariant PacketListModel::headerData(int section, Qt::Orientation orientation,
-                               int role) const
+                                     int role) const
 {
     if (!cap_file_) return QVariant();
 
@@ -506,6 +536,13 @@ QVariant PacketListModel::headerData(int section, Qt::Orientation orientation,
         switch (role) {
         case Qt::DisplayRole:
             return get_column_title(section);
+        case Qt::ToolTipRole:
+        {
+            gchar *tooltip = get_column_tooltip(section);
+            QVariant data(tooltip);
+            g_free (tooltip);
+            return data;
+        }
         default:
             break;
         }
@@ -514,21 +551,70 @@ QVariant PacketListModel::headerData(int section, Qt::Orientation orientation,
     return QVariant();
 }
 
+void PacketListModel::flushVisibleRows()
+{
+    gint pos = visible_rows_.count();
+
+    if (new_visible_rows_.count() > 0) {
+        beginInsertRows(QModelIndex(), pos, pos + new_visible_rows_.count());
+        foreach (PacketListRecord *record, new_visible_rows_) {
+            frame_data *fdata = record->frameData();
+
+            visible_rows_ << record;
+            number_to_row_[fdata->num] = visible_rows_.count() - 1;
+        }
+        endInsertRows();
+        new_visible_rows_.clear();
+    }
+}
+
+// Fill our column string and colorization cache while the application is
+// idle. Try to be as conservative with the CPU and disk as possible.
+static const int idle_dissection_interval_ = 5; // ms
+void PacketListModel::dissectIdle(bool reset)
+{
+    if (reset) {
+//        qDebug() << "=di reset" << idle_dissection_row_;
+        idle_dissection_row_ = 0;
+    } else if (!idle_dissection_timer_->isValid()) {
+        return;
+    }
+
+    idle_dissection_timer_->restart();
+
+    while (idle_dissection_timer_->elapsed() < idle_dissection_interval_
+           && idle_dissection_row_ < physical_rows_.count()) {
+        ensureRowColorized(idle_dissection_row_);
+        idle_dissection_row_++;
+//        if (idle_dissection_row_ % 1000 == 0) qDebug() << "=di row" << idle_dissection_row_;
+    }
+
+    if (idle_dissection_row_ < physical_rows_.count()) {
+        QTimer::singleShot(idle_dissection_interval_, this, SLOT(dissectIdle()));
+    } else {
+        idle_dissection_timer_->invalidate();
+    }
+}
+
+// XXX Pass in cinfo from packet_list_append so that we can fill in
+// line counts?
 gint PacketListModel::appendPacket(frame_data *fdata)
 {
     PacketListRecord *record = new PacketListRecord(fdata);
-    gint pos = visible_rows_.count();
+    gint pos = -1;
 
     physical_rows_ << record;
 
     if (fdata->flags.passed_dfilter || fdata->flags.ref_time) {
-        beginInsertRows(QModelIndex(), pos, pos);
-        visible_rows_ << record;
-        number_to_row_[fdata->num] = visible_rows_.count() - 1;
-        endInsertRows();
-    } else {
-        pos = -1;
+        new_visible_rows_ << record;
+        if (new_visible_rows_.count() < 2) {
+            // This is the first queued packet. Schedule an insertion for
+            // the next UI update.
+            QTimer::singleShot(0, this, SLOT(flushVisibleRows()));
+        }
+        pos = visible_rows_.count() + new_visible_rows_.count() - 1;
     }
+
     return pos;
 }
 

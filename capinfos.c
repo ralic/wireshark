@@ -63,31 +63,25 @@
 #include <locale.h>
 #include <errno.h>
 
-#ifdef HAVE_UNISTD_H
-#include <unistd.h>
-#endif
-
 #ifdef HAVE_GETOPT_H
 #include <getopt.h>
 #endif
 
 #include <glib.h>
 
-#ifdef HAVE_LIBZ
-#include <zlib.h>     /* to get the libz version number */
-#endif
+#include <wiretap/wtap.h>
 
 #include <wsutil/crash_info.h>
 #include <wsutil/filesystem.h>
 #include <wsutil/privileges.h>
-#include <wsutil/ws_diag_control.h>
-#include <wsutil/ws_version_info.h>
+#include <ws_version_info.h>
+#include <wiretap/wtap_opttypes.h>
+#include <wiretap/pcapng.h>
 
 #ifdef HAVE_PLUGINS
 #include <wsutil/plugins.h>
 #endif
 
-#include "wtap.h"
 #include <wsutil/report_err.h>
 #include <wsutil/str_util.h>
 #include <wsutil/file_util.h>
@@ -1042,9 +1036,10 @@ process_cap_file(wtap *wth, const char *filename)
   nstime_t              prev_time;
   gboolean              know_order = FALSE;
   order_t               order = IN_ORDER;
-  const wtapng_section_t *shb_inf;
+  wtap_optionblock_t    shb_inf;
   guint                 i;
   wtapng_iface_descriptions_t *idb_info;
+  char                  *shb_str;
 
   g_assert(wth != NULL);
   g_assert(filename != NULL);
@@ -1075,7 +1070,7 @@ process_cap_file(wtap *wth, const char *filename)
 
   /* get IDB info strings */
   for (i = 0; i < cf_info.num_interfaces; i++) {
-    const wtapng_if_descr_t *if_descr = &g_array_index(idb_info->interface_data, wtapng_if_descr_t, i);
+    const wtap_optionblock_t if_descr = g_array_index(idb_info->interface_data, wtap_optionblock_t, i);
     gchar *s = wtap_get_debug_if_descr(if_descr, 21, "\n");
     g_array_append_val(cf_info.idb_info_strings, s);
   }
@@ -1249,10 +1244,14 @@ process_cap_file(wtap *wth, const char *filename)
   shb_inf = wtap_file_get_shb(wth);
   if (shb_inf) {
     /* opt_comment is always 0-terminated by pcapng_read_section_header_block */
-    cf_info.comment  = g_strdup(shb_inf->opt_comment);
-    cf_info.hardware = g_strdup(shb_inf->shb_hardware);
-    cf_info.os       = g_strdup(shb_inf->shb_os);
-    cf_info.usr_appl = g_strdup(shb_inf->shb_user_appl);
+    wtap_optionblock_get_option_string(shb_inf, OPT_COMMENT, &shb_str);
+    cf_info.comment  = g_strdup(shb_str);
+    wtap_optionblock_get_option_string(shb_inf, OPT_SHB_HARDWARE, &shb_str);
+    cf_info.hardware = g_strdup(shb_str);
+    wtap_optionblock_get_option_string(shb_inf, OPT_SHB_OS, &shb_str);
+    cf_info.os       = g_strdup(shb_str);
+    wtap_optionblock_get_option_string(shb_inf, OPT_SHB_USERAPPL, &shb_str);
+    cf_info.usr_appl = g_strdup(shb_str);
   }
 
   string_replace_newlines(cf_info.comment);
@@ -1362,32 +1361,6 @@ hash_to_str(const unsigned char *hash, size_t length, char *str) {
 }
 #endif /* HAVE_LIBGCRYPT */
 
-static void
-get_capinfos_compiled_info(GString *str)
-{
-  /* LIBZ */
-  g_string_append(str, ", ");
-#ifdef HAVE_LIBZ
-  g_string_append(str, "with libz ");
-#ifdef ZLIB_VERSION
-  g_string_append(str, ZLIB_VERSION);
-#else /* ZLIB_VERSION */
-  g_string_append(str, "(version unknown)");
-#endif /* ZLIB_VERSION */
-#else /* HAVE_LIBZ */
-  g_string_append(str, "without libz");
-#endif /* HAVE_LIBZ */
-}
-
-static void
-get_capinfos_runtime_info(GString *str)
-{
-  /* zlib */
-#if defined(HAVE_LIBZ) && !defined(_WIN32)
-  g_string_append_printf(str, ", with libz %s", zlibVersion());
-#endif
-}
-
 int
 main(int argc, char *argv[])
 {
@@ -1398,13 +1371,11 @@ main(int argc, char *argv[])
   gchar *err_info;
   int    opt;
   int    overall_error_status;
-DIAG_OFF(cast-qual)
   static const struct option long_options[] = {
-      {(char *)"help", no_argument, NULL, 'h'},
-      {(char *)"version", no_argument, NULL, 'v'},
+      {"help", no_argument, NULL, 'h'},
+      {"version", no_argument, NULL, 'v'},
       {0, 0, 0, 0 }
   };
-DIAG_ON(cast-qual)
 
   int status = 0;
 #ifdef HAVE_PLUGINS
@@ -1421,10 +1392,10 @@ DIAG_ON(cast-qual)
   setlocale(LC_ALL, "");
 
   /* Get the compile-time version information string */
-  comp_info_str = get_compiled_version_info(NULL, get_capinfos_compiled_info);
+  comp_info_str = get_compiled_version_info(NULL, NULL);
 
   /* Get the run-time version information string */
-  runtime_info_str = get_runtime_version_info(get_capinfos_runtime_info);
+  runtime_info_str = get_runtime_version_info(NULL);
 
   /* Add it to the information to be reported on a crash. */
   ws_add_crash_info("Capinfos (Wireshark) %s\n"
@@ -1446,7 +1417,7 @@ DIAG_ON(cast-qual)
   init_open_routines();
 
 #ifdef HAVE_PLUGINS
-  if ((init_progfile_dir_error = init_progfile_dir(argv[0], (void *)main))) {
+  if ((init_progfile_dir_error = init_progfile_dir(argv[0], main))) {
     g_warning("capinfos: init_progfile_dir(): %s", init_progfile_dir_error);
     g_free(init_progfile_dir_error);
   } else {
@@ -1621,7 +1592,7 @@ DIAG_ON(cast-qual)
       case 'h':
         printf("Capinfos (Wireshark) %s\n"
                "Print various information (infos) about capture files.\n"
-               "See http://www.wireshark.org for more information.\n",
+               "See https://www.wireshark.org for more information.\n",
                get_ws_vcs_version_info());
         print_usage(stdout);
         exit(0);

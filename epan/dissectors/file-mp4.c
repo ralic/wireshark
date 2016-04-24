@@ -491,7 +491,7 @@ dissect_mp4_url_body(tvbuff_t *tvb, gint offset, gint len,
 
 static gint
 dissect_mp4_stsd_body(tvbuff_t *tvb, gint offset, gint len,
-        packet_info *pinfo _U_, proto_tree *tree)
+        packet_info *pinfo, proto_tree *tree)
 {
     guint32  entry_cnt, i;
     gint     ret;
@@ -806,7 +806,7 @@ proto_register_mp4(void)
 void
 proto_reg_handoff_mp4(void)
 {
-    dissector_handle_t mp4_handle = new_create_dissector_handle(dissect_mp4, proto_mp4);
+    dissector_handle_t mp4_handle = create_dissector_handle(dissect_mp4, proto_mp4);
     dissector_add_string("media_type", "video/mp4", mp4_handle);
     dissector_add_string("media_type", "audio/mp4", mp4_handle);
 }

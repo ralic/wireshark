@@ -11,7 +11,7 @@ and let us add features more easily.
 1. Getting up and running
 
 The Qt interface for Wireshark should compile out of the box on Windows, OS
-X, and Linux using Qt 4.6 or later (including Qt 5) and Visual C++, gcc/g++,
+X, and Linux using Qt 4.7 or later (including Qt 5) and Visual C++, gcc/g++,
 and clang/clang++. The Qt UI is continuously built and tested at
 https://buildbot.wireshark.org/trunk/waterfall .
 
@@ -41,7 +41,7 @@ There are several ways of building the Qt UI:
     cmake
     make
 
-   Note that CMake builds an application bundle (Wireshark.app) on Mac OS X
+   Note that CMake builds an application bundle (Wireshark.app) on OS X
    by default. Use the option "-DENABLE_APPLICATION_BUNDLE=OFF" to create a
    traditional UNIX/POSIX build.
 

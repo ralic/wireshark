@@ -1,5 +1,5 @@
 /* packet-corosync-totemsrp.c
- * Dissectors for totem single ring protocol implementated in corosync cluster engine
+ * Dissectors for totem single ring protocol implemented in corosync cluster engine
  * Copyright 2007 2009 2010 2014 Masatake YAMATO <yamato@redhat.com>
  * Copyright (c) 2010 2014 Red Hat, Inc.
  *
@@ -1129,9 +1129,9 @@ proto_register_corosync_totemsrp(void)
        FT_UINT32, BASE_DEC, NULL, 0x0,
        NULL, HFILL}},
 
-    /* token_hold_canel */
+    /* token_hold_cancel */
     { &hf_corosync_totemsrp_token_hold_cancel,
-      {"Hold cancel token", "corosync_totemsrp.token_hold_canel",
+      {"Hold cancel token", "corosync_totemsrp.token_hold_cancel",
        FT_NONE, BASE_NONE, NULL, 0x0,
        NULL, HFILL}},
   };
@@ -1159,9 +1159,9 @@ proto_register_corosync_totemsrp(void)
   proto_register_field_array(proto_corosync_totemsrp, hf, array_length(hf));
   proto_register_subtree_array(ett, array_length(ett));
 
-  heur_subdissector_list = register_heur_dissector_list("corosync_totemsrp.mcast");
+  heur_subdissector_list = register_heur_dissector_list("corosync_totemsrp.mcast", proto_corosync_totemsrp);
 
-  new_register_dissector( "corosync_totemsrp", dissect_corosync_totemsrp, proto_corosync_totemsrp);
+  register_dissector( "corosync_totemsrp", dissect_corosync_totemsrp, proto_corosync_totemsrp);
 }
 
 void

@@ -46,8 +46,8 @@ static const value_string encaps_vals[] = {
 static dissector_handle_t eth_withoutfcs_handle;
 static dissector_handle_t ppp_hdlc_handle;
 
-static void
-dissect_ascend(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
+static int
+dissect_ascend(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data _U_)
 {
   proto_tree                    *fh_tree;
   proto_item                    *ti, *hidden_item;
@@ -109,6 +109,7 @@ dissect_ascend(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
     default:
       break;
   }
+  return tvb_captured_length(tvb);
 }
 
 void
@@ -157,8 +158,8 @@ proto_reg_handoff_ascend(void)
   /*
    * Get handles for the Ethernet and PPP-in-HDLC-like-framing dissectors.
    */
-  eth_withoutfcs_handle = find_dissector("eth_withoutfcs");
-  ppp_hdlc_handle = find_dissector("ppp_hdlc");
+  eth_withoutfcs_handle = find_dissector_add_dependency("eth_withoutfcs", proto_ascend);
+  ppp_hdlc_handle = find_dissector_add_dependency("ppp_hdlc", proto_ascend);
 
   ascend_handle = create_dissector_handle(dissect_ascend, proto_ascend);
   dissector_add_uint("wtap_encap", WTAP_ENCAP_ASCEND, ascend_handle);

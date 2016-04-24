@@ -37,6 +37,8 @@ struct _capture_file;
 class QAbstractButton;
 class QTreeWidgetItem;
 
+class SequenceInfo;
+
 namespace Ui {
 class VoipCallsDialog;
 }
@@ -51,9 +53,10 @@ public:
     ~VoipCallsDialog();
 
 public slots:
+    void endRetapPackets();
 
 signals:
-    void updateFilter(QString &filter, bool force = false);
+    void updateFilter(QString filter, bool force = false);
     void captureFileChanged(struct _capture_file *cf);
     void goToPacket(int packet_num);
 
@@ -68,6 +71,7 @@ private:
 
     QWidget &parent_;
     voip_calls_tapinfo_t tapinfo_;
+    SequenceInfo *sequence_info_;
     QPushButton *prepare_button_;
     QPushButton *sequence_button_;
     QPushButton *player_button_;
@@ -82,6 +86,7 @@ private:
     void updateWidgets();
     void prepareFilter();
     void showSequence();
+    void showPlayer();
 
 private slots:
     void captureFileClosing();

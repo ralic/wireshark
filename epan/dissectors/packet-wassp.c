@@ -1175,7 +1175,7 @@ proto_register_wassp(void)
 				0x0, NULL, HFILL }},
 
 		{ &hf_static_bp_netmask,
-		{ "STATIC-BP-NETMASK", "wassp.static.bp.netmask", FT_IPv4, BASE_NONE, NULL,
+		{ "STATIC-BP-NETMASK", "wassp.static.bp.netmask", FT_IPv4, BASE_NETMASK, NULL,
 				0x0, NULL, HFILL }},
 
 		{ &hf_static_bp_gateway,
@@ -1235,7 +1235,7 @@ proto_register_wassp(void)
 				0x0, NULL, HFILL }},
 
 		{ &hf_ap_netmask,
-		{ "AP-NETMASK", "wassp.ap.netmask", FT_IPv4, BASE_NONE, NULL,
+		{ "AP-NETMASK", "wassp.ap.netmask", FT_IPv4, BASE_NETMASK, NULL,
 				0x0, NULL, HFILL }},
 
 		{ &hf_ap_gateway,
@@ -2096,15 +2096,15 @@ proto_reg_handoff_wassp(void)
 	dissector_handle_t wassp_handle;
 
 
-	wassp_handle = new_create_dissector_handle(dissect_wassp_static, proto_wassp);
+	wassp_handle = create_dissector_handle(dissect_wassp_static, proto_wassp);
 	dissector_add_uint("udp.port", PORT_WASSP_DISCOVER, wassp_handle);
 	dissector_add_uint("udp.port", PORT_WASSP_TUNNEL, wassp_handle);
 	/* dissector_add_uint("udp.port", PORT_WASSP_PEER, wassp_handle); */
 
 	heur_dissector_add("udp", dissect_wassp_heur, "WASSP over UDP", "wassp_udp", proto_wassp, HEURISTIC_DISABLE);
 
-	snmp_handle = find_dissector("snmp");
-	ieee80211_handle = find_dissector("wlan_withoutfcs");
+	snmp_handle = find_dissector_add_dependency("snmp", proto_wassp);
+	ieee80211_handle = find_dissector_add_dependency("wlan_withoutfcs", proto_wassp);
 }
 
 /*

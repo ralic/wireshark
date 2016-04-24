@@ -34,6 +34,7 @@
 #include <epan/packet.h>
 #include <epan/expert.h>
 #include <epan/prefs.h>
+#include <wsutil/str_util.h>
 #include "packet-bssap.h"
 #include "packet-gsm_a_common.h"
 #include "packet-e212.h"
@@ -351,7 +352,6 @@ static expert_field ei_bssap_unknown_parameter = EI_INIT;
 static expert_field ei_bssap_mandatory_ie = EI_INIT;
 
 
-static dissector_handle_t data_handle;
 static dissector_handle_t rrlp_handle;
 
 static dissector_table_t bssap_dissector_table;
@@ -404,7 +404,7 @@ dissect_bssap_data_param(tvbuff_t *tvb, packet_info *pinfo,
     }
 
     /* No sub-dissection occurred, treat it as raw data */
-    call_dissector(data_handle, tvb, pinfo, bssap_tree);
+    call_data_dissector(tvb, pinfo, bssap_tree);
 }
 
 static void
@@ -748,7 +748,7 @@ dissect_bssap_dlink_tunnel_payload_control_and_info(tvbuff_t *tvb, packet_info *
     if ((prot_disc == 2)&&(rrlp_handle))
         call_dissector(rrlp_handle, next_tvb, pinfo, ie_tree);
     else
-        call_dissector(data_handle, next_tvb, pinfo, ie_tree);
+        call_data_dissector(next_tvb, pinfo, ie_tree);
 
 
     return offset + ie_len;
@@ -1470,7 +1470,7 @@ dissect_bssap_ulink_tunnel_payload_control_and_info(tvbuff_t *tvb, packet_info *
     if ((prot_disc == 2)&&(rrlp_handle))
         call_dissector(rrlp_handle, next_tvb, pinfo, ie_tree);
     else
-        call_dissector(data_handle, next_tvb, pinfo, ie_tree);
+        call_data_dissector(next_tvb, pinfo, ie_tree);
 
     return offset + ie_len;
 
@@ -2512,8 +2512,8 @@ proto_register_bssap(void)
     proto_bssap = proto_register_protocol("BSSAP/BSAP", "BSSAP", "bssap");
     proto_bssap_plus = proto_register_protocol("BSSAP2", "BSSAP2", "bssap_plus");
 
-    new_register_dissector("bssap", dissect_bssap, proto_bssap);
-    new_register_dissector("bssap_plus", dissect_bssap_plus, proto_bssap_plus);
+    register_dissector("bssap", dissect_bssap, proto_bssap);
+    register_dissector("bssap_plus", dissect_bssap_plus, proto_bssap_plus);
 
     /* Required function calls to register the header fields and subtrees used */
     proto_register_field_array(proto_bssap, hf, array_length(hf));
@@ -2545,8 +2545,8 @@ proto_register_bssap(void)
                        "Subsystem number used for BSSAP",
                        "Set Subsystem number used for BSSAP/BSSAP+",
                        10, &global_bssap_ssn);
-    bssap_dissector_table = register_dissector_table("bssap.pdu_type", "BSSAP Message Type", FT_UINT8, BASE_DEC);
-    bsap_dissector_table  = register_dissector_table("bsap.pdu_type", "BSAP Message Type", FT_UINT8, BASE_DEC);
+    bssap_dissector_table = register_dissector_table("bssap.pdu_type", "BSSAP Message Type", proto_bssap, FT_UINT8, BASE_DEC, DISSECTOR_TABLE_NOT_ALLOW_DUPLICATE);
+    bsap_dissector_table  = register_dissector_table("bsap.pdu_type", "BSAP Message Type", proto_bssap, FT_UINT8, BASE_DEC, DISSECTOR_TABLE_NOT_ALLOW_DUPLICATE);
 }
 
 void
@@ -2560,12 +2560,12 @@ proto_reg_handoff_bssap(void)
         heur_dissector_add("sccp", dissect_bssap_heur, "BSSAP over SCCP", "bssap_sccp", proto_bssap, HEURISTIC_ENABLE);
         heur_dissector_add("sua", dissect_bssap_heur, "BSSAP over SUA", "bssap_sua", proto_bssap, HEURISTIC_ENABLE);
         /* BSSAP+ */
-        bssap_plus_handle = new_create_dissector_handle(dissect_bssap_plus, proto_bssap);
+        bssap_plus_handle = create_dissector_handle(dissect_bssap_plus, proto_bssap);
 
-        data_handle = find_dissector("data");
-        rrlp_handle = find_dissector("rrlp");
-        gsm_bssmap_le_dissector_handle = find_dissector("gsm_bssmap_le");
-        gsm_a_bssmap_dissector_handle = find_dissector("gsm_a_bssmap");
+        rrlp_handle = find_dissector_add_dependency("rrlp", proto_bssap_plus);
+        gsm_bssmap_le_dissector_handle = find_dissector_add_dependency("gsm_bssmap_le", proto_bssap);
+        gsm_a_bssmap_dissector_handle = find_dissector_add_dependency("gsm_a_bssmap", proto_bssap);
+
         initialized = TRUE;
     } else {
         dissector_delete_uint("sccp.ssn", old_bssap_ssn, bssap_plus_handle);

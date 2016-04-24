@@ -56,6 +56,7 @@ enum chunk_types {
     SHUT_COMPLETE = 14,
     AUTH          = 15,
     NR_SACK       = 16,
+    I_DATA        = 0x40,
     ASCONF_ACK    = 0x80,
     PKTDROP       = 0x81,
     FORWARD_TSN   = 0xC0,
@@ -81,6 +82,7 @@ enum
     SHUT_COMPLETE_COLUMN,
     AUTH_COLUMN,
     NR_SACK_COLUMN,
+    I_DATA_COLUMN,
     ASCONF_ACK_COLUMN,
     PKTDROP_COLUMN,
     FORWARD_TSN_COLUMN,
@@ -122,6 +124,7 @@ GtkWidget* create_list(void)
                                     G_TYPE_INT,    /* SHUT_COMPLETE               */
                                     G_TYPE_INT,    /* AUTH                        */
                                     G_TYPE_INT,    /* NR_SACK                     */
+                                    G_TYPE_INT,    /* I_DATA                      */
                                     G_TYPE_INT,    /* ASCONF_ACK                  */
                                     G_TYPE_INT,    /* PKTDROP                     */
                                     G_TYPE_INT,    /* FORWARD_TSN                 */
@@ -351,6 +354,17 @@ GtkWidget* create_list(void)
 
     /* 19:th column... */
     renderer = gtk_cell_renderer_text_new ();
+    column = gtk_tree_view_column_new_with_attributes ("I-DATA", renderer,
+                "text", I_DATA_COLUMN,
+                NULL);
+    gtk_tree_view_column_set_sort_column_id(column, I_DATA_COLUMN);
+    gtk_tree_view_column_set_resizable(column, TRUE);
+    gtk_tree_view_column_set_sizing(column, GTK_TREE_VIEW_COLUMN_FIXED);
+    gtk_tree_view_column_set_min_width(column, 100);
+    gtk_tree_view_append_column (list_view, column);
+
+    /* 20:th column... */
+    renderer = gtk_cell_renderer_text_new ();
     column = gtk_tree_view_column_new_with_attributes ("ASCONF-ACK", renderer,
                 "text", ASCONF_ACK_COLUMN,
                 NULL);
@@ -360,7 +374,7 @@ GtkWidget* create_list(void)
     gtk_tree_view_column_set_min_width(column, 120);
     gtk_tree_view_append_column (list_view, column);
 
-    /* 20:th column... */
+    /* 21:th column... */
     renderer = gtk_cell_renderer_text_new ();
     column = gtk_tree_view_column_new_with_attributes ("PKTDROP", renderer,
                 "text", PKTDROP_COLUMN,
@@ -371,7 +385,7 @@ GtkWidget* create_list(void)
     gtk_tree_view_column_set_min_width(column, 100);
     gtk_tree_view_append_column (list_view, column);
 
-    /* 21:st column... */
+    /* 22:st column... */
     renderer = gtk_cell_renderer_text_new ();
     column = gtk_tree_view_column_new_with_attributes ("FORWARD-TSN", renderer,
                 "text", FORWARD_TSN_COLUMN,
@@ -382,7 +396,7 @@ GtkWidget* create_list(void)
     gtk_tree_view_column_set_min_width(column, 140);
     gtk_tree_view_append_column (list_view, column);
 
-    /* 22:nd column... */
+    /* 23:nd column... */
     renderer = gtk_cell_renderer_text_new ();
     column = gtk_tree_view_column_new_with_attributes ("ASCONF", renderer,
                 "text", ASCONF_COLUMN,
@@ -393,7 +407,7 @@ GtkWidget* create_list(void)
     gtk_tree_view_column_set_min_width(column, 90);
     gtk_tree_view_append_column (list_view, column);
 
-    /* 23:rd column... */
+    /* 24:rd column... */
     renderer = gtk_cell_renderer_text_new ();
     column = gtk_tree_view_column_new_with_attributes ("Others", renderer,
                 "text", OTHERS_COLUMN,
@@ -440,6 +454,7 @@ chunk_name(int type)
         CASE(SHUT_COMPLETE);
         CASE(AUTH);
         CASE(NR_SACK);
+        CASE(I_DATA);
         CASE(ASCONF_ACK);
         CASE(PKTDROP);
         CASE(FORWARD_TSN);
@@ -467,18 +482,6 @@ chunk_dlg_destroy(GObject *object _U_, gpointer user_data)
 }
 
 static void
-on_destroy(GObject *object _U_, gpointer user_data)
-{
-    struct sctp_udata *u_data = (struct sctp_udata*)user_data;
-
-    decrease_childcount(u_data->parent);
-    remove_child(u_data, u_data->parent);
-    g_free(u_data->io);
-    g_free(u_data);
-}
-
-
-static void
 add_to_clist(sctp_addr_chunk* sac)
 {
     GtkListStore *list_store = NULL;
@@ -494,7 +497,7 @@ add_to_clist(sctp_addr_chunk* sac)
     }
 
     gtk_list_store_insert_with_values( list_store , &iter, G_MAXINT,
-         IP_ADDR_COLUMN,         field[0],
+         IP_ADDR_COLUMN,         field,
          DATA_COLUMN,            sac->addr_count[SCTP_DATA_CHUNK_ID],
          INIT_COLUMN,            sac->addr_count[SCTP_INIT_CHUNK_ID],
          INIT_ACK_COLUMN,        sac->addr_count[SCTP_INIT_ACK_CHUNK_ID],
@@ -512,6 +515,7 @@ add_to_clist(sctp_addr_chunk* sac)
          SHUT_COMPLETE_COLUMN,   sac->addr_count[SCTP_SHUTDOWN_COMPLETE_CHUNK_ID],
          AUTH_COLUMN,            sac->addr_count[SCTP_AUTH_CHUNK_ID],
          NR_SACK_COLUMN,         sac->addr_count[SCTP_NR_SACK_CHUNK_ID],
+         I_DATA_COLUMN,          sac->addr_count[SCTP_I_DATA_CHUNK_ID],
          ASCONF_ACK_COLUMN,      sac->addr_count[SCTP_ASCONF_ACK_CHUNK_ID],
          PKTDROP_COLUMN,         sac->addr_count[SCTP_PKTDROP_CHUNK_ID],
          FORWARD_TSN_COLUMN,     sac->addr_count[SCTP_FORWARD_TSN_CHUNK_ID],
@@ -561,17 +565,6 @@ sctp_chunk_stat_on_close (GtkButton *button _U_, gpointer         user_data)
     gtk_grab_remove(udata->io->window);
     gtk_widget_destroy(udata->io->window);
 }
-
-static void
-on_close_dlg (GtkButton *button _U_, gpointer user_data)
-{
-    struct sctp_udata *udata;
-
-    udata = (struct sctp_udata *)user_data;
-    gtk_grab_remove(udata->io->window);
-    gtk_widget_destroy(udata->io->window);
-}
-
 
 static void
 path_window_set_title(struct sctp_udata *u_data, unsigned int direction)
@@ -676,7 +669,7 @@ sctp_chunk_dlg(struct sctp_udata *u_data)
     u_data->io->window = gtk_window_new (GTK_WINDOW_TOPLEVEL);
     gtk_window_set_position (GTK_WINDOW (u_data->io->window), GTK_WIN_POS_CENTER);
     gtk_widget_set_size_request(u_data->io->window, 500, 650);
-    g_signal_connect(u_data->io->window, "destroy", G_CALLBACK(on_destroy), u_data);
+    g_signal_connect(u_data->io->window, "destroy", G_CALLBACK(chunk_dlg_destroy), u_data);
 
     /* Container for each row of widgets */
     main_vb = ws_gtk_box_new(GTK_ORIENTATION_VERTICAL, 12, FALSE);
@@ -762,7 +755,7 @@ sctp_chunk_dlg(struct sctp_udata *u_data)
     close_bt = ws_gtk_button_new_from_stock(GTK_STOCK_CLOSE);
     gtk_box_pack_start(GTK_BOX(h_button_box), close_bt, FALSE, FALSE, 0);
     gtk_widget_show(close_bt);
-    g_signal_connect(close_bt, "clicked", G_CALLBACK(on_close_dlg), u_data);
+    g_signal_connect(close_bt, "clicked", G_CALLBACK(sctp_chunk_stat_on_close), u_data);
 
     gtk_widget_show_all(u_data->io->window);
     chunk_window_set_title(u_data);
@@ -775,7 +768,6 @@ sctp_chunk_dlg_show(struct sctp_analyse* userdata)
     struct sctp_udata *u_data;
 
     u_data = (struct sctp_udata *)g_malloc(sizeof(struct sctp_udata));
-    u_data->assoc  = (sctp_assoc_info_t *)g_malloc(sizeof(sctp_assoc_info_t));
     u_data->assoc  = userdata->assoc;
     u_data->io     = NULL;
     u_data->parent = userdata;
@@ -800,7 +792,6 @@ sctp_chunk_stat_dlg_show(unsigned int direction, struct sctp_analyse* userdata)
     struct sctp_udata *u_data;
 
     u_data = (struct sctp_udata *)g_malloc(sizeof(struct sctp_udata));
-    u_data->assoc  = (sctp_assoc_info_t *)g_malloc(sizeof(sctp_assoc_info_t));
     u_data->assoc  = userdata->assoc;
     u_data->io     = NULL;
     u_data->parent = userdata;

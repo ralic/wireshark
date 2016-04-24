@@ -26,7 +26,8 @@
 #include "frame_tvbuff.h"
 #include "ui/proto_hier_stats.h"
 #include "ui/progress_dlg.h"
-#include <epan/epan_dissect.h>
+#include "epan/epan_dissect.h"
+#include "epan/proto.h"
 
 #include <string.h>
 
@@ -36,14 +37,16 @@
 #define STAT_NODE_STATS(n)   ((ph_stats_node_t*)(n)->data)
 #define STAT_NODE_HFINFO(n)  (STAT_NODE_STATS(n)->hfinfo)
 
+static int pc_proto_id = -1;
 
 static GNode*
 find_stat_node(GNode *parent_stat_node, header_field_info *needle_hfinfo)
 {
-	GNode			*needle_stat_node;
+	GNode			*needle_stat_node, *up_parent_stat_node;
 	header_field_info	*hfinfo;
-	ph_stats_node_t         *stats;
+	ph_stats_node_t		*stats;
 
+	/* Look down the tree */
 	needle_stat_node = g_node_first_child(parent_stat_node);
 
 	while (needle_stat_node) {
@@ -52,6 +55,22 @@ find_stat_node(GNode *parent_stat_node, header_field_info *needle_hfinfo)
 			return needle_stat_node;
 		}
 		needle_stat_node = g_node_next_sibling(needle_stat_node);
+	}
+
+	/* Look up the tree */
+	up_parent_stat_node = parent_stat_node;
+	while (up_parent_stat_node && up_parent_stat_node->parent)
+	{
+		needle_stat_node = g_node_first_child(up_parent_stat_node->parent);
+		while (needle_stat_node) {
+			hfinfo = STAT_NODE_HFINFO(needle_stat_node);
+			if (hfinfo &&  hfinfo->id == needle_hfinfo->id) {
+				return needle_stat_node;
+			}
+			needle_stat_node = g_node_next_sibling(needle_stat_node);
+		}
+
+		up_parent_stat_node = up_parent_stat_node->parent;
 	}
 
 	/* None found. Create one. */
@@ -71,7 +90,7 @@ find_stat_node(GNode *parent_stat_node, header_field_info *needle_hfinfo)
 
 
 static void
-process_node(proto_node *ptree_node, GNode *parent_stat_node, ph_stats_t *ps, guint pkt_len)
+process_node(proto_node *ptree_node, GNode *parent_stat_node, ph_stats_t *ps)
 {
 	field_info		*finfo;
 	ph_stats_node_t		*stats;
@@ -95,7 +114,7 @@ process_node(proto_node *ptree_node, GNode *parent_stat_node, ph_stats_t *ps, gu
 
 		stats = STAT_NODE_STATS(stat_node);
 		stats->num_pkts_total++;
-		stats->num_bytes_total += pkt_len;
+		stats->num_bytes_total += finfo->length;
 	}
 
 	proto_sibling_node = ptree_node->next;
@@ -108,26 +127,35 @@ process_node(proto_node *ptree_node, GNode *parent_stat_node, ph_stats_t *ps, gu
 		if(strlen(PNODE_FINFO(proto_sibling_node)->hfinfo->name) == 0 && ptree_node->next)
 			proto_sibling_node = proto_sibling_node->next;
 
-		process_node(proto_sibling_node, stat_node, ps, pkt_len);
+		process_node(proto_sibling_node, stat_node, ps);
 	} else {
 		stats->num_pkts_last++;
-		stats->num_bytes_last += pkt_len;
+		stats->num_bytes_last += finfo->length;
 	}
 }
 
 
 
 static void
-process_tree(proto_tree *protocol_tree, ph_stats_t* ps, guint pkt_len)
+process_tree(proto_tree *protocol_tree, ph_stats_t* ps)
 {
 	proto_node	*ptree_node;
 
+	/*
+	 * If our first item is a comment, skip over it. This keeps
+	 * us from having a top-level "Packet comments" item that
+	 * steals items from "Frame".
+	 */
 	ptree_node = ((proto_node *)protocol_tree)->first_child;
+	if (ptree_node && ptree_node->finfo->hfinfo->id == pc_proto_id) {
+		ptree_node = ptree_node->next;
+	}
+
 	if (!ptree_node) {
 		return;
 	}
 
-	process_node(ptree_node, ps->stats_tree, ps, pkt_len);
+	process_node(ptree_node, ps->stats_tree, ps);
 }
 
 static gboolean
@@ -152,7 +180,7 @@ process_record(capture_file *cf, frame_data *frame, column_info *cinfo, ph_stats
 	epan_dissect_run(&edt, cf->cd_t, &phdr, frame_tvbuff_new_buffer(frame, &buf), frame, cinfo);
 
 	/* Get stats from this protocol tree */
-	process_tree(edt.tree, ps, frame->pkt_len);
+	process_tree(edt.tree, ps);
 
 	if (frame->flags.has_ts) {
 		/* Update times */
@@ -188,6 +216,8 @@ ph_stats_new(capture_file *cf)
 	int		progbar_quantum;
 
 	if (!cf) return NULL;
+
+	pc_proto_id = proto_get_id_by_filter_name("pkt_comment");
 
 	/* Initialize the data */
 	ps = g_new(ph_stats_t, 1);

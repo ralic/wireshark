@@ -738,7 +738,7 @@ proto_register_ccid(void)
     prefs_register_enum_preference(pref_mod, "prtype", "PC -> Reader Payload Type", "How commands from the PC to the reader are interpreted",
         &sub_selected, sub_enum_vals, FALSE);
 
-    usb_ccid_handle = new_register_dissector("usbccid", dissect_ccid, proto_ccid);
+    usb_ccid_handle = register_dissector("usbccid", dissect_ccid, proto_ccid);
 }
 
 /* Handler registration */
@@ -747,7 +747,7 @@ proto_reg_handoff_ccid(void)
 {
     dissector_handle_t usb_ccid_descr_handle;
 
-    usb_ccid_descr_handle = new_create_dissector_handle(
+    usb_ccid_descr_handle = create_dissector_handle(
             dissect_usb_ccid_descriptor, proto_ccid);
     dissector_add_uint("usb.descriptor", IF_CLASS_SMART_CARD, usb_ccid_descr_handle);
 
@@ -758,11 +758,11 @@ proto_reg_handoff_ccid(void)
     dissector_add_for_decode_as("usb.protocol", usb_ccid_handle);
 
     sub_handles[SUB_DATA] = find_dissector("data");
-    sub_handles[SUB_ISO7816] = find_dissector("iso7816");
-    sub_handles[SUB_GSM_SIM_CMD] = find_dissector("gsm_sim.command");
-    sub_handles[SUB_PN532] = find_dissector("pn532");
-    sub_handles[SUB_ACR122_PN532] = find_dissector("acr122");
-    sub_handles[SUB_GSM_SIM_RSP] = find_dissector("gsm_sim.response");
+    sub_handles[SUB_ISO7816] = find_dissector_add_dependency("iso7816", proto_ccid);
+    sub_handles[SUB_GSM_SIM_CMD] = find_dissector_add_dependency("gsm_sim.command", proto_ccid);
+    sub_handles[SUB_PN532] = find_dissector_add_dependency("pn532", proto_ccid);
+    sub_handles[SUB_ACR122_PN532] = find_dissector_add_dependency("acr122", proto_ccid);
+    sub_handles[SUB_GSM_SIM_RSP] = find_dissector_add_dependency("gsm_sim.response", proto_ccid);
 }
 
 /*

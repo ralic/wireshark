@@ -75,7 +75,10 @@ AIX, for example, doesn't do so by default). C++-style comments can be
 used in C++ code, of course.
 
 In general, don't use C99 features since some C compilers used to compile
-Wireshark don't support C99 (E.G. Microsoft C).
+Wireshark, such as Microsoft's C compiler, don't support all C99
+features.  The C99 features that can be used are:
+
+	variadic macros
 
 Don't initialize variables in their declaration with non-constant
 values. Not all compilers support this. E.g. don't use
@@ -296,34 +299,19 @@ are little-endian, even though PCs are.  Fetch those values using
 Don't put a comma after the last element of an enum - some compilers may
 either warn about it (producing extra noise) or refuse to accept it.
 
-Don't include <unistd.h> without protecting it with
-
-    #ifdef HAVE_UNISTD_H
-
-        ...
-
-    #endif
-
-and, if you're including it to get routines such as "open()", "close()",
-"read()", and "write()" declared, also include <io.h> if present:
-
-    #ifdef HAVE_IO_H
-    #include <io.h>
-    #endif
-
-in order to declare the Windows C library routines "_open()",
-"_close()", "_read()", and "_write()".  Your file must include <glib.h>
-- which many of the Wireshark header files include, so you might not have
-to include it explicitly - in order to get "open()", "close()",
-"read()", "write()", etc. mapped to "_open()", "_close()", "_read()",
-"_write()", etc..
-
 Do not use "open()", "rename()", "mkdir()", "stat()", "unlink()", "remove()",
 "fopen()", "freopen()" directly.  Instead use "ws_open()", "ws_rename()",
 "ws_mkdir()", "ws_stat()", "ws_unlink()", "ws_remove()", "ws_fopen()",
 "ws_freopen()": these wrapper functions change the path and file name from
 UTF8 to UTF16 on Windows allowing the functions to work correctly when the
 path or file name contain non-ASCII characters.
+
+Also, use ws_read(), ws_write(), ws_lseek(), ws_dup(), ws_fstat(), and
+ws_fdopen(), rather than read(), write(), lseek(), dup(), fstat(), and
+fdopen() on descriptors returned by ws_open().
+
+Those functions are declared in <wsutil/file_util.h>; include that
+header in any code that uses any of those routines.
 
 When opening a file with "ws_fopen()", "ws_freopen()", or "ws_fdopen()", if
 the file contains ASCII text, use "r", "w", "a", and so on as the open mode
@@ -338,15 +326,21 @@ carriage return/line feed).
 
 In addition, that also means that when opening or creating a binary
 file, you must use "ws_open()" (with O_CREAT and possibly O_TRUNC if the
-file is to be created if it doesn't exist), and OR in the O_BINARY flag.
-That flag is not present on most, if not all, UNIX systems, so you must
-also do
+file is to be created if it doesn't exist), and OR in the O_BINARY flag,
+even on UN*X - O_BINARY is defined by <wsutil/file_util.h> as 0 on UN*X.
 
-    #ifndef O_BINARY
-    #define O_BINARY    0
+Do not include <unistd.h>, <fcntl.h>, or <io.h> to declare any of the
+routines listed as replaced by routines in <wsutil/file_util.h>;
+instead, just include <wsutil/file_util.h>.
+
+If you need the declarations of other functions defined by <unistd.h>,
+don't include it without protecting it with
+
+    #ifdef HAVE_UNISTD_H
+
+        ...
+
     #endif
-
-to properly define it for UNIX (it's not necessary on UNIX).
 
 Don't use forward declarations of static arrays without a specified size
 in a fashion such as this:
@@ -385,23 +379,6 @@ to implement it.  Use something like
 
 instead.
 
-Don't use "variadic macros", such as
-
-    #define DBG(format, args...)    fprintf(stderr, format, ## args)
-
-as not all C compilers support them.  Use macros that take a fixed
-number of arguments, such as
-
-    #define DBG0(format)                fprintf(stderr, format)
-    #define DBG1(format, arg1)          fprintf(stderr, format, arg1)
-    #define DBG2(format, arg1, arg2)    fprintf(stderr, format, arg1, arg2)
-
-        ...
-
-or something such as
-
-    #define DBG(args)       printf args
-
 Don't use
 
     case N ... M:
@@ -417,11 +394,11 @@ tmpnam is insecure and should not be used any more. Wireshark brings its
 own mkstemp implementation for use on platforms that lack mkstemp.
 Note: mkstemp does not accept NULL as a parameter.
 
-Wireshark supports platforms with GLib 2.14[.x]/GTK+ 2.12[.x] or newer.
-If a Glib/GTK+ mechanism is available only in Glib/GTK+ versions newer
-than 2.14/2.12 then use "#if GLIB_CHECK_VERSION(...)" or "#if
-GTK_CHECK_VERSION(...)" to conditionally compile code using that
-mechanism.
+Wireshark supports platforms with GLib 2.16[.x]/GTK+ 2.12[.x]/Qt 4.7[.x] or
+newer. If a Glib/GTK+/Qt mechanism is available only in Glib/GTK+/Qt
+versions newer than 2.16/2.12/4.7 then use "#if GLIB_CHECK_VERSION(...)",
+"#if GTK_CHECK_VERSION(...)" or "#if QT_VERSION_CHECK(...)" to conditionally
+compile code using that mechanism.
 
 When different code must be used on UN*X and Win32, use a #if or #ifdef
 that tests _WIN32, not WIN32.  Try to write code portably whenever
@@ -690,12 +667,29 @@ discussion of tabs, spaces, and indentation, see
 
     http://www.jwz.org/doc/tabs-vs-spaces.html
 
-When creating a new file, you are free to choose an indentation logic.
-Most of the files in Wireshark tend to use 2-space or 4-space
-indentation. You are encouraged to write a short comment on the
-indentation logic at the beginning of this new files.  The
-tabs-vs-spaces document above provides examples of Emacs and vi
-modelines for this purpose.
+Most of the files in Wireshark tend to use 2-space or 4-space indentation. When
+creating a new file you are free to choose an indentation logic but you are
+encouraged to use 4-space indentation for C/C++ source to keep inconsistency
+between files to a minimum.
+
+Each file should have a short comment (modelines) on the indentation logic at
+the end of the file. See
+
+    https://www.wireshark.org/tools/modelines.html
+
+for guidance.
+
+A complementary and arguably better alternative to modelines is
+EditorConfig (http://editorconfig.org). The default EditorConfig indentation
+style is defined in the .editorconfig file placed on the root of the project
+source code tree (4-space indentation for C). One advantage of following the
+default style is that no additional EditorConfig settings are required for new
+files. If your file does not follow this style please add a file-specific
+setting overriding the default style to a separate .editorconfig configuration
+file placed in the source file directory.
+
+Some IDEs and text editors have built-in EditorConfig support and many more
+have plugins available (links at http://editorconfig.org).
 
 Please do not leave trailing whitespace (spaces/tabs) on lines.
 
@@ -713,6 +707,16 @@ to avoid warnings at all.
 
 The compiler flags in the Makefiles are set to "treat warnings as errors",
 so your code won't even compile when warnings occur.
+
+7. Miscellaneous notes
+
+Each commit in your branch corresponds to a different VCSVERSION string
+automatically defined in the header 'version.h' during the build. If you happen
+to find it convenient to disable this feature it can be done using:
+
+    touch .git/wireshark-disable-versioning
+
+i.e., the file 'wireshark-disable-versioning' must exist in the git repo dir.
 
 /*
  * Editor modelines  -  https://www.wireshark.org/tools/modelines.html

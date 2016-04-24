@@ -38,7 +38,6 @@ void proto_reg_handoff_ethercat_frame(void);
 static int proto_ethercat_frame = -1;
 
 static dissector_table_t ethercat_frame_dissector_table;
-static dissector_handle_t ethercat_frame_data_handle;
 
 /* Define the tree for the EtherCAT frame */
 static int ett_ethercat_frame = -1;
@@ -63,7 +62,7 @@ static const value_string ethercat_frame_reserved_vals[] =
 };
 
 /* Ethercat Frame */
-static void dissect_ethercat_frame(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
+static int dissect_ethercat_frame(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data _U_)
 {
    tvbuff_t *next_tvb;
    proto_item *ti;
@@ -97,8 +96,9 @@ static void dissect_ethercat_frame(tvbuff_t *tvb, packet_info *pinfo, proto_tree
       col_add_fstr (pinfo->cinfo, COL_PROTOCOL, "0x%04x", hdr.v.protocol);
       /* No sub dissector wanted to handle this payload, decode it as general
       data instead. */
-      call_dissector (ethercat_frame_data_handle, next_tvb, pinfo, tree);
+      call_data_dissector(next_tvb, pinfo, tree);
    }
+   return tvb_captured_length(tvb);
 }
 
 void proto_register_ethercat_frame(void)
@@ -138,8 +138,8 @@ void proto_register_ethercat_frame(void)
 
    /* Define a handle (ecatf.type) for sub dissectors that want to dissect
       the Ethercat frame ether type (E88A4) payload. */
-   ethercat_frame_dissector_table = register_dissector_table("ecatf.type",
-                                                             "EtherCAT frame type", FT_UINT8, BASE_DEC);
+   ethercat_frame_dissector_table = register_dissector_table("ecatf.type", "EtherCAT frame type",
+                                                             proto_ethercat_frame, FT_UINT8, BASE_DEC, DISSECTOR_TABLE_NOT_ALLOW_DUPLICATE);
 }
 
 void proto_reg_handoff_ethercat_frame(void)
@@ -150,7 +150,6 @@ void proto_reg_handoff_ethercat_frame(void)
    dissector_add_uint("ethertype", ETHERTYPE_ECATF, ethercat_frame_handle);
    dissector_add_uint("udp.port", ETHERTYPE_ECATF, ethercat_frame_handle);
    dissector_add_uint("tcp.port", ETHERTYPE_ECATF, ethercat_frame_handle);
-   ethercat_frame_data_handle = find_dissector("data");
 }
 
 /*

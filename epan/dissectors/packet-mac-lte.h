@@ -58,14 +58,17 @@
 #define DIRECTION_DOWNLINK 1
 
 /* rntiType */
-#define NO_RNTI  0
-#define P_RNTI   1
-#define RA_RNTI  2
-#define C_RNTI   3
-#define SI_RNTI  4
-#define SPS_RNTI 5
-#define M_RNTI   6
-
+#define NO_RNTI     0
+#define P_RNTI      1
+#define RA_RNTI     2
+#define C_RNTI      3
+#define SI_RNTI     4
+#define SPS_RNTI    5
+#define M_RNTI      6
+#define SL_BCH_RNTI 7
+#define SL_RNTI     8
+#define SC_RNTI     9
+#define G_RNTI      10
 
 typedef enum mac_lte_oob_event {
     ltemac_send_preamble,
@@ -95,6 +98,12 @@ typedef enum mac_lte_carrier_id {
     carrier_id_secondary_3,
     carrier_id_secondary_4
 } mac_lte_carrier_id;
+
+typedef enum mac_lte_ce_mode {
+    no_ce_mode = 0,
+    ce_mode_a = 1,
+    ce_mode_b = 2
+} mac_lte_ce_mode;
 
 /* Context info attached to each LTE MAC frame */
 typedef struct mac_lte_info
@@ -146,6 +155,9 @@ typedef struct mac_lte_info
 
     /* DL only.  Is this known to be a retransmission? */
     mac_lte_dl_retx dl_retx;
+
+    /* DL only. CE mode to be used for RAR decoding */
+    mac_lte_ce_mode ceMode;
 
     /* More Physical layer info (see direction above for which side of union to use) */
     union {
@@ -199,7 +211,7 @@ typedef struct mac_lte_tap_info {
     guint8   isPHYRetx;
     guint16  ueInTTI;
 
-    nstime_t time;
+    nstime_t mac_lte_time;
 
     /* Number of bytes (which part is used depends upon context settings) */
     guint32  single_number_of_bytes;
@@ -290,6 +302,9 @@ int is_mac_lte_frame_retx(packet_info *pinfo, guint8 direction);
 #define MAC_LTE_SIMULT_PUCCH_PUSCH_PSCELL 0x0D
 /* 0 byte */
 
+#define MAC_LTE_CE_MODE             0x0E
+/* 1 byte containing mac_lte_ce_mode enum value */
+
 /* MAC PDU. Following this tag comes the actual MAC PDU (there is no length, the PDU
    continues until the end of the frame) */
 #define MAC_LTE_PAYLOAD_TAG 0x01
@@ -307,6 +322,8 @@ typedef struct drb_mapping_t
     guint8     rlcMode;             /* Part of RLC config - optional */
     gboolean   rlc_ul_ext_li_field; /* Part of RLC config - optional */
     gboolean   rlc_dl_ext_li_field; /* Part of RLC config - optional */
+    gboolean   rlc_ul_ext_am_sn;    /* Part of RLC config - optional */
+    gboolean   rlc_dl_ext_am_sn;    /* Part of RLC config - optional */
     gboolean   um_sn_length_present;
     guint8     um_sn_length;        /* Part of RLC config - optional */
     gboolean   ul_priority_present;

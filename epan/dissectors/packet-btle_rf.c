@@ -368,14 +368,14 @@ proto_register_btle_rf(void)
                                             "BTLE RF", "btle_rf");
     proto_register_field_array(proto_btle_rf, hf, array_length(hf));
     proto_register_subtree_array(ett, array_length(ett));
-    btle_rf_handle = new_register_dissector("btle_rf", dissect_btle_rf, proto_btle_rf);
+    btle_rf_handle = register_dissector("btle_rf", dissect_btle_rf, proto_btle_rf);
 }
 
 void
 proto_reg_handoff_btle_rf(void)
 {
     dissector_add_uint("bluetooth.encap", WTAP_ENCAP_BLUETOOTH_LE_LL_WITH_PHDR, btle_rf_handle);
-    btle_handle = find_dissector("btle");
+    btle_handle = find_dissector_add_dependency("btle", proto_btle_rf);
 }
 
 /*

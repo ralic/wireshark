@@ -487,7 +487,7 @@ static const gchar* dissect_fields_cau(packet_info* pinfo, tvbuff_t *tvb, proto_
     return ret_str;
 }
 
-static const gchar* dissect_fields_ceid(packet_info* pinfo _U_, tvbuff_t *tvb, proto_tree *tree, int offset, int len, alcap_message_info_t* msg_info) {
+static const gchar* dissect_fields_ceid(packet_info* pinfo, tvbuff_t *tvb, proto_tree *tree, int offset, int len, alcap_message_info_t* msg_info) {
     /*
      * Q.2630.1 -> 7.3.2 Connection Element Identifier
      *
@@ -521,7 +521,7 @@ static const gchar* dissect_fields_ceid(packet_info* pinfo _U_, tvbuff_t *tvb, p
     }
 }
 
-static const gchar* dissect_fields_desea(packet_info* pinfo _U_, tvbuff_t *tvb, proto_tree *tree, int offset, int len, alcap_message_info_t* msg_info _U_) {
+static const gchar* dissect_fields_desea(packet_info* pinfo, tvbuff_t *tvb, proto_tree *tree, int offset, int len, alcap_message_info_t* msg_info _U_) {
     /*
      * Q.2630.1 -> 7.3.3 Destination E.164 service endpoint address
      *
@@ -551,7 +551,7 @@ static const gchar* dissect_fields_desea(packet_info* pinfo _U_, tvbuff_t *tvb, 
     return NULL;
 }
 
-static const gchar* dissect_fields_oesea(packet_info* pinfo _U_, tvbuff_t *tvb, proto_tree *tree, int offset, int len, alcap_message_info_t* msg_info _U_) {
+static const gchar* dissect_fields_oesea(packet_info* pinfo, tvbuff_t *tvb, proto_tree *tree, int offset, int len, alcap_message_info_t* msg_info _U_) {
     /*
      * Q.2630.3 -> 7.3.23 Origination E.164 service endpoint address
      *
@@ -581,7 +581,7 @@ static const gchar* dissect_fields_oesea(packet_info* pinfo _U_, tvbuff_t *tvb, 
     return NULL;
 }
 
-static const gchar* dissect_fields_dnsea(packet_info* pinfo _U_, tvbuff_t *tvb, proto_tree *tree, int offset, int len, alcap_message_info_t* msg_info _U_) {
+static const gchar* dissect_fields_dnsea(packet_info* pinfo, tvbuff_t *tvb, proto_tree *tree, int offset, int len, alcap_message_info_t* msg_info) {
     /*
      * Q.2630.1 -> 7.3.4 Destination NSAP service endpoint address
      *
@@ -601,7 +601,7 @@ static const gchar* dissect_fields_dnsea(packet_info* pinfo _U_, tvbuff_t *tvb, 
     return NULL;
 }
 
-static const gchar* dissect_fields_onsea(packet_info* pinfo _U_, tvbuff_t *tvb, proto_tree *tree, int offset, int len, alcap_message_info_t* msg_info _U_) {
+static const gchar* dissect_fields_onsea(packet_info* pinfo, tvbuff_t *tvb, proto_tree *tree, int offset, int len, alcap_message_info_t* msg_info) {
     /*
      * Q.2630.3 -> 7.3.24 Origination NSAP service endpoint address
      *
@@ -621,7 +621,7 @@ static const gchar* dissect_fields_onsea(packet_info* pinfo _U_, tvbuff_t *tvb, 
     return NULL;
 }
 
-static const gchar* dissect_fields_alc(packet_info* pinfo _U_, tvbuff_t *tvb, proto_tree *tree, int offset, int len, alcap_message_info_t* msg_info _U_) {
+static const gchar* dissect_fields_alc(packet_info* pinfo, tvbuff_t *tvb, proto_tree *tree, int offset, int len, alcap_message_info_t* msg_info _U_) {
     /*
      * Q.2630.1 -> 7.3.5 Link characteristics
      *
@@ -648,7 +648,7 @@ static const gchar* dissect_fields_alc(packet_info* pinfo _U_, tvbuff_t *tvb, pr
     return NULL;
 }
 
-static const gchar* dissect_fields_plc(packet_info* pinfo _U_, tvbuff_t *tvb, proto_tree *tree, int offset, int len, alcap_message_info_t* msg_info _U_) {
+static const gchar* dissect_fields_plc(packet_info* pinfo, tvbuff_t *tvb, proto_tree *tree, int offset, int len, alcap_message_info_t* msg_info _U_) {
     /*
      * Q.2630.2 -> 7.3.19 Preferred Link characteristics
      *
@@ -675,7 +675,7 @@ static const gchar* dissect_fields_plc(packet_info* pinfo _U_, tvbuff_t *tvb, pr
     return NULL;
 }
 
-static const gchar* dissect_fields_osaid(packet_info* pinfo _U_, tvbuff_t *tvb, proto_tree *tree, int offset, int len, alcap_message_info_t* msg_info _U_) {
+static const gchar* dissect_fields_osaid(packet_info* pinfo, tvbuff_t *tvb, proto_tree *tree, int offset, int len, alcap_message_info_t* msg_info) {
     /*
      * Q.2630.1 -> 7.3.6 Originating signalling association identifier
      *
@@ -693,7 +693,7 @@ static const gchar* dissect_fields_osaid(packet_info* pinfo _U_, tvbuff_t *tvb, 
     return NULL;
 }
 
-static const gchar* dissect_fields_sugr(packet_info* pinfo _U_, tvbuff_t *tvb, proto_tree *tree, int offset, int len, alcap_message_info_t* msg_info _U_) {
+static const gchar* dissect_fields_sugr(packet_info* pinfo, tvbuff_t *tvb, proto_tree *tree, int offset, int len, alcap_message_info_t* msg_info) {
     /*
      * Q.2630.1 -> 7.3.7 Served user generated reference
      *
@@ -711,7 +711,7 @@ static const gchar* dissect_fields_sugr(packet_info* pinfo _U_, tvbuff_t *tvb, p
     return NULL;
 }
 
-static const gchar* dissect_fields_suci(packet_info* pinfo _U_, tvbuff_t *tvb, proto_tree *tree, int offset, int len, alcap_message_info_t* msg_info _U_) {
+static const gchar* dissect_fields_suci(packet_info* pinfo, tvbuff_t *tvb, proto_tree *tree, int offset, int len, alcap_message_info_t* msg_info _U_) {
     /*
      * Q.2630.2 -> 7.3.22 Served user correlation ID
      *
@@ -727,7 +727,7 @@ static const gchar* dissect_fields_suci(packet_info* pinfo _U_, tvbuff_t *tvb, p
     return NULL;
 }
 
-static const gchar* dissect_fields_ssia(packet_info* pinfo _U_, tvbuff_t *tvb, proto_tree *tree, int offset, int len, alcap_message_info_t* msg_info _U_) {
+static const gchar* dissect_fields_ssia(packet_info* pinfo, tvbuff_t *tvb, proto_tree *tree, int offset, int len, alcap_message_info_t* msg_info _U_) {
     /*
      * Q.2630.2 -> 7.3.9 Service specific information (Audio)
      *
@@ -758,7 +758,7 @@ static const gchar* dissect_fields_ssia(packet_info* pinfo _U_, tvbuff_t *tvb, p
     return NULL;
 }
 
-static const gchar* dissect_fields_ssim(packet_info* pinfo _U_, tvbuff_t *tvb, proto_tree *tree, int offset, int len, alcap_message_info_t* msg_info _U_) {
+static const gchar* dissect_fields_ssim(packet_info* pinfo, tvbuff_t *tvb, proto_tree *tree, int offset, int len, alcap_message_info_t* msg_info _U_) {
     /*
      * Q.2630.1 -> 7.3.10 Service specific information (Multirate)
      *
@@ -799,7 +799,7 @@ static const gchar* dissect_fields_ssisa(packet_info* pinfo, tvbuff_t *tvb, prot
     return NULL;
 }
 
-static const gchar* dissect_fields_ssisu(packet_info* pinfo _U_, tvbuff_t *tvb, proto_tree *tree, int offset, int len, alcap_message_info_t* msg_info _U_) {
+static const gchar* dissect_fields_ssisu(packet_info* pinfo, tvbuff_t *tvb, proto_tree *tree, int offset, int len, alcap_message_info_t* msg_info _U_) {
     /*
      * Q.2630.1 -> 7.3.12 Service specific information (SAR-unassured)
      *
@@ -818,7 +818,7 @@ static const gchar* dissect_fields_ssisu(packet_info* pinfo _U_, tvbuff_t *tvb, 
     return NULL;
 }
 
-static const gchar* dissect_fields_none(packet_info* pinfo _U_, tvbuff_t *tvb, proto_tree *tree, int offset, int len, alcap_message_info_t* msg_info _U_) {
+static const gchar* dissect_fields_none(packet_info* pinfo, tvbuff_t *tvb, proto_tree *tree, int offset, int len, alcap_message_info_t* msg_info _U_) {
     /*
      * used for parameters that have no fields, just checks if len==0
      *
@@ -836,7 +836,7 @@ static const gchar* dissect_fields_none(packet_info* pinfo _U_, tvbuff_t *tvb, p
     return NULL;
 }
 
-static const gchar* dissect_fields_ssiae(packet_info* pinfo _U_, tvbuff_t *tvb, proto_tree *tree, int offset, int len, alcap_message_info_t* msg_info _U_) {
+static const gchar* dissect_fields_ssiae(packet_info* pinfo, tvbuff_t *tvb, proto_tree *tree, int offset, int len, alcap_message_info_t* msg_info _U_) {
     /*
      * Q.2630.2 -> 7.3.15 Service specific information (Audio Extended)
      *
@@ -871,7 +871,7 @@ static const gchar* dissect_fields_ssiae(packet_info* pinfo _U_, tvbuff_t *tvb, 
     return NULL;
 }
 
-static const gchar* dissect_fields_pssiae(packet_info* pinfo _U_, tvbuff_t *tvb, proto_tree *tree, int offset, int len, alcap_message_info_t* msg_info _U_) {
+static const gchar* dissect_fields_pssiae(packet_info* pinfo, tvbuff_t *tvb, proto_tree *tree, int offset, int len, alcap_message_info_t* msg_info _U_) {
     /*
      * Q.2630.2 -> 7.3.17 Preferred service specific information (Audio Extended)
      *
@@ -906,7 +906,7 @@ static const gchar* dissect_fields_pssiae(packet_info* pinfo _U_, tvbuff_t *tvb,
     return NULL;
 }
 
-static const gchar* dissect_fields_ssime(packet_info* pinfo _U_, tvbuff_t *tvb, proto_tree *tree, int offset, int len, alcap_message_info_t* msg_info _U_) {
+static const gchar* dissect_fields_ssime(packet_info* pinfo, tvbuff_t *tvb, proto_tree *tree, int offset, int len, alcap_message_info_t* msg_info _U_) {
     /*
      * Q.2630.2 -> 7.3.16 Service specific information (Multirate Extended)
      *
@@ -925,7 +925,7 @@ static const gchar* dissect_fields_ssime(packet_info* pinfo _U_, tvbuff_t *tvb, 
     return NULL;
 }
 
-static const gchar* dissect_fields_pssime(packet_info* pinfo _U_, tvbuff_t *tvb, proto_tree *tree, int offset, int len, alcap_message_info_t* msg_info _U_) {
+static const gchar* dissect_fields_pssime(packet_info* pinfo, tvbuff_t *tvb, proto_tree *tree, int offset, int len, alcap_message_info_t* msg_info _U_) {
     /*
      * Q.2630.2 -> 7.3.18 Preferred service specific information (Multirate Extended)
      *
@@ -944,7 +944,7 @@ static const gchar* dissect_fields_pssime(packet_info* pinfo _U_, tvbuff_t *tvb,
     return NULL;
 }
 
-static const gchar* dissect_fields_acc(packet_info* pinfo _U_, tvbuff_t *tvb, proto_tree *tree, int offset, int len, alcap_message_info_t* msg_info _U_) {
+static const gchar* dissect_fields_acc(packet_info* pinfo, tvbuff_t *tvb, proto_tree *tree, int offset, int len, alcap_message_info_t* msg_info _U_) {
     /*
      * Q.2630.3 -> 7.3.25 Automatic congestion control
      *
@@ -960,7 +960,7 @@ static const gchar* dissect_fields_acc(packet_info* pinfo _U_, tvbuff_t *tvb, pr
 }
 
 
-static const gchar* dissect_fields_cp(packet_info* pinfo _U_, tvbuff_t *tvb, proto_tree *tree, int offset, int len, alcap_message_info_t* msg_info _U_) {
+static const gchar* dissect_fields_cp(packet_info* pinfo, tvbuff_t *tvb, proto_tree *tree, int offset, int len, alcap_message_info_t* msg_info _U_) {
     /*
      * Q.2630.3 -> 7.3.26 Connection Priority
      *
@@ -975,7 +975,7 @@ static const gchar* dissect_fields_cp(packet_info* pinfo _U_, tvbuff_t *tvb, pro
     return NULL;
 }
 
-static const gchar* dissect_fields_pt(packet_info* pinfo _U_, tvbuff_t *tvb, proto_tree *tree, int offset, int len, alcap_message_info_t* msg_info _U_) {
+static const gchar* dissect_fields_pt(packet_info* pinfo, tvbuff_t *tvb, proto_tree *tree, int offset, int len, alcap_message_info_t* msg_info _U_) {
     /*
      * Q.2630.2 -> 7.3.14 Path Type
      *
@@ -991,7 +991,7 @@ static const gchar* dissect_fields_pt(packet_info* pinfo _U_, tvbuff_t *tvb, pro
 }
 
 
-static const gchar* dissect_fields_hc(packet_info* pinfo _U_, tvbuff_t *tvb, proto_tree *tree, int offset, int len, alcap_message_info_t* msg_info _U_) {
+static const gchar* dissect_fields_hc(packet_info* pinfo, tvbuff_t *tvb, proto_tree *tree, int offset, int len, alcap_message_info_t* msg_info _U_) {
     /*
      * Q.2630.3 -> 7.3.27 Hop counter
      *
@@ -1007,7 +1007,7 @@ static const gchar* dissect_fields_hc(packet_info* pinfo _U_, tvbuff_t *tvb, pro
 }
 
 
-static const gchar* dissect_fields_fbw(packet_info* pinfo _U_, tvbuff_t *tvb, proto_tree *tree, int offset, int len, alcap_message_info_t* msg_info _U_) {
+static const gchar* dissect_fields_fbw(packet_info* pinfo, tvbuff_t *tvb, proto_tree *tree, int offset, int len, alcap_message_info_t* msg_info _U_) {
     /*
      * Q.2630.3 -> 7.3.32 Fixed bandwidth transfer capability
      *
@@ -1030,7 +1030,7 @@ static const gchar* dissect_fields_fbw(packet_info* pinfo _U_, tvbuff_t *tvb, pr
     return NULL;
 }
 
-static const gchar* dissect_fields_pfbw(packet_info* pinfo _U_, tvbuff_t *tvb, proto_tree *tree, int offset, int len, alcap_message_info_t* msg_info _U_) {
+static const gchar* dissect_fields_pfbw(packet_info* pinfo, tvbuff_t *tvb, proto_tree *tree, int offset, int len, alcap_message_info_t* msg_info _U_) {
     /*
      * Q.2630.3 -> 7.3.29 Preferred fixed bandwidth transfer capability
      *
@@ -1053,7 +1053,7 @@ static const gchar* dissect_fields_pfbw(packet_info* pinfo _U_, tvbuff_t *tvb, p
     return NULL;
 }
 
-static const gchar* dissect_fields_vbws(packet_info* pinfo _U_, tvbuff_t *tvb, proto_tree *tree, int offset, int len, alcap_message_info_t* msg_info _U_) {
+static const gchar* dissect_fields_vbws(packet_info* pinfo, tvbuff_t *tvb, proto_tree *tree, int offset, int len, alcap_message_info_t* msg_info _U_) {
     /*
      * Q.2630.3 -> 7.3.33 Variable bandwidth stringent transfer capability
      *
@@ -1079,7 +1079,7 @@ static const gchar* dissect_fields_vbws(packet_info* pinfo _U_, tvbuff_t *tvb, p
     return NULL;
 }
 
-static const gchar* dissect_fields_pvbws(packet_info* pinfo _U_, tvbuff_t *tvb, proto_tree *tree, int offset, int len, alcap_message_info_t* msg_info _U_) {
+static const gchar* dissect_fields_pvbws(packet_info* pinfo, tvbuff_t *tvb, proto_tree *tree, int offset, int len, alcap_message_info_t* msg_info _U_) {
     /*
      * Q.2630.3 -> 7.3.30 Preferred variable bandwidth stringent transfer capability
      *
@@ -1106,7 +1106,7 @@ static const gchar* dissect_fields_pvbws(packet_info* pinfo _U_, tvbuff_t *tvb, 
 }
 
 
-static const gchar* dissect_fields_pvbwt(packet_info* pinfo _U_, tvbuff_t *tvb, proto_tree *tree, int offset, int len, alcap_message_info_t* msg_info _U_) {
+static const gchar* dissect_fields_pvbwt(packet_info* pinfo, tvbuff_t *tvb, proto_tree *tree, int offset, int len, alcap_message_info_t* msg_info _U_) {
     /*
      * Q.2630.3 -> 7.3.31 Preferred variable bandwidth tolerant transfer capability
      *
@@ -1140,7 +1140,7 @@ static const gchar* dissect_fields_pvbwt(packet_info* pinfo _U_, tvbuff_t *tvb, 
     return NULL;
 }
 
-static const gchar* dissect_fields_vbwt(packet_info* pinfo _U_, tvbuff_t *tvb, proto_tree *tree, int offset, int len, alcap_message_info_t* msg_info _U_) {
+static const gchar* dissect_fields_vbwt(packet_info* pinfo, tvbuff_t *tvb, proto_tree *tree, int offset, int len, alcap_message_info_t* msg_info _U_) {
     /*
      * Q.2630.3 -> 7.3.34 Variable bandwidth tolerant transfer capability
      *
@@ -1173,7 +1173,7 @@ static const gchar* dissect_fields_vbwt(packet_info* pinfo _U_, tvbuff_t *tvb, p
     return NULL;
 }
 
-static const gchar* dissect_fields_sut(packet_info* pinfo _U_, tvbuff_t *tvb, proto_tree *tree, int offset, int len, alcap_message_info_t* msg_info _U_) {
+static const gchar* dissect_fields_sut(packet_info* pinfo, tvbuff_t *tvb, proto_tree *tree, int offset, int len, alcap_message_info_t* msg_info _U_) {
     /*
      * Q.2630.1 -> 7.3.8 Served user transport
      *
@@ -1319,7 +1319,7 @@ extern void alcap_tree_from_bearer_key(proto_tree* tree, tvbuff_t* tvb, packet_i
 
 #define GET_MSG_TYPE(id) ( array_length(msg_types) <= id ? &(msg_types[0]) : &(msg_types[id]) )
 
-static void dissect_alcap(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree) {
+static int dissect_alcap(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data _U_) {
     proto_tree *alcap_tree = NULL;
     alcap_message_info_t* msg_info = wmem_new0(wmem_packet_scope(), alcap_message_info_t);
     int len = tvb_reported_length(tvb);
@@ -1456,10 +1456,10 @@ static void dissect_alcap(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree) {
                 break;
         }
 
-        if (leg != NULL && ( (! leg->msgs) || leg->msgs->last->framenum < pinfo->fd->num ) ) {
+        if (leg != NULL && ( (! leg->msgs) || leg->msgs->last->framenum < pinfo->num ) ) {
             alcap_msg_data_t* msg = wmem_new(wmem_file_scope(), alcap_msg_data_t);
             msg->msg_type = msg_info->msg_type;
-            msg->framenum = pinfo->fd->num;
+            msg->framenum = pinfo->num;
             msg->next = NULL;
             msg->last = NULL;
 
@@ -1475,6 +1475,7 @@ static void dissect_alcap(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree) {
 
         if (tree && leg) alcap_leg_tree(alcap_tree,tvb,pinfo,leg);
     }
+    return tvb_captured_length(tvb);
 }
 
 void
@@ -1502,7 +1503,7 @@ proto_register_alcap(void)
     { &hf_alcap_compat_pass_on_sni,
       { "Pass-On SNI", "alcap.compat.pass.sni",
         FT_UINT8, BASE_DEC, VALS(send_notification), 0x40,
-        "Send Notificaation Indicator", HFILL }
+        "Send Notification Indicator", HFILL }
     },
     { &hf_alcap_compat_pass_on_ii,
       { "Pass-On II", "alcap.compat.pass.ii",
@@ -1512,7 +1513,7 @@ proto_register_alcap(void)
     { &hf_alcap_compat_general_sni,
       { "General SNI", "alcap.compat.general.sni",
         FT_UINT8, BASE_DEC, VALS(send_notification), 0x04,
-        "Send Notificaation Indicator", HFILL }
+        "Send Notification Indicator", HFILL }
     },
     { &hf_alcap_compat_general_ii,
       { "General II", "alcap.compat.general.ii",

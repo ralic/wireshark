@@ -1,11 +1,11 @@
 /* Do not modify this file. Changes will be overwritten.                      */
 /* Generated automatically by the ASN.1 to Wireshark dissector compiler       */
 /* packet-m3ap.c                                                              */
-/* ../../tools/asn2wrs.py -p m3ap -c ./m3ap.cnf -s ./packet-m3ap-template -D . -O ../../epan/dissectors M3AP-CommonDataTypes.asn M3AP-Constants.asn M3AP-Containers.asn M3AP-IEs.asn M3AP-PDU-Contents.asn M3AP-PDU-Descriptions.asn */
+/* asn2wrs.py -p m3ap -c ./m3ap.cnf -s ./packet-m3ap-template -D . -O ../.. M3AP-CommonDataTypes.asn M3AP-Constants.asn M3AP-Containers.asn M3AP-IEs.asn M3AP-PDU-Contents.asn M3AP-PDU-Descriptions.asn */
 
 /* Input file: packet-m3ap-template.c */
 
-#line 1 "../../asn1/m3ap/packet-m3ap-template.c"
+#line 1 "./asn1/m3ap/packet-m3ap-template.c"
 /* packet-m3ap.c
  * Routines for M3 Application Protocol packet dissection
  *
@@ -37,6 +37,7 @@
 #include <epan/strutil.h>
 #include <epan/asn1.h>
 #include <epan/sctpppids.h>
+#include <epan/expert.h>
 
 #include "packet-ber.h"
 #include "packet-per.h"
@@ -57,7 +58,7 @@ static dissector_handle_t m3ap_handle=NULL;
 
 
 /*--- Included file: packet-m3ap-val.h ---*/
-#line 1 "../../asn1/m3ap/packet-m3ap-val.h"
+#line 1 "./asn1/m3ap/packet-m3ap-val.h"
 #define maxPrivateIEs                  65535
 #define maxProtocolExtensions          65535
 #define maxProtocolIEs                 65535
@@ -103,17 +104,18 @@ typedef enum _ProtocolIE_ID_enum {
 } ProtocolIE_ID_enum;
 
 /*--- End of included file: packet-m3ap-val.h ---*/
-#line 51 "../../asn1/m3ap/packet-m3ap-template.c"
+#line 52 "./asn1/m3ap/packet-m3ap-template.c"
 
 /* Initialize the protocol and registered fields */
 static int proto_m3ap = -1;
 
 static int hf_m3ap_Absolute_Time_ofMBMS_Data_value = -1;
-static int hf_m3ap_IPAddress = -1;
+static int hf_m3ap_IPAddress_v4 = -1;
+static int hf_m3ap_IPAddress_v6 = -1;
 
 
 /*--- Included file: packet-m3ap-hf.c ---*/
-#line 1 "../../asn1/m3ap/packet-m3ap-hf.c"
+#line 1 "./asn1/m3ap/packet-m3ap-hf.c"
 static int hf_m3ap_Absolute_Time_ofMBMS_Data_PDU = -1;  /* Absolute_Time_ofMBMS_Data */
 static int hf_m3ap_AllocationAndRetentionPriority_PDU = -1;  /* AllocationAndRetentionPriority */
 static int hf_m3ap_Cause_PDU = -1;                /* Cause */
@@ -211,14 +213,14 @@ static int hf_m3ap_successfulOutcome_value = -1;  /* SuccessfulOutcome_value */
 static int hf_m3ap_unsuccessfulOutcome_value = -1;  /* UnsuccessfulOutcome_value */
 
 /*--- End of included file: packet-m3ap-hf.c ---*/
-#line 59 "../../asn1/m3ap/packet-m3ap-template.c"
+#line 61 "./asn1/m3ap/packet-m3ap-template.c"
 
 /* Initialize the subtree pointers */
 static int ett_m3ap = -1;
 
 
 /*--- Included file: packet-m3ap-ett.c ---*/
-#line 1 "../../asn1/m3ap/packet-m3ap-ett.c"
+#line 1 "./asn1/m3ap/packet-m3ap-ett.c"
 static gint ett_m3ap_PrivateIE_ID = -1;
 static gint ett_m3ap_ProtocolIE_Container = -1;
 static gint ett_m3ap_ProtocolIE_Field = -1;
@@ -265,7 +267,9 @@ static gint ett_m3ap_SuccessfulOutcome = -1;
 static gint ett_m3ap_UnsuccessfulOutcome = -1;
 
 /*--- End of included file: packet-m3ap-ett.c ---*/
-#line 64 "../../asn1/m3ap/packet-m3ap-template.c"
+#line 66 "./asn1/m3ap/packet-m3ap-template.c"
+
+static expert_field ei_m3ap_invalid_ip_address_len = EI_INIT;
 
 enum{
   INITIATING_MESSAGE,
@@ -295,7 +299,7 @@ static int dissect_UnsuccessfulOutcomeValue(tvbuff_t *tvb, packet_info *pinfo, p
 
 
 /*--- Included file: packet-m3ap-fn.c ---*/
-#line 1 "../../asn1/m3ap/packet-m3ap-fn.c"
+#line 1 "./asn1/m3ap/packet-m3ap-fn.c"
 
 static const value_string m3ap_Criticality_vals[] = {
   {   0, "reject" },
@@ -375,7 +379,7 @@ dissect_m3ap_ProcedureCode(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _
   offset = dissect_per_constrained_integer(tvb, offset, actx, tree, hf_index,
                                                             0U, 255U, &ProcedureCode, FALSE);
 
-#line 66 "../../asn1/m3ap/m3ap.cnf"
+#line 66 "./asn1/m3ap/m3ap.cnf"
      col_add_fstr(actx->pinfo->cinfo, COL_INFO, "%s",
                  val_to_str_ext(ProcedureCode, &m3ap_ProcedureCode_vals_ext,
                             "unknown message"));
@@ -419,7 +423,7 @@ dissect_m3ap_ProtocolIE_ID(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _
   offset = dissect_per_constrained_integer(tvb, offset, actx, tree, hf_index,
                                                             0U, maxProtocolIEs, &ProtocolIE_ID, FALSE);
 
-#line 51 "../../asn1/m3ap/m3ap.cnf"
+#line 51 "./asn1/m3ap/m3ap.cnf"
   if (tree) {
     proto_item_append_text(proto_item_get_parent_nth(actx->created_item, 2), ": %s", val_to_str_ext(ProtocolIE_ID, &m3ap_ProtocolIE_ID_vals_ext, "unknown (%d)"));
   }
@@ -574,7 +578,7 @@ dissect_m3ap_PrivateIE_Container(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *
 
 static int
 dissect_m3ap_Absolute_Time_ofMBMS_Data(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 143 "../../asn1/m3ap/m3ap.cnf"
+#line 153 "./asn1/m3ap/m3ap.cnf"
   tvbuff_t *parameter_tvb=NULL;
   const gchar *time_str;
   gint tvb_len;
@@ -872,7 +876,7 @@ dissect_m3ap_ExtendedMCE_ID(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx 
 
 static int
 dissect_m3ap_PLMN_Identity(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 119 "../../asn1/m3ap/m3ap.cnf"
+#line 119 "./asn1/m3ap/m3ap.cnf"
   tvbuff_t *parameter_tvb=NULL;
 
   offset = dissect_per_octet_string(tvb, offset, actx, tree, hf_index,
@@ -943,7 +947,7 @@ dissect_m3ap_GTP_TEID(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, p
 
 static int
 dissect_m3ap_IPAddress(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 130 "../../asn1/m3ap/m3ap.cnf"
+#line 130 "./asn1/m3ap/m3ap.cnf"
   tvbuff_t *parameter_tvb=NULL;
   gint tvb_len;
 
@@ -955,7 +959,17 @@ dissect_m3ap_IPAddress(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, 
     return offset;
 
   tvb_len = tvb_reported_length(parameter_tvb);
-  proto_tree_add_item(tree, hf_m3ap_IPAddress, parameter_tvb, 0, tvb_len, ENC_NA);
+  switch (tvb_len) {
+    case 4:
+      proto_tree_add_item(tree, hf_m3ap_IPAddress_v4, parameter_tvb, 0, tvb_len, ENC_NA);
+      break;
+    case 6:
+      proto_tree_add_item(tree, hf_m3ap_IPAddress_v6, parameter_tvb, 0, tvb_len, ENC_NA);
+      break;
+    default:
+      proto_tree_add_expert(tree, actx->pinfo, &ei_m3ap_invalid_ip_address_len, parameter_tvb, 0, tvb_len);
+      break;
+    }
 
 
   return offset;
@@ -1037,7 +1051,7 @@ dissect_m3ap_MBMSServiceArea1(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *act
 
 static int
 dissect_m3ap_MBMS_Service_Area(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 159 "../../asn1/m3ap/m3ap.cnf"
+#line 169 "./asn1/m3ap/m3ap.cnf"
   tvbuff_t *parameter_tvb=NULL;
   guint16 tvb_len;
 
@@ -1050,7 +1064,7 @@ dissect_m3ap_MBMS_Service_Area(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *ac
 
   tvb_len = tvb_reported_length(parameter_tvb);
 
-  dissect_gtpv2_mbms_service_area(parameter_tvb, actx->pinfo, tree, actx->created_item, tvb_len, 0, 0);
+  dissect_gtpv2_mbms_service_area(parameter_tvb, actx->pinfo, tree, actx->created_item, tvb_len, 0, 0, NULL);
 
 
   return offset;
@@ -1060,7 +1074,7 @@ dissect_m3ap_MBMS_Service_Area(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *ac
 
 static int
 dissect_m3ap_MBMS_Session_Duration(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 173 "../../asn1/m3ap/m3ap.cnf"
+#line 183 "./asn1/m3ap/m3ap.cnf"
   tvbuff_t *parameter_tvb=NULL;
   guint16 tvb_len;
 
@@ -1073,7 +1087,7 @@ dissect_m3ap_MBMS_Session_Duration(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t
   tvb_len = tvb_reported_length(parameter_tvb);
 
   proto_item_append_text(actx->created_item, " ");
-  dissect_gtpv2_mbms_session_duration(parameter_tvb, actx->pinfo, tree, actx->created_item, tvb_len, 0, 0);
+  dissect_gtpv2_mbms_session_duration(parameter_tvb, actx->pinfo, tree, actx->created_item, tvb_len, 0, 0, NULL);
 
 
   return offset;
@@ -1103,7 +1117,7 @@ dissect_m3ap_MCEname(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, pr
 
 static int
 dissect_m3ap_MinimumTimeToMBMSDataTransfer(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 189 "../../asn1/m3ap/m3ap.cnf"
+#line 199 "./asn1/m3ap/m3ap.cnf"
   tvbuff_t *parameter_tvb=NULL;
   guint16 tvb_len;
 
@@ -1115,7 +1129,7 @@ dissect_m3ap_MinimumTimeToMBMSDataTransfer(tvbuff_t *tvb _U_, int offset _U_, as
     return offset;
 
   tvb_len = tvb_reported_length(parameter_tvb);
-  dissect_gtpv2_mbms_time_to_data_xfer(parameter_tvb, actx->pinfo, tree, actx->created_item, tvb_len, 0, 0);
+  dissect_gtpv2_mbms_time_to_data_xfer(parameter_tvb, actx->pinfo, tree, actx->created_item, tvb_len, 0, 0, NULL);
 
 
   return offset;
@@ -1192,7 +1206,7 @@ static const per_sequence_t MBMSSessionStartRequest_sequence[] = {
 
 static int
 dissect_m3ap_MBMSSessionStartRequest(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 203 "../../asn1/m3ap/m3ap.cnf"
+#line 213 "./asn1/m3ap/m3ap.cnf"
 	col_set_str(actx->pinfo->cinfo, COL_INFO,"MBMS Session Start Request ");
 
   offset = dissect_per_sequence(tvb, offset, actx, tree, hf_index,
@@ -1209,7 +1223,7 @@ static const per_sequence_t MBMSSessionStartResponse_sequence[] = {
 
 static int
 dissect_m3ap_MBMSSessionStartResponse(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 205 "../../asn1/m3ap/m3ap.cnf"
+#line 215 "./asn1/m3ap/m3ap.cnf"
 	col_set_str(actx->pinfo->cinfo, COL_INFO,"MBMS Session Start Response ");
 
   offset = dissect_per_sequence(tvb, offset, actx, tree, hf_index,
@@ -1226,7 +1240,7 @@ static const per_sequence_t MBMSSessionStartFailure_sequence[] = {
 
 static int
 dissect_m3ap_MBMSSessionStartFailure(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 207 "../../asn1/m3ap/m3ap.cnf"
+#line 217 "./asn1/m3ap/m3ap.cnf"
 	col_set_str(actx->pinfo->cinfo, COL_INFO,"MBMS Session Start Failure ");
 
   offset = dissect_per_sequence(tvb, offset, actx, tree, hf_index,
@@ -1243,7 +1257,7 @@ static const per_sequence_t MBMSSessionStopRequest_sequence[] = {
 
 static int
 dissect_m3ap_MBMSSessionStopRequest(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 209 "../../asn1/m3ap/m3ap.cnf"
+#line 219 "./asn1/m3ap/m3ap.cnf"
 	col_set_str(actx->pinfo->cinfo, COL_INFO,"MBMS Session Stop Request ");
 
   offset = dissect_per_sequence(tvb, offset, actx, tree, hf_index,
@@ -1260,7 +1274,7 @@ static const per_sequence_t MBMSSessionStopResponse_sequence[] = {
 
 static int
 dissect_m3ap_MBMSSessionStopResponse(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 211 "../../asn1/m3ap/m3ap.cnf"
+#line 221 "./asn1/m3ap/m3ap.cnf"
 	col_set_str(actx->pinfo->cinfo, COL_INFO,"MBMS Session Stop Response ");
 
   offset = dissect_per_sequence(tvb, offset, actx, tree, hf_index,
@@ -1277,7 +1291,7 @@ static const per_sequence_t MBMSSessionUpdateRequest_sequence[] = {
 
 static int
 dissect_m3ap_MBMSSessionUpdateRequest(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 213 "../../asn1/m3ap/m3ap.cnf"
+#line 223 "./asn1/m3ap/m3ap.cnf"
 	col_set_str(actx->pinfo->cinfo, COL_INFO,"MBMS Session Update Request ");
 
   offset = dissect_per_sequence(tvb, offset, actx, tree, hf_index,
@@ -1294,7 +1308,7 @@ static const per_sequence_t MBMSSessionUpdateResponse_sequence[] = {
 
 static int
 dissect_m3ap_MBMSSessionUpdateResponse(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 215 "../../asn1/m3ap/m3ap.cnf"
+#line 225 "./asn1/m3ap/m3ap.cnf"
 	col_set_str(actx->pinfo->cinfo, COL_INFO,"MBMS Session Update Response ");
 
   offset = dissect_per_sequence(tvb, offset, actx, tree, hf_index,
@@ -1311,7 +1325,7 @@ static const per_sequence_t MBMSSessionUpdateFailure_sequence[] = {
 
 static int
 dissect_m3ap_MBMSSessionUpdateFailure(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 217 "../../asn1/m3ap/m3ap.cnf"
+#line 227 "./asn1/m3ap/m3ap.cnf"
 	col_set_str(actx->pinfo->cinfo, COL_INFO,"MBMS Session Update Failure ");
 
   offset = dissect_per_sequence(tvb, offset, actx, tree, hf_index,
@@ -1328,7 +1342,7 @@ static const per_sequence_t ErrorIndication_sequence[] = {
 
 static int
 dissect_m3ap_ErrorIndication(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 219 "../../asn1/m3ap/m3ap.cnf"
+#line 229 "./asn1/m3ap/m3ap.cnf"
 	col_set_str(actx->pinfo->cinfo, COL_INFO,"Error Indication ");
 
   offset = dissect_per_sequence(tvb, offset, actx, tree, hf_index,
@@ -1345,7 +1359,7 @@ static const per_sequence_t Reset_sequence[] = {
 
 static int
 dissect_m3ap_Reset(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 221 "../../asn1/m3ap/m3ap.cnf"
+#line 231 "./asn1/m3ap/m3ap.cnf"
 	col_set_str(actx->pinfo->cinfo, COL_INFO,"Reset ");
 
   offset = dissect_per_sequence(tvb, offset, actx, tree, hf_index,
@@ -1413,7 +1427,7 @@ static const per_sequence_t ResetAcknowledge_sequence[] = {
 
 static int
 dissect_m3ap_ResetAcknowledge(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 223 "../../asn1/m3ap/m3ap.cnf"
+#line 233 "./asn1/m3ap/m3ap.cnf"
 	col_set_str(actx->pinfo->cinfo, COL_INFO,"Reset Acknowledge ");
 
   offset = dissect_per_sequence(tvb, offset, actx, tree, hf_index,
@@ -1444,7 +1458,7 @@ static const per_sequence_t PrivateMessage_sequence[] = {
 
 static int
 dissect_m3ap_PrivateMessage(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 225 "../../asn1/m3ap/m3ap.cnf"
+#line 235 "./asn1/m3ap/m3ap.cnf"
 	col_set_str(actx->pinfo->cinfo, COL_INFO,"Private Message ");
 
   offset = dissect_per_sequence(tvb, offset, actx, tree, hf_index,
@@ -1461,7 +1475,7 @@ static const per_sequence_t M3SetupRequest_sequence[] = {
 
 static int
 dissect_m3ap_M3SetupRequest(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 233 "../../asn1/m3ap/m3ap.cnf"
+#line 243 "./asn1/m3ap/m3ap.cnf"
 	col_set_str(actx->pinfo->cinfo, COL_INFO,"M3 Setup Request ");
 
   offset = dissect_per_sequence(tvb, offset, actx, tree, hf_index,
@@ -1492,7 +1506,7 @@ static const per_sequence_t M3SetupResponse_sequence[] = {
 
 static int
 dissect_m3ap_M3SetupResponse(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 235 "../../asn1/m3ap/m3ap.cnf"
+#line 245 "./asn1/m3ap/m3ap.cnf"
 	col_set_str(actx->pinfo->cinfo, COL_INFO,"M3 Setup Response ");
 
   offset = dissect_per_sequence(tvb, offset, actx, tree, hf_index,
@@ -1509,7 +1523,7 @@ static const per_sequence_t M3SetupFailure_sequence[] = {
 
 static int
 dissect_m3ap_M3SetupFailure(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 237 "../../asn1/m3ap/m3ap.cnf"
+#line 247 "./asn1/m3ap/m3ap.cnf"
 	col_set_str(actx->pinfo->cinfo, COL_INFO,"M3 Setup Failure ");
 
 
@@ -1528,7 +1542,7 @@ static const per_sequence_t MCEConfigurationUpdate_sequence[] = {
 
 static int
 dissect_m3ap_MCEConfigurationUpdate(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 227 "../../asn1/m3ap/m3ap.cnf"
+#line 237 "./asn1/m3ap/m3ap.cnf"
 	col_set_str(actx->pinfo->cinfo, COL_INFO,"MCE Configuration Update ");
 
   offset = dissect_per_sequence(tvb, offset, actx, tree, hf_index,
@@ -1545,7 +1559,7 @@ static const per_sequence_t MCEConfigurationUpdateAcknowledge_sequence[] = {
 
 static int
 dissect_m3ap_MCEConfigurationUpdateAcknowledge(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 229 "../../asn1/m3ap/m3ap.cnf"
+#line 239 "./asn1/m3ap/m3ap.cnf"
 	col_set_str(actx->pinfo->cinfo, COL_INFO,"MCE Configuration Update Acknowledge ");
 
   offset = dissect_per_sequence(tvb, offset, actx, tree, hf_index,
@@ -1562,7 +1576,7 @@ static const per_sequence_t MCEConfigurationUpdateFailure_sequence[] = {
 
 static int
 dissect_m3ap_MCEConfigurationUpdateFailure(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 231 "../../asn1/m3ap/m3ap.cnf"
+#line 241 "./asn1/m3ap/m3ap.cnf"
 	col_set_str(actx->pinfo->cinfo, COL_INFO,"MCE Configuration Update Failure ");
 
   offset = dissect_per_sequence(tvb, offset, actx, tree, hf_index,
@@ -1575,7 +1589,7 @@ dissect_m3ap_MCEConfigurationUpdateFailure(tvbuff_t *tvb _U_, int offset _U_, as
 
 static int
 dissect_m3ap_InitiatingMessage_value(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 73 "../../asn1/m3ap/m3ap.cnf"
+#line 73 "./asn1/m3ap/m3ap.cnf"
 	message_type = INITIATING_MESSAGE;
 
   offset = dissect_per_open_type_pdu_new(tvb, offset, actx, tree, hf_index, dissect_InitiatingMessageValue);
@@ -1603,7 +1617,7 @@ dissect_m3ap_InitiatingMessage(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *ac
 
 static int
 dissect_m3ap_SuccessfulOutcome_value(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 76 "../../asn1/m3ap/m3ap.cnf"
+#line 76 "./asn1/m3ap/m3ap.cnf"
 	message_type = SUCCESSFUL_OUTCOME;
 
   offset = dissect_per_open_type_pdu_new(tvb, offset, actx, tree, hf_index, dissect_SuccessfulOutcomeValue);
@@ -1631,7 +1645,7 @@ dissect_m3ap_SuccessfulOutcome(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *ac
 
 static int
 dissect_m3ap_UnsuccessfulOutcome_value(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 79 "../../asn1/m3ap/m3ap.cnf"
+#line 79 "./asn1/m3ap/m3ap.cnf"
 	message_type = UNSUCCESSFUL_OUTCOME;
 
 
@@ -2003,7 +2017,7 @@ static int dissect_M3AP_PDU_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto
 
 
 /*--- End of included file: packet-m3ap-fn.c ---*/
-#line 92 "../../asn1/m3ap/packet-m3ap-template.c"
+#line 96 "./asn1/m3ap/packet-m3ap-template.c"
 
 static int dissect_ProtocolIEFieldValue(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data _U_)
 {
@@ -2031,8 +2045,8 @@ static int dissect_UnsuccessfulOutcomeValue(tvbuff_t *tvb, packet_info *pinfo, p
 }
 
 
-static void
-dissect_m3ap(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
+static int
+dissect_m3ap(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data _U_)
 {
   proto_item      *m3ap_item = NULL;
   proto_tree      *m3ap_tree = NULL;
@@ -2047,6 +2061,7 @@ dissect_m3ap(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
 
     dissect_M3AP_PDU_PDU(tvb, pinfo, m3ap_tree, NULL);
   }
+  return tvb_captured_length(tvb);
 }
 /*--- proto_register_m3ap -------------------------------------------*/
 void proto_register_m3ap(void) {
@@ -2058,15 +2073,20 @@ void proto_register_m3ap(void) {
          FT_STRING, BASE_NONE, NULL, 0,
          NULL, HFILL }
     },
-    { &hf_m3ap_IPAddress,
-      { "IPAddress", "m3ap.IPAddress",
+    { &hf_m3ap_IPAddress_v4,
+      { "IPAddress", "m3ap.IPAddress_v4",
+         FT_IPv4, BASE_NONE, NULL, 0,
+         NULL, HFILL }
+    },
+    { &hf_m3ap_IPAddress_v6,
+      { "IPAddress", "m3ap.IPAddress_v6",
          FT_IPv6, BASE_NONE, NULL, 0,
          NULL, HFILL }
     },
 
 
 /*--- Included file: packet-m3ap-hfarr.c ---*/
-#line 1 "../../asn1/m3ap/packet-m3ap-hfarr.c"
+#line 1 "./asn1/m3ap/packet-m3ap-hfarr.c"
     { &hf_m3ap_Absolute_Time_ofMBMS_Data_PDU,
       { "Absolute-Time-ofMBMS-Data", "m3ap.Absolute_Time_ofMBMS_Data",
         FT_BYTES, BASE_NONE, NULL, 0,
@@ -2449,7 +2469,7 @@ void proto_register_m3ap(void) {
         "UnsuccessfulOutcome_value", HFILL }},
 
 /*--- End of included file: packet-m3ap-hfarr.c ---*/
-#line 153 "../../asn1/m3ap/packet-m3ap-template.c"
+#line 163 "./asn1/m3ap/packet-m3ap-template.c"
   };
 
   /* List of subtrees */
@@ -2457,7 +2477,7 @@ void proto_register_m3ap(void) {
                   &ett_m3ap,
 
 /*--- Included file: packet-m3ap-ettarr.c ---*/
-#line 1 "../../asn1/m3ap/packet-m3ap-ettarr.c"
+#line 1 "./asn1/m3ap/packet-m3ap-ettarr.c"
     &ett_m3ap_PrivateIE_ID,
     &ett_m3ap_ProtocolIE_Container,
     &ett_m3ap_ProtocolIE_Field,
@@ -2504,22 +2524,29 @@ void proto_register_m3ap(void) {
     &ett_m3ap_UnsuccessfulOutcome,
 
 /*--- End of included file: packet-m3ap-ettarr.c ---*/
-#line 159 "../../asn1/m3ap/packet-m3ap-template.c"
+#line 169 "./asn1/m3ap/packet-m3ap-template.c"
   };
 
+  expert_module_t* expert_m3ap;
+
+  static ei_register_info ei[] = {
+     { &ei_m3ap_invalid_ip_address_len, { "m3ap.invalid_ip_address_len", PI_MALFORMED, PI_ERROR, "Invalid IP address length", EXPFILL }}
+  };
 
   /* Register protocol */
   proto_m3ap = proto_register_protocol(PNAME, PSNAME, PFNAME);
   /* Register fields and subtrees */
   proto_register_field_array(proto_m3ap, hf, array_length(hf));
   proto_register_subtree_array(ett, array_length(ett));
+  expert_m3ap = expert_register_protocol(proto_m3ap);
+  expert_register_field_array(expert_m3ap, ei, array_length(ei));
 
   /* Register dissector tables */
-  m3ap_ies_dissector_table = register_dissector_table("m3ap.ies", "M3AP-PROTOCOL-IES", FT_UINT32, BASE_DEC);
-  m3ap_extension_dissector_table = register_dissector_table("m3ap.extension", "M3AP-PROTOCOL-EXTENSION", FT_UINT32, BASE_DEC);
-  m3ap_proc_imsg_dissector_table = register_dissector_table("m3ap.proc.imsg", "M3AP-ELEMENTARY-PROCEDURE InitiatingMessage", FT_UINT32, BASE_DEC);
-  m3ap_proc_sout_dissector_table = register_dissector_table("m3ap.proc.sout", "M3AP-ELEMENTARY-PROCEDURE SuccessfulOutcome", FT_UINT32, BASE_DEC);
-  m3ap_proc_uout_dissector_table = register_dissector_table("m3ap.proc.uout", "M3AP-ELEMENTARY-PROCEDURE UnsuccessfulOutcome", FT_UINT32, BASE_DEC);
+  m3ap_ies_dissector_table = register_dissector_table("m3ap.ies", "M3AP-PROTOCOL-IES", proto_m3ap, FT_UINT32, BASE_DEC, DISSECTOR_TABLE_ALLOW_DUPLICATE);
+  m3ap_extension_dissector_table = register_dissector_table("m3ap.extension", "M3AP-PROTOCOL-EXTENSION", proto_m3ap, FT_UINT32, BASE_DEC, DISSECTOR_TABLE_ALLOW_DUPLICATE);
+  m3ap_proc_imsg_dissector_table = register_dissector_table("m3ap.proc.imsg", "M3AP-ELEMENTARY-PROCEDURE InitiatingMessage", proto_m3ap, FT_UINT32, BASE_DEC, DISSECTOR_TABLE_ALLOW_DUPLICATE);
+  m3ap_proc_sout_dissector_table = register_dissector_table("m3ap.proc.sout", "M3AP-ELEMENTARY-PROCEDURE SuccessfulOutcome", proto_m3ap, FT_UINT32, BASE_DEC, DISSECTOR_TABLE_ALLOW_DUPLICATE);
+  m3ap_proc_uout_dissector_table = register_dissector_table("m3ap.proc.uout", "M3AP-ELEMENTARY-PROCEDURE UnsuccessfulOutcome", proto_m3ap, FT_UINT32, BASE_DEC, DISSECTOR_TABLE_ALLOW_DUPLICATE);
 }
 
 
@@ -2536,51 +2563,51 @@ proto_reg_handoff_m3ap(void)
     inited = TRUE;
 
 /*--- Included file: packet-m3ap-dis-tab.c ---*/
-#line 1 "../../asn1/m3ap/packet-m3ap-dis-tab.c"
-  dissector_add_uint("m3ap.ies", id_MME_MBMS_M3AP_ID, new_create_dissector_handle(dissect_MME_MBMS_M3AP_ID_PDU, proto_m3ap));
-  dissector_add_uint("m3ap.ies", id_MCE_MBMS_M3AP_ID, new_create_dissector_handle(dissect_MCE_MBMS_M3AP_ID_PDU, proto_m3ap));
-  dissector_add_uint("m3ap.ies", id_TMGI, new_create_dissector_handle(dissect_TMGI_PDU, proto_m3ap));
-  dissector_add_uint("m3ap.ies", id_MBMS_Session_ID, new_create_dissector_handle(dissect_MBMS_Session_ID_PDU, proto_m3ap));
-  dissector_add_uint("m3ap.ies", id_MBMS_E_RAB_QoS_Parameters, new_create_dissector_handle(dissect_MBMS_E_RAB_QoS_Parameters_PDU, proto_m3ap));
-  dissector_add_uint("m3ap.ies", id_MBMS_Session_Duration, new_create_dissector_handle(dissect_MBMS_Session_Duration_PDU, proto_m3ap));
-  dissector_add_uint("m3ap.ies", id_MBMS_Service_Area, new_create_dissector_handle(dissect_MBMS_Service_Area_PDU, proto_m3ap));
-  dissector_add_uint("m3ap.ies", id_TNL_Information, new_create_dissector_handle(dissect_TNL_Information_PDU, proto_m3ap));
-  dissector_add_uint("m3ap.ies", id_CriticalityDiagnostics, new_create_dissector_handle(dissect_CriticalityDiagnostics_PDU, proto_m3ap));
-  dissector_add_uint("m3ap.ies", id_Cause, new_create_dissector_handle(dissect_Cause_PDU, proto_m3ap));
-  dissector_add_uint("m3ap.ies", id_TimeToWait, new_create_dissector_handle(dissect_TimeToWait_PDU, proto_m3ap));
-  dissector_add_uint("m3ap.ies", id_ResetType, new_create_dissector_handle(dissect_ResetType_PDU, proto_m3ap));
-  dissector_add_uint("m3ap.ies", id_MBMS_Service_associatedLogicalM3_ConnectionItem, new_create_dissector_handle(dissect_MBMS_Service_associatedLogicalM3_ConnectionItem_PDU, proto_m3ap));
-  dissector_add_uint("m3ap.ies", id_MBMS_Service_associatedLogicalM3_ConnectionListResAck, new_create_dissector_handle(dissect_MBMS_Service_associatedLogicalM3_ConnectionListResAck_PDU, proto_m3ap));
-  dissector_add_uint("m3ap.ies", id_MinimumTimeToMBMSDataTransfer, new_create_dissector_handle(dissect_MinimumTimeToMBMSDataTransfer_PDU, proto_m3ap));
-  dissector_add_uint("m3ap.ies", id_AllocationAndRetentionPriority, new_create_dissector_handle(dissect_AllocationAndRetentionPriority_PDU, proto_m3ap));
-  dissector_add_uint("m3ap.ies", id_Global_MCE_ID, new_create_dissector_handle(dissect_Global_MCE_ID_PDU, proto_m3ap));
-  dissector_add_uint("m3ap.ies", id_MCEname, new_create_dissector_handle(dissect_MCEname_PDU, proto_m3ap));
-  dissector_add_uint("m3ap.ies", id_MBMSServiceAreaList, new_create_dissector_handle(dissect_MBMSServiceAreaListItem_PDU, proto_m3ap));
-  dissector_add_uint("m3ap.ies", id_Time_ofMBMS_DataTransfer, new_create_dissector_handle(dissect_Absolute_Time_ofMBMS_Data_PDU, proto_m3ap));
-  dissector_add_uint("m3ap.ies", id_Time_ofMBMS_DataStop, new_create_dissector_handle(dissect_Absolute_Time_ofMBMS_Data_PDU, proto_m3ap));
-  dissector_add_uint("m3ap.proc.imsg", id_mBMSsessionStart, new_create_dissector_handle(dissect_MBMSSessionStartRequest_PDU, proto_m3ap));
-  dissector_add_uint("m3ap.proc.sout", id_mBMSsessionStart, new_create_dissector_handle(dissect_MBMSSessionStartResponse_PDU, proto_m3ap));
-  dissector_add_uint("m3ap.proc.uout", id_mBMSsessionStart, new_create_dissector_handle(dissect_MBMSSessionStartFailure_PDU, proto_m3ap));
-  dissector_add_uint("m3ap.proc.imsg", id_mBMSsessionStop, new_create_dissector_handle(dissect_MBMSSessionStopRequest_PDU, proto_m3ap));
-  dissector_add_uint("m3ap.proc.sout", id_mBMSsessionStop, new_create_dissector_handle(dissect_MBMSSessionStopResponse_PDU, proto_m3ap));
-  dissector_add_uint("m3ap.proc.imsg", id_mBMSsessionUpdate, new_create_dissector_handle(dissect_MBMSSessionUpdateRequest_PDU, proto_m3ap));
-  dissector_add_uint("m3ap.proc.sout", id_mBMSsessionUpdate, new_create_dissector_handle(dissect_MBMSSessionUpdateResponse_PDU, proto_m3ap));
-  dissector_add_uint("m3ap.proc.uout", id_mBMSsessionUpdate, new_create_dissector_handle(dissect_MBMSSessionUpdateFailure_PDU, proto_m3ap));
-  dissector_add_uint("m3ap.proc.imsg", id_errorIndication, new_create_dissector_handle(dissect_ErrorIndication_PDU, proto_m3ap));
-  dissector_add_uint("m3ap.proc.imsg", id_Reset, new_create_dissector_handle(dissect_Reset_PDU, proto_m3ap));
-  dissector_add_uint("m3ap.proc.sout", id_Reset, new_create_dissector_handle(dissect_ResetAcknowledge_PDU, proto_m3ap));
-  dissector_add_uint("m3ap.proc.imsg", id_privateMessage, new_create_dissector_handle(dissect_PrivateMessage_PDU, proto_m3ap));
-  dissector_add_uint("m3ap.proc.imsg", id_mCEConfigurationUpdate, new_create_dissector_handle(dissect_MCEConfigurationUpdate_PDU, proto_m3ap));
-  dissector_add_uint("m3ap.proc.sout", id_mCEConfigurationUpdate, new_create_dissector_handle(dissect_MCEConfigurationUpdateAcknowledge_PDU, proto_m3ap));
-  dissector_add_uint("m3ap.proc.uout", id_mCEConfigurationUpdate, new_create_dissector_handle(dissect_MCEConfigurationUpdateFailure_PDU, proto_m3ap));
-  dissector_add_uint("m3ap.proc.imsg", id_m3Setup, new_create_dissector_handle(dissect_M3SetupRequest_PDU, proto_m3ap));
-  dissector_add_uint("m3ap.proc.sout", id_m3Setup, new_create_dissector_handle(dissect_M3SetupResponse_PDU, proto_m3ap));
-  dissector_add_uint("m3ap.proc.uout", id_m3Setup, new_create_dissector_handle(dissect_M3SetupFailure_PDU, proto_m3ap));
+#line 1 "./asn1/m3ap/packet-m3ap-dis-tab.c"
+  dissector_add_uint("m3ap.ies", id_MME_MBMS_M3AP_ID, create_dissector_handle(dissect_MME_MBMS_M3AP_ID_PDU, proto_m3ap));
+  dissector_add_uint("m3ap.ies", id_MCE_MBMS_M3AP_ID, create_dissector_handle(dissect_MCE_MBMS_M3AP_ID_PDU, proto_m3ap));
+  dissector_add_uint("m3ap.ies", id_TMGI, create_dissector_handle(dissect_TMGI_PDU, proto_m3ap));
+  dissector_add_uint("m3ap.ies", id_MBMS_Session_ID, create_dissector_handle(dissect_MBMS_Session_ID_PDU, proto_m3ap));
+  dissector_add_uint("m3ap.ies", id_MBMS_E_RAB_QoS_Parameters, create_dissector_handle(dissect_MBMS_E_RAB_QoS_Parameters_PDU, proto_m3ap));
+  dissector_add_uint("m3ap.ies", id_MBMS_Session_Duration, create_dissector_handle(dissect_MBMS_Session_Duration_PDU, proto_m3ap));
+  dissector_add_uint("m3ap.ies", id_MBMS_Service_Area, create_dissector_handle(dissect_MBMS_Service_Area_PDU, proto_m3ap));
+  dissector_add_uint("m3ap.ies", id_TNL_Information, create_dissector_handle(dissect_TNL_Information_PDU, proto_m3ap));
+  dissector_add_uint("m3ap.ies", id_CriticalityDiagnostics, create_dissector_handle(dissect_CriticalityDiagnostics_PDU, proto_m3ap));
+  dissector_add_uint("m3ap.ies", id_Cause, create_dissector_handle(dissect_Cause_PDU, proto_m3ap));
+  dissector_add_uint("m3ap.ies", id_TimeToWait, create_dissector_handle(dissect_TimeToWait_PDU, proto_m3ap));
+  dissector_add_uint("m3ap.ies", id_ResetType, create_dissector_handle(dissect_ResetType_PDU, proto_m3ap));
+  dissector_add_uint("m3ap.ies", id_MBMS_Service_associatedLogicalM3_ConnectionItem, create_dissector_handle(dissect_MBMS_Service_associatedLogicalM3_ConnectionItem_PDU, proto_m3ap));
+  dissector_add_uint("m3ap.ies", id_MBMS_Service_associatedLogicalM3_ConnectionListResAck, create_dissector_handle(dissect_MBMS_Service_associatedLogicalM3_ConnectionListResAck_PDU, proto_m3ap));
+  dissector_add_uint("m3ap.ies", id_MinimumTimeToMBMSDataTransfer, create_dissector_handle(dissect_MinimumTimeToMBMSDataTransfer_PDU, proto_m3ap));
+  dissector_add_uint("m3ap.ies", id_AllocationAndRetentionPriority, create_dissector_handle(dissect_AllocationAndRetentionPriority_PDU, proto_m3ap));
+  dissector_add_uint("m3ap.ies", id_Global_MCE_ID, create_dissector_handle(dissect_Global_MCE_ID_PDU, proto_m3ap));
+  dissector_add_uint("m3ap.ies", id_MCEname, create_dissector_handle(dissect_MCEname_PDU, proto_m3ap));
+  dissector_add_uint("m3ap.ies", id_MBMSServiceAreaList, create_dissector_handle(dissect_MBMSServiceAreaListItem_PDU, proto_m3ap));
+  dissector_add_uint("m3ap.ies", id_Time_ofMBMS_DataTransfer, create_dissector_handle(dissect_Absolute_Time_ofMBMS_Data_PDU, proto_m3ap));
+  dissector_add_uint("m3ap.ies", id_Time_ofMBMS_DataStop, create_dissector_handle(dissect_Absolute_Time_ofMBMS_Data_PDU, proto_m3ap));
+  dissector_add_uint("m3ap.proc.imsg", id_mBMSsessionStart, create_dissector_handle(dissect_MBMSSessionStartRequest_PDU, proto_m3ap));
+  dissector_add_uint("m3ap.proc.sout", id_mBMSsessionStart, create_dissector_handle(dissect_MBMSSessionStartResponse_PDU, proto_m3ap));
+  dissector_add_uint("m3ap.proc.uout", id_mBMSsessionStart, create_dissector_handle(dissect_MBMSSessionStartFailure_PDU, proto_m3ap));
+  dissector_add_uint("m3ap.proc.imsg", id_mBMSsessionStop, create_dissector_handle(dissect_MBMSSessionStopRequest_PDU, proto_m3ap));
+  dissector_add_uint("m3ap.proc.sout", id_mBMSsessionStop, create_dissector_handle(dissect_MBMSSessionStopResponse_PDU, proto_m3ap));
+  dissector_add_uint("m3ap.proc.imsg", id_mBMSsessionUpdate, create_dissector_handle(dissect_MBMSSessionUpdateRequest_PDU, proto_m3ap));
+  dissector_add_uint("m3ap.proc.sout", id_mBMSsessionUpdate, create_dissector_handle(dissect_MBMSSessionUpdateResponse_PDU, proto_m3ap));
+  dissector_add_uint("m3ap.proc.uout", id_mBMSsessionUpdate, create_dissector_handle(dissect_MBMSSessionUpdateFailure_PDU, proto_m3ap));
+  dissector_add_uint("m3ap.proc.imsg", id_errorIndication, create_dissector_handle(dissect_ErrorIndication_PDU, proto_m3ap));
+  dissector_add_uint("m3ap.proc.imsg", id_Reset, create_dissector_handle(dissect_Reset_PDU, proto_m3ap));
+  dissector_add_uint("m3ap.proc.sout", id_Reset, create_dissector_handle(dissect_ResetAcknowledge_PDU, proto_m3ap));
+  dissector_add_uint("m3ap.proc.imsg", id_privateMessage, create_dissector_handle(dissect_PrivateMessage_PDU, proto_m3ap));
+  dissector_add_uint("m3ap.proc.imsg", id_mCEConfigurationUpdate, create_dissector_handle(dissect_MCEConfigurationUpdate_PDU, proto_m3ap));
+  dissector_add_uint("m3ap.proc.sout", id_mCEConfigurationUpdate, create_dissector_handle(dissect_MCEConfigurationUpdateAcknowledge_PDU, proto_m3ap));
+  dissector_add_uint("m3ap.proc.uout", id_mCEConfigurationUpdate, create_dissector_handle(dissect_MCEConfigurationUpdateFailure_PDU, proto_m3ap));
+  dissector_add_uint("m3ap.proc.imsg", id_m3Setup, create_dissector_handle(dissect_M3SetupRequest_PDU, proto_m3ap));
+  dissector_add_uint("m3ap.proc.sout", id_m3Setup, create_dissector_handle(dissect_M3SetupResponse_PDU, proto_m3ap));
+  dissector_add_uint("m3ap.proc.uout", id_m3Setup, create_dissector_handle(dissect_M3SetupFailure_PDU, proto_m3ap));
 
 
 /*--- End of included file: packet-m3ap-dis-tab.c ---*/
-#line 189 "../../asn1/m3ap/packet-m3ap-template.c"
-    dissector_add_uint("m3ap.extension", 17, new_create_dissector_handle(dissect_AllocationAndRetentionPriority_PDU, proto_m3ap));
+#line 206 "./asn1/m3ap/packet-m3ap-template.c"
+    dissector_add_uint("m3ap.extension", 17, create_dissector_handle(dissect_AllocationAndRetentionPriority_PDU, proto_m3ap));
   }
   else {
     if (SctpPort != 0) {

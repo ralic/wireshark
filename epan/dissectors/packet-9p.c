@@ -65,8 +65,8 @@
  * @_9P_RCREATE:   response with file access information
  * @_9P_TREAD:     request to transfer data from a file or directory
  * @_9P_RREAD:     response with data requested
- * @_9P_TWRITE:    reuqest to transfer data to a file
- * @_9P_RWRITE:    response with out much data was transfered to file
+ * @_9P_TWRITE:    request to transfer data to a file
+ * @_9P_RWRITE:    response with out much data was transferred to file
  * @_9P_TCLUNK:    forget about a handle to an entity within the file system
  * @_9P_RCLUNK:    response when server has forgotten about the handle
  * @_9P_TREMOVE:   request to remove an entity from the hierarchy
@@ -293,7 +293,7 @@ static value_string_ext ninep_mode_vals_ext = VALUE_STRING_EXT_INIT(ninep_mode_v
  *
  * QID types are a subset of permissions - they are primarily
  * used to differentiate semantics for a file system entity via
- * a jump-table.  Their value is also the most signifigant 16 bits
+ * a jump-table.  Their value is also the most significant 16 bits
  * of the permission_t
  *
  * See Also: http://plan9.bell-labs.com/magic/man2html/2/stat
@@ -942,9 +942,6 @@ static int hf_9P_lock_procid = -1;
 static int hf_9P_lock_status = -1;
 static int hf_9P_unknown_message = -1;
 
-/*handle for dissecting data in 9P msgs*/
-static dissector_handle_t data_handle;
-
 /* subtree pointers */
 static gint ett_9P = -1;
 static gint ett_9P_omode = -1;
@@ -967,7 +964,7 @@ static gint ett_9P_lflags = -1;
 static expert_field ei_9P_first_250 = EI_INIT;
 static expert_field ei_9P_msgtype = EI_INIT;
 
-static GHashTable *_9p_hashtable = NULL;
+static wmem_map_t *_9p_hashtable = NULL;
 
 static void dissect_9P_dm(tvbuff_t *tvb,  proto_item *tree, int offset, int iscreate);
 static void dissect_9P_qid(tvbuff_t *tvb,  proto_tree *tree, int offset);
@@ -1013,24 +1010,12 @@ static guint _9p_hash_hash(gconstpointer k)
 	return (key->conv_index ^ key->tag ^ key->fid);
 }
 
-static void _9p_hash_free_val(gpointer value)
-{
-	struct _9p_hashval *val = (struct _9p_hashval *)value;
-
-	if (val->data && val->len) {
-		g_free(val->data);
-		val->data = NULL;
-	}
-
-	g_free(value);
-}
-
 static struct _9p_hashval *_9p_hash_new_val(gsize len)
 {
 	struct _9p_hashval *val;
-	val = (struct _9p_hashval *)g_malloc(sizeof(struct _9p_hashval));
+	val = wmem_new(wmem_file_scope(), struct _9p_hashval);
 
-	val->data = g_malloc(len);
+	val->data = wmem_alloc(wmem_file_scope(), len);
 	val->len = len;
 
 	return val;
@@ -1038,12 +1023,7 @@ static struct _9p_hashval *_9p_hash_new_val(gsize len)
 
 static void _9p_hash_init(void)
 {
-	_9p_hashtable = g_hash_table_new_full(_9p_hash_hash, _9p_hash_equal, g_free, _9p_hash_free_val);
-}
-
-static void _9p_hash_cleanup(void)
-{
-	g_hash_table_destroy(_9p_hashtable);
+	_9p_hashtable = wmem_map_new(wmem_file_scope(), _9p_hash_hash, _9p_hash_equal);
 }
 
 static void _9p_hash_set(packet_info *pinfo, guint16 tag, guint32 fid, struct _9p_hashval *val)
@@ -1054,18 +1034,18 @@ static void _9p_hash_set(packet_info *pinfo, guint16 tag, guint32 fid, struct _9
 
 	conv = find_or_create_conversation(pinfo);
 
-	key = (struct _9p_hashkey *)g_malloc(sizeof(struct _9p_hashkey));
+	key = wmem_new(wmem_file_scope(), struct _9p_hashkey);
 
 	key->conv_index = conv->index;
 	key->tag = tag;
 	key->fid = fid;
 
 	/* remove eventual old entry */
-	oldval = (struct _9p_hashval *)g_hash_table_lookup(_9p_hashtable, key);
+	oldval = (struct _9p_hashval *)wmem_map_lookup(_9p_hashtable, key);
 	if (oldval) {
-		g_hash_table_remove(_9p_hashtable, key);
+		wmem_map_remove(_9p_hashtable, key);
 	}
-	g_hash_table_insert(_9p_hashtable, key, val);
+	wmem_map_insert(_9p_hashtable, key, val);
 }
 
 static struct _9p_hashval *_9p_hash_get(packet_info *pinfo, guint16 tag, guint32 fid)
@@ -1079,7 +1059,7 @@ static struct _9p_hashval *_9p_hash_get(packet_info *pinfo, guint16 tag, guint32
 	key.tag = tag;
 	key.fid = fid;
 
-	return (struct _9p_hashval *)g_hash_table_lookup(_9p_hashtable, &key);
+	return (struct _9p_hashval *)wmem_map_lookup(_9p_hashtable, &key);
 }
 
 static void _9p_hash_free(packet_info *pinfo, guint16 tag, guint32 fid)
@@ -1093,7 +1073,7 @@ static void _9p_hash_free(packet_info *pinfo, guint16 tag, guint32 fid)
 	key.tag = tag;
 	key.fid = fid;
 
-	g_hash_table_remove(_9p_hashtable, &key);
+	wmem_map_remove(_9p_hashtable, &key);
 }
 
 static void conv_set_version(packet_info *pinfo, enum _9p_version version)
@@ -1129,12 +1109,12 @@ static void conv_set_fid_nocopy(packet_info *pinfo, guint32 fid, const char *pat
 	if (!val) {
 		val = _9p_hash_new_val(0);
 		val->data = wmem_tree_new(wmem_file_scope());
-		/* val->len is intentionnaly left to 0 so the tree won't be freed */
+		/* val->len is intentionally left to 0 so the tree won't be freed */
 		_9p_hash_set(pinfo, _9P_NOTAG, fid, val);
 	}
 
 	/* fill it */
-	wmem_tree_insert32((wmem_tree_t *)val->data, pinfo->fd->num, (void *)path);
+	wmem_tree_insert32((wmem_tree_t *)val->data, pinfo->num, (void *)path);
 }
 
 static void conv_set_fid(packet_info *pinfo, guint32 fid, const gchar *path, gsize len)
@@ -1162,7 +1142,7 @@ static const char *conv_get_fid(packet_info *pinfo, guint32 fid)
 
 	/* -1 because the fid needs to have been set on a previous message.
 	   Let's ignore the possibility of num == 0... */
-	return (char*)wmem_tree_lookup32_le((wmem_tree_t*)val->data, pinfo->fd->num-1);
+	return (char*)wmem_tree_lookup32_le((wmem_tree_t*)val->data, pinfo->num-1);
 }
 
 static inline void conv_free_fid(packet_info *pinfo, guint32 fid)
@@ -1286,7 +1266,7 @@ static int dissect_9P_message(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tre
 
 		if (!pinfo->fd->flags.visited) {
 			_9p_len = tvb_get_letohs(tvb, offset);
-			tvb_s = tvb_get_string_enc(NULL, tvb, offset+2, _9p_len, ENC_UTF_8|ENC_NA);
+			tvb_s = tvb_get_string_enc(wmem_packet_scope(), tvb, offset+2, _9p_len, ENC_UTF_8|ENC_NA);
 
 			if (!strcmp(tvb_s, "9P2000.L")) {
 				u32 = _9P2000_L;
@@ -1299,7 +1279,6 @@ static int dissect_9P_message(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tre
 			}
 
 			conv_set_version(pinfo, (enum _9p_version)u32);
-			g_free(tvb_s);
 		}
 		offset += _9p_dissect_string(tvb, ninep_tree, offset, hf_9P_version, ett_9P_version);
 
@@ -1357,9 +1336,8 @@ static int dissect_9P_message(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tre
 
 		if(!pinfo->fd->flags.visited) {
 			_9p_len = tvb_get_letohs(tvb, offset);
-			tvb_s = tvb_get_string_enc(NULL, tvb, offset+2, _9p_len, ENC_UTF_8|ENC_NA);
+			tvb_s = tvb_get_string_enc(wmem_packet_scope(), tvb, offset+2, _9p_len, ENC_UTF_8|ENC_NA);
 			conv_set_fid(pinfo, fid, tvb_s, _9p_len+1);
-			g_free(tvb_s);
 		}
 		offset += _9p_dissect_string(tvb, ninep_tree, offset, hf_9P_aname, ett_9P_aname);
 
@@ -1393,10 +1371,9 @@ static int dissect_9P_message(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tre
 		for(i = 0 ; i < u16; i++) {
 			if (!pinfo->fd->flags.visited) {
 				_9p_len = tvb_get_letohs(tvb, offset);
-				tvb_s = tvb_get_string_enc(NULL, tvb, offset+2, _9p_len, ENC_UTF_8|ENC_NA);
+				tvb_s = tvb_get_string_enc(wmem_packet_scope(), tvb, offset+2, _9p_len, ENC_UTF_8|ENC_NA);
 				wmem_strbuf_append_c(tmppath, '/');
 				wmem_strbuf_append(tmppath, tvb_s);
-				g_free(tvb_s);
 			}
 
 			if (i < 250) {
@@ -1474,9 +1451,8 @@ static int dissect_9P_message(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tre
 			tmppath = wmem_strbuf_sized_new(wmem_packet_scope(), 0, MAXPATHLEN);
 			wmem_strbuf_append(tmppath, fid_path);
 			wmem_strbuf_append_c(tmppath, '/');
-			tvb_s = tvb_get_string_enc(NULL, tvb, offset+2, _9p_len, ENC_UTF_8|ENC_NA);
+			tvb_s = tvb_get_string_enc(wmem_packet_scope(), tvb, offset+2, _9p_len, ENC_UTF_8|ENC_NA);
 			wmem_strbuf_append(tmppath, tvb_s);
-			g_free(tvb_s);
 		}
 		offset += _9p_dissect_string(tvb, ninep_tree, offset, hf_9P_filename, ett_9P_filename);
 
@@ -1508,9 +1484,8 @@ static int dissect_9P_message(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tre
 			tmppath = wmem_strbuf_sized_new(wmem_packet_scope(), 0, MAXPATHLEN);
 			wmem_strbuf_append(tmppath, fid_path);
 			wmem_strbuf_append_c(tmppath, '/');
-			tvb_s = tvb_get_string_enc(NULL, tvb, offset+2, _9p_len, ENC_UTF_8|ENC_NA);
+			tvb_s = tvb_get_string_enc(wmem_packet_scope(), tvb, offset+2, _9p_len, ENC_UTF_8|ENC_NA);
 			wmem_strbuf_append(tmppath, tvb_s);
-			g_free(tvb_s);
 		}
 		offset += _9p_dissect_string(tvb, ninep_tree, offset, hf_9P_filename, ett_9P_filename);
 
@@ -1553,7 +1528,7 @@ static int dissect_9P_message(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tre
 		len = tvb_reported_length_remaining(tvb, offset);
 		reportedlen = ((gint)u32&0xffff) > len ? len : (gint)u32&0xffff;
 		next_tvb = tvb_new_subset(tvb, offset, len, reportedlen);
-		call_dissector(data_handle, next_tvb, pinfo, tree);
+		call_data_dissector(next_tvb, pinfo, tree);
 		offset += len;
 
 		conv_free_tag(pinfo, tag);
@@ -1574,7 +1549,7 @@ static int dissect_9P_message(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tre
 		len = tvb_reported_length_remaining(tvb, offset);
 		reportedlen = ((gint)u32&0xffff) > len ? len : (gint)u32&0xffff;
 		next_tvb = tvb_new_subset(tvb, offset, len, reportedlen);
-		call_dissector(data_handle, next_tvb, pinfo, tree);
+		call_data_dissector(next_tvb, pinfo, tree);
 		offset += len;
 
 		conv_set_tag(pinfo, tag, ninemsg, _9P_NOFID, NULL);
@@ -1875,9 +1850,8 @@ static int dissect_9P_message(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tre
 			wmem_strbuf_append(tmppath, conv_get_fid(pinfo, dfid));
 			wmem_strbuf_append_c(tmppath, '/');
 
-			tvb_s = tvb_get_string_enc(NULL, tvb, offset+2, _9p_len, ENC_UTF_8|ENC_NA);
+			tvb_s = tvb_get_string_enc(wmem_packet_scope(), tvb, offset+2, _9p_len, ENC_UTF_8|ENC_NA);
 			wmem_strbuf_append(tmppath, tvb_s);
-			g_free(tvb_s);
 
 			conv_set_fid(pinfo, fid, wmem_strbuf_get_str(tmppath), wmem_strbuf_get_len(tmppath)+1);
 		}
@@ -2753,16 +2727,13 @@ void proto_register_9P(void)
 	expert_register_field_array(expert_9P, ei, array_length(ei));
 
 	register_init_routine(_9p_hash_init);
-	register_cleanup_routine(_9p_hash_cleanup);
 }
 
 void proto_reg_handoff_9P(void)
 {
 	dissector_handle_t ninep_handle;
 
-	data_handle = find_dissector("data");
-
-	ninep_handle = new_create_dissector_handle(dissect_9P, proto_9P);
+	ninep_handle = create_dissector_handle(dissect_9P, proto_9P);
 
 	dissector_add_uint("tcp.port", NINEPORT, ninep_handle);
 }

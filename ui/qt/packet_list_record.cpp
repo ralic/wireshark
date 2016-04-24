@@ -28,8 +28,7 @@
 #include <epan/column.h>
 #include <epan/conversation.h>
 
-#include "color.h"
-#include "color_filters.h"
+#include <epan/color_filters.h>
 #include "frame_tvbuff.h"
 
 #include <QStringList>
@@ -47,6 +46,8 @@ PacketListRecord::PacketListRecord(frame_data *frameData) :
 {
 }
 
+// We might want to return a const char * instead. This would keep us from
+// creating excessive QByteArrays, e.g. in PacketListModel::recordLessThan.
 const QByteArray PacketListRecord::columnString(capture_file *cap_file, int column, bool colorized)
 {
     // packet_list_store.c:packet_list_get_value
@@ -57,7 +58,7 @@ const QByteArray PacketListRecord::columnString(capture_file *cap_file, int colu
     }
 
     bool dissect_color = colorized && !colorized_;
-    if (column >= col_text_.size() || col_text_[column].isNull() || data_ver_ != col_data_ver_ || dissect_color) {
+    if (column >= col_text_.size() || !col_text_[column] || data_ver_ != col_data_ver_ || dissect_color) {
         dissect(cap_file, dissect_color);
     }
 
@@ -132,15 +133,19 @@ void PacketListRecord::dissect(capture_file *cap_file, bool dissect_color)
         return;    /* error reading the record */
     }
 
-    create_proto_tree = (dissect_color && color_filters_used()) ||
-                        (dissect_columns && have_custom_cols(cinfo));
+    create_proto_tree = ((dissect_color && color_filters_used()) ||
+                         (dissect_columns && (have_custom_cols(cinfo) ||
+                                              have_field_extractors())));
 
     epan_dissect_init(&edt, cap_file->epan,
                       create_proto_tree,
                       FALSE /* proto_tree_visible */);
 
-    if (dissect_color)
+    /* Re-color when the coloring rules are changed via the UI. */
+    if (dissect_color) {
         color_filters_prime_edt(&edt);
+        fdata_->flags.need_colorize = 1;
+    }
     if (dissect_columns)
         col_custom_prime_edt(&edt, cinfo);
 
@@ -149,9 +154,6 @@ void PacketListRecord::dissect(capture_file *cap_file, bool dissect_color)
      * attempt to recover from it.
      */
     epan_dissect_run(&edt, cap_file->cd_t, &phdr, frame_tvbuff_new_buffer(fdata_, &buf), fdata_, cinfo);
-
-    if (dissect_color)
-        fdata_->color_filter = color_filters_colorize_packet(&edt);
 
     if (dissect_columns) {
         /* "Stringify" non frame_data vals */
@@ -165,11 +167,19 @@ void PacketListRecord::dissect(capture_file *cap_file, bool dissect_color)
     data_ver_ = col_data_ver_;
 
     packet_info *pi = &edt.pi;
-    conv_ = find_conversation(pi->fd->num, &pi->src, &pi->dst, pi->ptype,
+    conv_ = find_conversation(pi->num, &pi->src, &pi->dst, pi->ptype,
                               pi->srcport, pi->destport, 0);
 
     epan_dissect_cleanup(&edt);
     ws_buffer_free(&buf);
+}
+
+// This assumes only one packet list. We might want to move this to
+// PacketListModel (or replace this with a wmem allocator).
+struct _GStringChunk *PacketListRecord::string_pool_ = g_string_chunk_new(1 * 1024 * 1024);
+void PacketListRecord::clearStringPool()
+{
+    g_string_chunk_clear(string_pool_);
 }
 
 //#define MINIMIZE_STRING_COPYING 1
@@ -244,23 +254,27 @@ void PacketListRecord::cacheColumnStrings(column_info *cinfo)
             break;
         }
 #else // MINIMIZE_STRING_COPYING
-        // XXX The GTK+ code uses GStringChunk for string storage. It
-        // doesn't appear to be that much faster, but it probably uses
-        // less memory.
-        QByteArray col_text;
+        const char *col_str;
         if (!get_column_resolved(column) && cinfo->col_expr.col_expr_val[column]) {
             /* Use the unresolved value in col_expr_val */
-            col_text = cinfo->col_expr.col_expr_val[column];
+            col_str = cinfo->col_expr.col_expr_val[column];
         } else {
             int text_col = cinfo_column_.value(column, -1);
 
             if (text_col < 0) {
                 col_fill_in_frame_data(fdata_, cinfo, column, FALSE);
             }
-            col_text = cinfo->columns[column].col_data;
+            col_str = cinfo->columns[column].col_data;
         }
-        col_text_.append(col_text);
-        col_lines += col_text.count('\n');
+        // g_string_chunk_insert_const manages a hash table of pointers to
+        // strings:
+        // https://git.gnome.org/browse/glib/tree/glib/gstringchunk.c
+        // We might be better off adding the equivalent functionality to
+        // wmem_tree.
+        col_text_.append(g_string_chunk_insert_const(string_pool_, col_str));
+        for (int i = 0; col_str[i]; i++) {
+            if (col_str[i] == '\n') col_lines++;
+        }
         if (col_lines > lines_) {
             lines_ = col_lines;
             line_count_changed_ = true;

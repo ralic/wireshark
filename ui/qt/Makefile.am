@@ -20,11 +20,9 @@
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 
 include Makefile.common
-include ../../Makefile.am.inc
+include $(top_srcdir)/Makefile.am.inc
 
-if HAVE_WARNINGS_AS_ERRORS
-AM_CLEAN_CFLAGS = -Werror
-endif
+AM_CPPFLAGS = $(INCLUDEDIRS) $(WS_CPPFLAGS) $(GLIB_CFLAGS) $(Qt_CFLAGS)
 
 noinst_LIBRARIES = libqtui.a
 
@@ -33,7 +31,7 @@ CLEANFILES = \
 	wireshark-tap-register.c-tmp \
 	wireshark-tap-register-cache.pkl \
 	*.moc.cpp \
-	*.rrc.cpp \
+	qrc_*.cpp \
 	ui_*.h
 	*~
 
@@ -44,6 +42,26 @@ MAINTAINERCLEANFILES = \
 	$(GENERATED_FILES)		\
 	$(NODIST_GENERATED_FILES)	\
 	Makefile.in
+
+if HAVE_EXTCAP
+NODIST_GENERATED_HEADER_FILES += \
+	ui_extcap_options_dialog.h
+
+MOC_HDRS += \
+	extcap_argument.h	\
+	extcap_argument_file.h	\
+	extcap_argument_multiselect.h	\
+	extcap_options_dialog.h
+
+UI_FILES += \
+	extcap_options_dialog.ui
+
+WIRESHARK_QT_SRC += \
+	extcap_argument.cpp	\
+	extcap_argument_file.cpp	\
+	extcap_argument_multiselect.cpp	\
+	extcap_options_dialog.cpp
+endif
 
 #
 # Build "wireshark-tap-register.c", which contains a function
@@ -63,8 +81,6 @@ wireshark-tap-register.c: $(WIRESHARK_QT_TAP_SRC) $(top_srcdir)/tools/make-tap-r
 	@echo Making wireshark-tap-register.c
 	@$(PYTHON) $(top_srcdir)/tools/make-tap-reg.py $(srcdir) taps $(WIRESHARK_QT_TAP_SRC)
 
-RUNLEX=$(top_srcdir)/tools/runlex.sh
-
 libqtui_a_SOURCES = \
 	$(WIRESHARK_QT_SRC) \
 	$(WIRESHARK_QT_TAP_SRC) \
@@ -78,15 +94,7 @@ nodist_libqtui_a_SOURCES = \
 	$(NODIST_GENERATED_CPP_FILES) \
 	$(NODIST_GENERATED_HEADER_FILES)
 
-libqtui_a_CFLAGS = $(AM_CLEAN_CFLAGS)
-
 libqtui_a_DEPENDENCIES =
-
-# Common headers
-AM_CPPFLAGS = -I$(top_srcdir) -I$(top_srcdir)/wiretap $(LIBGCRYPT_CFLAGS) \
-	$(LIBGNUTLS_CFLAGS) $(PIE_CFLAGS)
-
-AM_CXXFLAGS = $(AM_CLEAN_CFLAGS)
 
 AM_V_MOC = $(am__v_MOC_@AM_V@)
 am__v_MOC_ = $(am__v_MOC_@AM_DEFAULT_V@)
@@ -105,21 +113,36 @@ am__v_UIC_0 = @echo "  UIC     " $@;
 # building .rcc.cpp files from .qrc files by running rcc,
 # and building ui_XXX.h files from .ui files by running uic.
 #
-SUFFIXES = .moc.cpp .qrc .rcc.cpp
+SUFFIXES = .moc.cpp
 
-.h.moc.cpp:
-	$(AM_V_MOC)$(MOC) -I.. -I../.. -o $@ $<
-
-.qrc.rcc.cpp:
-	$(MKDIR_P) $(@D)
-	$(AM_V_RCC)$(RCC) -name `basename $< .qrc` -o $@ $<
-
-ui_%.h: %.ui
-	$(AM_V_UIC)$(UIC) $< -o $@
-
+#
 # The Qt toolchain uses the naming convention moc_FOO.cpp. Should we do the same?
 #moc_%.cpp: %.h
 #	$(MOC) $< -o $@
+#
+.h.moc.cpp:
+	$(AM_V_MOC)$(MOC) $(MOC_OPTIONS) -I.. -I../.. -o $@ $<
+
+qrc_about.cpp: ../../image/about.qrc
+	$(AM_V_RCC)$(RCC) $(RCC_OPTIONS) -name about -o $@ $<
+
+qrc_layout.cpp: ../../image/layout.qrc
+	$(AM_V_RCC)$(RCC) $(RCC_OPTIONS) -name layout -o $@ $<
+
+qrc_languages.cpp: ../../image/languages/languages.qrc
+	$(AM_V_RCC)$(RCC) $(RCC_OPTIONS) -name languages -o $@ $<
+
+qrc_i18n.cpp: i18n.qrc
+	$(AM_V_RCC)$(RCC) $(RCC_OPTIONS) -name i18n -o $@ $<
+
+qrc_toolbar.cpp: ../../image/toolbar.qrc
+	$(AM_V_RCC)$(RCC) $(RCC_OPTIONS) -name toolbar -o $@ $<
+
+qrc_wsicon.cpp: ../../image/wsicon.qrc
+	$(AM_V_RCC)$(RCC) $(RCC_OPTIONS) -name wsicon -o $@ $<
+
+ui_%.h: %.ui
+	$(AM_V_UIC)$(UIC) $< -o $@
 
 #
 # Explicit dependencies to force the ui_ headers to be built.
@@ -152,9 +175,13 @@ column_preferences_frame.$(OBJEXT): ui_column_preferences_frame.h
 
 compiled_filter_output.$(OBJEXT): ui_compiled_filter_output.h
 
+conversation_hash_tables_dialog.$(OBJEXT): ui_conversation_hash_tables_dialog.h
+
 decode_as_dialog.$(OBJEXT): ui_decode_as_dialog.h
 
 display_filter_expression_dialog.$(OBJEXT): ui_display_filter_expression_dialog.h
+
+dissector_tables_dialog.$(OBJEXT): ui_dissector_tables_dialog.h
 
 enabled_protocols_dialog.$(OBJEXT): ui_enabled_protocols_dialog.h
 
@@ -170,6 +197,8 @@ file_set_dialog.$(OBJEXT): ui_file_set_dialog.h
 
 filter_dialog.$(OBJEXT): ui_filter_dialog.h
 
+filter_expression_frame.$(OBJEXT): ui_filter_expression_frame.h
+
 filter_expressions_preferences_frame.$(OBJEXT): ui_filter_expressions_preferences_frame.h
 
 follow_stream_dialog.$(OBJEXT): ui_follow_stream_dialog.h
@@ -181,6 +210,8 @@ funnel_string_dialog.$(OBJEXT): ui_funnel_string_dialog.h
 funnel_text_dialog.$(OBJEXT): ui_funnel_text_dialog.h
 
 gsm_map_summary_dialog.$(OBJEXT): ui_gsm_map_summary_dialog.h
+
+iax2_analysis_dialog.$(OBJEXT): ui_iax2_analysis_dialog.h
 
 import_text_dialog.$(OBJEXT): ui_import_text_dialog.h
 
@@ -195,6 +226,8 @@ lbm_lbtru_transport_dialog.$(OBJEXT): ui_lbm_lbtru_transport_dialog.h
 lbm_stream_dialog.$(OBJEXT): ui_lbm_stream_dialog.h
 
 lbm_uimflow_dialog.$(OBJEXT): ui_lbm_uimflow_dialog.h
+
+lte_rlc_graph_dialog.$(OBJEXT): ui_lte_rlc_graph_dialog.h
 
 main_welcome.$(OBJEXT): ui_main_welcome.h
 
@@ -226,10 +259,6 @@ print_dialog.$(OBJEXT): ui_print_dialog.h
 
 progress_frame.$(OBJEXT): ui_progress_frame.h
 
-rtp_analysis_dialog.$(OBJEXT): ui_rtp_analysis_dialog.h
-
-rtp_stream_dialog.$(OBJEXT): ui_rtp_stream_dialog.h
-
 profile_dialog.$(OBJEXT): ui_profile_dialog.h
 
 protocol_hierarchy_dialog.$(OBJEXT): ui_protocol_hierarchy_dialog.h
@@ -239,6 +268,10 @@ remote_capture_dialog.$(OBJEXT): ui_remote_capture_dialog.h
 remote_settings_dialog.$(OBJEXT): ui_remote_settings_dialog.h
 
 resolved_addresses_dialog.$(OBJEXT): ui_resolved_addresses_dialog.h
+
+rtp_analysis_dialog.$(OBJEXT): ui_rtp_analysis_dialog.h
+
+rtp_player_dialog.$(OBJEXT): ui_rtp_player_dialog.h
 
 rtp_stream_dialog.$(OBJEXT): ui_rtp_stream_dialog.h
 
@@ -258,7 +291,11 @@ sctp_graph_arwnd_dialog.$(OBJEXT): ui_sctp_graph_arwnd_dialog.h
 
 sctp_graph_byte_dialog.$(OBJEXT): ui_sctp_graph_byte_dialog.h
 
+show_packet_bytes_dialog.$(OBJEXT): ui_show_packet_bytes_dialog.h
+
 splash_overlay.$(OBJEXT): ui_splash_overlay.h
+
+supported_protocols_dialog.$(OBJEXT): ui_supported_protocols_dialog.h
 
 tap_parameter_dialog.$(OBJEXT): ui_tap_parameter_dialog.h
 

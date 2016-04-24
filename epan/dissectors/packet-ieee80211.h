@@ -31,14 +31,12 @@
 extern "C" {
 #endif /* __cplusplus */
 
-WS_DLL_PUBLIC
-void capture_ieee80211 (const guchar *, int, int, packet_counts *);
-void capture_ieee80211_datapad (const guchar *, int, int, packet_counts *);
+extern
+gboolean capture_ieee80211 (const guchar *, int, int, capture_packet_info_t *cpinfo, const union wtap_pseudo_header *pseudo_header);
+gboolean capture_ieee80211_datapad (const guchar *, int, int, capture_packet_info_t *cpinfo, const union wtap_pseudo_header *pseudo_header);
 
-WS_DLL_PUBLIC
-void capture_prism(const guchar *, int, int, packet_counts *);
-WS_DLL_PUBLIC
-void capture_wlancap(const guchar *, int, int, packet_counts *);
+extern
+gboolean capture_wlancap(const guchar *, int, int, capture_packet_info_t *cpinfo, const union wtap_pseudo_header *pseudo_header);
 
 void dissect_wifi_p2p_ie(packet_info *pinfo, proto_tree *tree, tvbuff_t *tvb,
                          int offset, gint size);
@@ -52,7 +50,9 @@ void dissect_wifi_display_ie(packet_info *pinfo, proto_tree *tree,
                              tvbuff_t *tvb, int offset, gint size);
 
 int add_tagged_field(packet_info *pinfo, proto_tree *tree,
-                            tvbuff_t *tvb, int offset, int ftype);
+                            tvbuff_t *tvb, int offset, int ftype,
+                            const guint8 *valid_element_ids,
+                            guint valid_element_ids_count);
 
 #define MAX_SSID_LEN    32
 #define MAX_PROTECT_LEN 10
@@ -63,7 +63,8 @@ int add_tagged_field(packet_info *pinfo, proto_tree *tree,
  */
 #define MAX_MCS_INDEX 76
 
-WS_DLL_PUBLIC const float ieee80211_float_htrates[MAX_MCS_INDEX+1][2][2];
+WS_DLL_PUBLIC const guint16 ieee80211_ht_Dbps[MAX_MCS_INDEX+1];
+float ieee80211_htrate(int mcs_index, gboolean bandwidth, gboolean short_gi);
 
 WS_DLL_PUBLIC value_string_ext ieee80211_supported_rates_vals_ext;
 
@@ -132,7 +133,7 @@ gboolean is_broadcast_bssid(const address *bssid);
 #define FLAG_POWER_MGT        0x10
 #define FLAG_MORE_DATA        0x20
 #define FLAG_PROTECTED        0x40
-#define FLAG_ORDER            0x80
+#define FLAG_ORDER            0x80    /* overloaded for "has HT control" */
 
 /*
  * Test bits in the flags field.
@@ -148,8 +149,8 @@ gboolean is_broadcast_bssid(const address *bssid);
 #define POWER_MGT_STATUS(x)    ((x) & FLAG_POWER_MGT)
 #define HAS_MORE_DATA(x)       ((x) & FLAG_MORE_DATA)
 #define IS_PROTECTED(x)        ((x) & FLAG_PROTECTED)
-#define IS_STRICTLY_ORDERED(x) ((x) & FLAG_ORDER) /* non-QoS data frames */
-#define HAS_HT_CONTROL(x)      ((x) & FLAG_ORDER) /* management and QoS data frames */
+#define IS_STRICTLY_ORDERED(x) ((x) & FLAG_ORDER)      /* for non-QoS data frames */
+#define HAS_HT_CONTROL(x)      ((x) & FLAG_ORDER)      /* for management and QoS data frames */
 
 /*
  * Extract subfields from the flags field.

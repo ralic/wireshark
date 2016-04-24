@@ -1,11 +1,11 @@
 /* Do not modify this file. Changes will be overwritten.                      */
 /* Generated automatically by the ASN.1 to Wireshark dissector compiler       */
 /* packet-t38.c                                                               */
-/* ../../tools/asn2wrs.py -p t38 -c ./t38.cnf -s ./packet-t38-template -D . -O ../../epan/dissectors T38_2002.asn */
+/* asn2wrs.py -p t38 -c ./t38.cnf -s ./packet-t38-template -D . -O ../.. T38_2002.asn */
 
 /* Input file: packet-t38-template.c */
 
-#line 1 "../../asn1/t38/packet-t38-template.c"
+#line 1 "./asn1/t38/packet-t38-template.c"
 /* packet-t38.c
  * Routines for T.38 packet dissection
  * 2003  Hans Viens
@@ -61,16 +61,13 @@
 #include <epan/prefs.h>
 #include <epan/ipproto.h>
 #include <epan/asn1.h>
+#include <epan/proto_data.h>
 
 #include "packet-t38.h"
 #include "packet-per.h"
 #include "packet-tpkt.h"
 
 void proto_register_t38(void);
-
-#define PORT_T38 6004
-static guint global_t38_tcp_port = PORT_T38;
-static guint global_t38_udp_port = PORT_T38;
 
 static int t38_tap = -1;
 
@@ -124,7 +121,7 @@ static guint32 Data_Field_item_num;
 static int proto_t38 = -1;
 
 /*--- Included file: packet-t38-hf.c ---*/
-#line 1 "../../asn1/t38/packet-t38-hf.c"
+#line 1 "./asn1/t38/packet-t38-hf.c"
 static int hf_t38_IFPPacket_PDU = -1;             /* IFPPacket */
 static int hf_t38_UDPTLPacket_PDU = -1;           /* UDPTLPacket */
 static int hf_t38_type_of_msg = -1;               /* Type_of_msg */
@@ -145,7 +142,7 @@ static int hf_t38_fec_data = -1;                  /* T_fec_data */
 static int hf_t38_fec_data_item = -1;             /* OCTET_STRING */
 
 /*--- End of included file: packet-t38-hf.c ---*/
-#line 118 "../../asn1/t38/packet-t38-template.c"
+#line 115 "./asn1/t38/packet-t38-template.c"
 
 /* T38 setup fields */
 static int hf_t38_setup        = -1;
@@ -167,7 +164,7 @@ static int hf_t38_reassembled_length = -1;
 static gint ett_t38 = -1;
 
 /*--- Included file: packet-t38-ett.c ---*/
-#line 1 "../../asn1/t38/packet-t38-ett.c"
+#line 1 "./asn1/t38/packet-t38-ett.c"
 static gint ett_t38_IFPPacket = -1;
 static gint ett_t38_Type_of_msg = -1;
 static gint ett_t38_Data_Field = -1;
@@ -179,7 +176,7 @@ static gint ett_t38_T_fec_info = -1;
 static gint ett_t38_T_fec_data = -1;
 
 /*--- End of included file: packet-t38-ett.c ---*/
-#line 138 "../../asn1/t38/packet-t38-template.c"
+#line 135 "./asn1/t38/packet-t38-template.c"
 static gint ett_t38_setup = -1;
 
 static gint ett_data_fragment = -1;
@@ -277,7 +274,7 @@ void t38_add_address(packet_info *pinfo,
                 return;
         }
 
-        SET_ADDRESS(&null_addr, AT_NONE, 0, NULL);
+        clear_address(&null_addr);
 
         /*
          * Check if the ip address and port combination is not
@@ -318,25 +315,25 @@ void t38_add_address(packet_info *pinfo,
          */
         g_strlcpy(p_conversation_data->setup_method, setup_method, MAX_T38_SETUP_METHOD_SIZE);
         p_conversation_data->setup_frame_number = setup_frame_number;
-		p_conversation_data->src_t38_info.reass_ID = 0;
-		p_conversation_data->src_t38_info.reass_start_seqnum = -1;
-		p_conversation_data->src_t38_info.reass_data_type = 0;
-		p_conversation_data->src_t38_info.last_seqnum = -1;
-		p_conversation_data->src_t38_info.packet_lost = 0;
-		p_conversation_data->src_t38_info.burst_lost = 0;
-		p_conversation_data->src_t38_info.time_first_t4_data = 0;
-		p_conversation_data->src_t38_info.additional_hdlc_data_field_counter = 0;
-		p_conversation_data->src_t38_info.seqnum_prev_data_field = -1;
+        p_conversation_data->src_t38_info.reass_ID = 0;
+        p_conversation_data->src_t38_info.reass_start_seqnum = -1;
+        p_conversation_data->src_t38_info.reass_data_type = 0;
+        p_conversation_data->src_t38_info.last_seqnum = -1;
+        p_conversation_data->src_t38_info.packet_lost = 0;
+        p_conversation_data->src_t38_info.burst_lost = 0;
+        p_conversation_data->src_t38_info.time_first_t4_data = 0;
+        p_conversation_data->src_t38_info.additional_hdlc_data_field_counter = 0;
+        p_conversation_data->src_t38_info.seqnum_prev_data_field = -1;
 
-		p_conversation_data->dst_t38_info.reass_ID = 0;
-		p_conversation_data->dst_t38_info.reass_start_seqnum = -1;
-		p_conversation_data->dst_t38_info.reass_data_type = 0;
-		p_conversation_data->dst_t38_info.last_seqnum = -1;
-		p_conversation_data->dst_t38_info.packet_lost = 0;
-		p_conversation_data->dst_t38_info.burst_lost = 0;
-		p_conversation_data->dst_t38_info.time_first_t4_data = 0;
-		p_conversation_data->dst_t38_info.additional_hdlc_data_field_counter = 0;
-		p_conversation_data->dst_t38_info.seqnum_prev_data_field = -1;
+        p_conversation_data->dst_t38_info.reass_ID = 0;
+        p_conversation_data->dst_t38_info.reass_start_seqnum = -1;
+        p_conversation_data->dst_t38_info.reass_data_type = 0;
+        p_conversation_data->dst_t38_info.last_seqnum = -1;
+        p_conversation_data->dst_t38_info.packet_lost = 0;
+        p_conversation_data->dst_t38_info.burst_lost = 0;
+        p_conversation_data->dst_t38_info.time_first_t4_data = 0;
+        p_conversation_data->dst_t38_info.additional_hdlc_data_field_counter = 0;
+        p_conversation_data->dst_t38_info.seqnum_prev_data_field = -1;
 }
 
 
@@ -427,7 +424,7 @@ force_reassemble_seq(reassembly_table *table, packet_info *pinfo, guint32 id)
 
 	/* mark this packet as defragmented */
 	fd_head->flags |= FD_DEFRAGMENTED;
-	fd_head->reassembled_in=pinfo->fd->num;
+	fd_head->reassembled_in=pinfo->num;
 
 	col_append_fstr(pinfo->cinfo, COL_INFO, " (t4-data Reassembled: %d pack lost, %d pack burst lost)", packet_lost, burst_lost);
 
@@ -440,7 +437,7 @@ force_reassemble_seq(reassembly_table *table, packet_info *pinfo, guint32 id)
 /* T38 Routines */
 
 /*--- Included file: packet-t38-fn.c ---*/
-#line 1 "../../asn1/t38/packet-t38-fn.c"
+#line 1 "./asn1/t38/packet-t38-fn.c"
 
 const value_string t38_T30_indicator_vals[] = {
   {   0, "no-signal" },
@@ -475,7 +472,7 @@ dissect_t38_T30_indicator(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U
   offset = dissect_per_enumerated(tvb, offset, actx, tree, hf_index,
                                      16, &T30ind_value, TRUE, 7, NULL);
 
-#line 29 "../../asn1/t38/t38.cnf"
+#line 29 "./asn1/t38/t38.cnf"
     if (primary_part){
         col_append_fstr(actx->pinfo->cinfo, COL_INFO, " t30ind: %s",
          val_to_str(T30ind_value,t38_T30_indicator_vals,"<unknown>"));
@@ -514,7 +511,7 @@ dissect_t38_T30_data(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, pr
   offset = dissect_per_enumerated(tvb, offset, actx, tree, hf_index,
                                      9, &Data_value, TRUE, 6, NULL);
 
-#line 41 "../../asn1/t38/t38.cnf"
+#line 41 "./asn1/t38/t38.cnf"
     if (primary_part){
         col_append_fstr(actx->pinfo->cinfo, COL_INFO, " data:%s:",
          val_to_str(Data_value,t38_T30_data_vals,"<unknown>"));
@@ -547,7 +544,7 @@ dissect_t38_Type_of_msg(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_,
                                  ett_t38_Type_of_msg, Type_of_msg_choice,
                                  &Type_of_msg_value);
 
-#line 22 "../../asn1/t38/t38.cnf"
+#line 22 "./asn1/t38/t38.cnf"
   /* info for tap */
   if (primary_part)
     t38_info->type_msg = Type_of_msg_value;
@@ -578,7 +575,7 @@ dissect_t38_T_field_type(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_
   offset = dissect_per_enumerated(tvb, offset, actx, tree, hf_index,
                                      8, &Data_Field_field_type_value, (use_pre_corrigendum_asn1_specification)?FALSE:TRUE, (use_pre_corrigendum_asn1_specification)?0:4, NULL);
 
-#line 61 "../../asn1/t38/t38.cnf"
+#line 61 "./asn1/t38/t38.cnf"
     if (primary_part){
         col_append_fstr(actx->pinfo->cinfo, COL_INFO, " %s",
          val_to_str(Data_Field_field_type_value,t38_T_field_type_vals,"<unknown>"));
@@ -674,7 +671,7 @@ dissect_t38_T_field_type(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_
 
 static int
 dissect_t38_T_field_data(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 151 "../../asn1/t38/t38.cnf"
+#line 151 "./asn1/t38/t38.cnf"
     tvbuff_t *value_tvb = NULL;
     guint32 value_len;
 
@@ -685,7 +682,7 @@ dissect_t38_T_field_data(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_
 
 
 
-#line 158 "../../asn1/t38/t38.cnf"
+#line 158 "./asn1/t38/t38.cnf"
     if (primary_part){
         if(value_len < 8){
             col_append_fstr(actx->pinfo->cinfo, COL_INFO, "[%s]",
@@ -713,7 +710,7 @@ dissect_t38_T_field_data(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_
             /* if we have not reassembled this packet and it is the first fragment, reset the reassemble ID and the start seq number*/
             if (p_t38_packet_conv && p_t38_conv && (p_t38_packet_conv_info->reass_ID == 0)) {
                 /* we use the first fragment's frame_number as fragment ID because the protocol doesn't provide it */
-                    p_t38_conv_info->reass_ID = actx->pinfo->fd->num;
+                    p_t38_conv_info->reass_ID = actx->pinfo->num;
                     p_t38_conv_info->reass_start_seqnum = seq_number;
                     p_t38_conv_info->time_first_t4_data = nstime_to_sec(&actx->pinfo->rel_ts);
                     p_t38_conv_info->additional_hdlc_data_field_counter = 0;
@@ -772,7 +769,7 @@ dissect_t38_Data_Field_item(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx 
   offset = dissect_per_sequence(tvb, offset, actx, tree, hf_index,
                                    ett_t38_Data_Field_item, Data_Field_item_sequence);
 
-#line 53 "../../asn1/t38/t38.cnf"
+#line 53 "./asn1/t38/t38.cnf"
     if (primary_part) Data_Field_item_num++;
 
   return offset;
@@ -813,7 +810,7 @@ dissect_t38_T_seq_number(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_
   offset = dissect_per_constrained_integer(tvb, offset, actx, tree, hf_index,
                                                             0U, 65535U, &seq_number, FALSE);
 
-#line 238 "../../asn1/t38/t38.cnf"
+#line 238 "./asn1/t38/t38.cnf"
     /* info for tap */
     if (primary_part)
         t38_info->seq_num = seq_number;
@@ -827,12 +824,12 @@ dissect_t38_T_seq_number(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_
 
 static int
 dissect_t38_T_primary_ifp_packet(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 246 "../../asn1/t38/t38.cnf"
+#line 246 "./asn1/t38/t38.cnf"
     primary_part = TRUE;
 
   offset = dissect_per_open_type(tvb, offset, actx, tree, hf_index, dissect_t38_IFPPacket);
 
-#line 248 "../../asn1/t38/t38.cnf"
+#line 248 "./asn1/t38/t38.cnf"
     /* if is a valid t38 packet, add to tap */
     /* Note that t4-non-ecm-sig-end without first_t4_data is not valid */
     if (p_t38_packet_conv && (!actx->pinfo->flags.in_error_pkt) && ((gint32) seq_number != p_t38_packet_conv_info->last_seqnum) &&
@@ -928,14 +925,14 @@ static const per_choice_t T_error_recovery_choice[] = {
 
 static int
 dissect_t38_T_error_recovery(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 258 "../../asn1/t38/t38.cnf"
+#line 258 "./asn1/t38/t38.cnf"
     primary_part = FALSE;
 
   offset = dissect_per_choice(tvb, offset, actx, tree, hf_index,
                                  ett_t38_T_error_recovery, T_error_recovery_choice,
                                  NULL);
 
-#line 260 "../../asn1/t38/t38.cnf"
+#line 260 "./asn1/t38/t38.cnf"
     primary_part = TRUE;
 
   return offset;
@@ -951,7 +948,7 @@ static const per_sequence_t UDPTLPacket_sequence[] = {
 
 static int
 dissect_t38_UDPTLPacket(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 232 "../../asn1/t38/t38.cnf"
+#line 232 "./asn1/t38/t38.cnf"
     /* Initialize to something else than data type */
     Data_Field_field_type_value = 1;
 
@@ -982,7 +979,7 @@ static int dissect_UDPTLPacket_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, pr
 
 
 /*--- End of included file: packet-t38-fn.c ---*/
-#line 397 "../../asn1/t38/packet-t38-template.c"
+#line 394 "./asn1/t38/packet-t38-template.c"
 
 /* initialize the tap t38_info and the conversation */
 static void
@@ -1017,55 +1014,55 @@ init_t38_info_conv(packet_info *pinfo)
 	p_t38_conv = NULL;
 
 	/* Use existing packet info if available */
-	 p_t38_packet_conv = (t38_conv *)p_get_proto_data(wmem_file_scope(), pinfo, proto_t38, 0);
+	p_t38_packet_conv = (t38_conv *)p_get_proto_data(wmem_file_scope(), pinfo, proto_t38, 0);
 
 
 	/* find the conversation used for Reassemble and Setup Info */
-	p_conv = find_conversation(pinfo->fd->num, &pinfo->net_dst, &pinfo->net_src,
+	p_conv = find_conversation(pinfo->num, &pinfo->net_dst, &pinfo->net_src,
                                    pinfo->ptype,
                                    pinfo->destport, pinfo->srcport, NO_ADDR_B | NO_PORT_B);
 
 	/* create a conv if it doen't exist */
 	if (!p_conv) {
-		p_conv = conversation_new(pinfo->fd->num, &pinfo->net_src, &pinfo->net_dst,
+		p_conv = conversation_new(pinfo->num, &pinfo->net_src, &pinfo->net_dst,
 			      pinfo->ptype, pinfo->srcport, pinfo->destport, NO_ADDR_B | NO_PORT_B);
 
 		/* Set dissector */
 		conversation_set_dissector(p_conv, t38_udp_handle);
 	}
 
+	p_t38_conv = (t38_conv *)conversation_get_proto_data(p_conv, proto_t38);
+
+	/* create the conversation if it doesn't exist */
+	if (!p_t38_conv) {
+		p_t38_conv = wmem_new(wmem_file_scope(), t38_conv);
+		p_t38_conv->setup_method[0] = '\0';
+		p_t38_conv->setup_frame_number = 0;
+
+		p_t38_conv->src_t38_info.reass_ID = 0;
+		p_t38_conv->src_t38_info.reass_start_seqnum = -1;
+		p_t38_conv->src_t38_info.reass_data_type = 0;
+		p_t38_conv->src_t38_info.last_seqnum = -1;
+		p_t38_conv->src_t38_info.packet_lost = 0;
+		p_t38_conv->src_t38_info.burst_lost = 0;
+		p_t38_conv->src_t38_info.time_first_t4_data = 0;
+		p_t38_conv->src_t38_info.additional_hdlc_data_field_counter = 0;
+		p_t38_conv->src_t38_info.seqnum_prev_data_field = -1;
+
+		p_t38_conv->dst_t38_info.reass_ID = 0;
+		p_t38_conv->dst_t38_info.reass_start_seqnum = -1;
+		p_t38_conv->dst_t38_info.reass_data_type = 0;
+		p_t38_conv->dst_t38_info.last_seqnum = -1;
+		p_t38_conv->dst_t38_info.packet_lost = 0;
+		p_t38_conv->dst_t38_info.burst_lost = 0;
+		p_t38_conv->dst_t38_info.time_first_t4_data = 0;
+		p_t38_conv->dst_t38_info.additional_hdlc_data_field_counter = 0;
+		p_t38_conv->dst_t38_info.seqnum_prev_data_field = -1;
+
+		conversation_add_proto_data(p_conv, proto_t38, p_t38_conv);
+	}
+
 	if (!p_t38_packet_conv) {
-		p_t38_conv = (t38_conv *)conversation_get_proto_data(p_conv, proto_t38);
-
-		/* create the conversation if it doen't exist */
-		if (!p_t38_conv) {
-			p_t38_conv = wmem_new(wmem_file_scope(), t38_conv);
-			p_t38_conv->setup_method[0] = '\0';
-			p_t38_conv->setup_frame_number = 0;
-
-			p_t38_conv->src_t38_info.reass_ID = 0;
-			p_t38_conv->src_t38_info.reass_start_seqnum = -1;
-			p_t38_conv->src_t38_info.reass_data_type = 0;
-			p_t38_conv->src_t38_info.last_seqnum = -1;
-			p_t38_conv->src_t38_info.packet_lost = 0;
-			p_t38_conv->src_t38_info.burst_lost = 0;
-			p_t38_conv->src_t38_info.time_first_t4_data = 0;
-			p_t38_conv->src_t38_info.additional_hdlc_data_field_counter = 0;
-			p_t38_conv->src_t38_info.seqnum_prev_data_field = -1;
-
-			p_t38_conv->dst_t38_info.reass_ID = 0;
-			p_t38_conv->dst_t38_info.reass_start_seqnum = -1;
-			p_t38_conv->dst_t38_info.reass_data_type = 0;
-			p_t38_conv->dst_t38_info.last_seqnum = -1;
-			p_t38_conv->dst_t38_info.packet_lost = 0;
-			p_t38_conv->dst_t38_info.burst_lost = 0;
-			p_t38_conv->dst_t38_info.time_first_t4_data = 0;
-			p_t38_conv->dst_t38_info.additional_hdlc_data_field_counter = 0;
-			p_t38_conv->dst_t38_info.seqnum_prev_data_field = -1;
-
-			conversation_add_proto_data(p_conv, proto_t38, p_t38_conv);
-		}
-
 		/* copy the t38 conversation info to the packet t38 conversation */
 		p_t38_packet_conv = wmem_new(wmem_file_scope(), t38_conv);
 		g_strlcpy(p_t38_packet_conv->setup_method, p_t38_conv->setup_method, MAX_T38_SETUP_METHOD_SIZE);
@@ -1077,7 +1074,7 @@ init_t38_info_conv(packet_info *pinfo)
 		p_add_proto_data(wmem_file_scope(), pinfo, proto_t38, 0, p_t38_packet_conv);
 	}
 
-	if (ADDRESSES_EQUAL(&p_conv->key_ptr->addr1, &pinfo->net_src)) {
+	if (addresses_equal(&p_conv->key_ptr->addr1, &pinfo->net_src)) {
 		p_t38_conv_info = &(p_t38_conv->src_t38_info);
 		p_t38_packet_conv_info = &(p_t38_packet_conv->src_t38_info);
 	} else {
@@ -1090,8 +1087,8 @@ init_t38_info_conv(packet_info *pinfo)
 }
 
 /* Entry point for dissection */
-static void
-dissect_t38_udp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
+static int
+dissect_t38_udp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data _U_)
 {
 	guint8 octet1;
 	proto_item *it;
@@ -1104,8 +1101,7 @@ dissect_t38_udp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
 	if (dissect_possible_rtpv2_packets_as_rtp){
 		octet1 = tvb_get_guint8(tvb, offset);
 		if (RTP_VERSION(octet1) == 2){
-			call_dissector(rtp_handle,tvb,pinfo,tree);
-			return;
+			return call_dissector(rtp_handle,tvb,pinfo,tree);
 		}
 	}
 
@@ -1137,15 +1133,16 @@ dissect_t38_udp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
 				"[MALFORMED PACKET or wrong preference settings]");
 		col_append_str(pinfo->cinfo, COL_INFO, " [Malformed?]");
 	}
+	return tvb_captured_length(tvb);
 }
 
-static void
-dissect_t38_tcp_pdu(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
+static int
+dissect_t38_tcp_pdu(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data _U_)
 {
 	proto_item *it;
 	proto_tree *tr;
 	guint32 offset=0;
-    tvbuff_t *next_tvb;
+        tvbuff_t *next_tvb;
 	guint16 ifp_packet_number=1;
 
 	col_set_str(pinfo->cinfo, COL_PROTOCOL, "T.38");
@@ -1187,10 +1184,11 @@ dissect_t38_tcp_pdu(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
 		}
 	}
 
+	return tvb_captured_length(tvb);
 }
 
-static void
-dissect_t38_tcp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
+static int
+dissect_t38_tcp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data _U_)
 {
 	primary_part = TRUE;
 
@@ -1198,11 +1196,12 @@ dissect_t38_tcp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
 		dissect_tpkt_encap(tvb,pinfo,tree,t38_tpkt_reassembly,t38_tcp_pdu_handle);
 	}
 	else if((t38_tpkt_usage == T38_TPKT_NEVER) || (is_tpkt(tvb,1) == -1)){
-		dissect_t38_tcp_pdu(tvb, pinfo, tree);
+		dissect_t38_tcp_pdu(tvb, pinfo, tree, data);
 	}
 	else {
 		dissect_tpkt_encap(tvb,pinfo,tree,t38_tpkt_reassembly,t38_tcp_pdu_handle);
 	}
+	return tvb_captured_length(tvb);
 }
 
 /* Look for conversation info and display any setup info found */
@@ -1246,7 +1245,7 @@ proto_register_t38(void)
 	{
 
 /*--- Included file: packet-t38-hfarr.c ---*/
-#line 1 "../../asn1/t38/packet-t38-hfarr.c"
+#line 1 "./asn1/t38/packet-t38-hfarr.c"
     { &hf_t38_IFPPacket_PDU,
       { "IFPPacket", "t38.IFPPacket_element",
         FT_NONE, BASE_NONE, NULL, 0,
@@ -1321,7 +1320,7 @@ proto_register_t38(void)
         "OCTET_STRING", HFILL }},
 
 /*--- End of included file: packet-t38-hfarr.c ---*/
-#line 659 "../../asn1/t38/packet-t38-template.c"
+#line 658 "./asn1/t38/packet-t38-template.c"
 		{   &hf_t38_setup,
 		    { "Stream setup", "t38.setup", FT_STRING, BASE_NONE,
 		    NULL, 0x0, "Stream setup, method and frame number", HFILL }},
@@ -1370,7 +1369,7 @@ proto_register_t38(void)
 		&ett_t38,
 
 /*--- Included file: packet-t38-ettarr.c ---*/
-#line 1 "../../asn1/t38/packet-t38-ettarr.c"
+#line 1 "./asn1/t38/packet-t38-ettarr.c"
     &ett_t38_IFPPacket,
     &ett_t38_Type_of_msg,
     &ett_t38_Data_Field,
@@ -1382,7 +1381,7 @@ proto_register_t38(void)
     &ett_t38_T_fec_data,
 
 /*--- End of included file: packet-t38-ettarr.c ---*/
-#line 706 "../../asn1/t38/packet-t38-template.c"
+#line 705 "./asn1/t38/packet-t38-template.c"
 		&ett_t38_setup,
 		&ett_data_fragment,
 		&ett_data_fragments
@@ -1420,14 +1419,8 @@ proto_register_t38(void)
 		"be dissected as RTP packet or T.38 packet. If enabled there is a risk that T.38 UDPTL "
 		"packets with sequence number higher than 32767 may be dissected as RTP.",
 	    &dissect_possible_rtpv2_packets_as_rtp);
-	prefs_register_uint_preference(t38_module, "tcp.port",
-		"T.38 TCP Port",
-		"Set the TCP port for T.38 messages",
-		10, &global_t38_tcp_port);
-	prefs_register_uint_preference(t38_module, "udp.port",
-		"T.38 UDP Port",
-		"Set the UDP port for T.38 messages",
-		10, &global_t38_udp_port);
+	prefs_register_obsolete_preference(t38_module, "tcp.port");
+	prefs_register_obsolete_preference(t38_module, "udp.port");
 	prefs_register_bool_preference(t38_module, "reassembly",
 		"Reassemble T.38 PDUs over TPKT over TCP",
 		"Whether the dissector should reassemble T.38 PDUs spanning multiple TCP segments "
@@ -1452,27 +1445,15 @@ void
 proto_reg_handoff_t38(void)
 {
 	static gboolean t38_prefs_initialized = FALSE;
-	static guint tcp_port;
-	static guint udp_port;
 
 	if (!t38_prefs_initialized) {
 		t38_udp_handle=create_dissector_handle(dissect_t38_udp, proto_t38);
 		t38_tcp_handle=create_dissector_handle(dissect_t38_tcp, proto_t38);
 		t38_tcp_pdu_handle=create_dissector_handle(dissect_t38_tcp_pdu, proto_t38);
-		rtp_handle = find_dissector("rtp");
-		t30_hdlc_handle = find_dissector("t30.hdlc");
+		rtp_handle = find_dissector_add_dependency("rtp", proto_t38);
+		t30_hdlc_handle = find_dissector_add_dependency("t30.hdlc""rtp", proto_t38);
 		data_handle = find_dissector("data");
 		t38_prefs_initialized = TRUE;
 	}
-	else {
-		dissector_delete_uint("tcp.port", tcp_port, t38_tcp_handle);
-		dissector_delete_uint("udp.port", udp_port, t38_udp_handle);
-	}
-	tcp_port = global_t38_tcp_port;
-	udp_port = global_t38_udp_port;
-
-	dissector_add_uint("tcp.port", tcp_port, t38_tcp_handle);
-	dissector_add_uint("udp.port", udp_port, t38_udp_handle);
-
 }
 

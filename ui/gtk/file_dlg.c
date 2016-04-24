@@ -58,7 +58,6 @@
 
 
 static gchar *last_open_dir = NULL;
-static gboolean updated_last_open_dir = FALSE;
 
 static void file_selection_browse_destroy_cb(GtkWidget *win, GtkWidget* file_te);
 
@@ -73,9 +72,6 @@ file_selection_new(const gchar *title, GtkWindow *parent,
 {
     GtkWidget *win;
     GtkFileChooserAction gtk_action;
-#ifdef _WIN32
-    char *u3devicedocumentpath;
-#endif
     const gchar *ok_button_text;
 
     switch (action) {
@@ -124,16 +120,9 @@ file_selection_new(const gchar *title, GtkWindow *parent,
 
     /* If we've opened a file before, start out by showing the files in the directory
        in which that file resided. */
-    if (last_open_dir)
+    if (last_open_dir) {
         file_selection_set_current_folder(win, last_open_dir);
-#ifdef _WIN32
-    else {
-        u3devicedocumentpath = getenv_utf8("U3_DEVICE_DOCUMENT_PATH");
-        if(u3devicedocumentpath != NULL)
-            file_selection_set_current_folder(win, u3devicedocumentpath);
-
     }
-#endif
     return win;
 }
 
@@ -315,9 +304,9 @@ file_target_unwritable_ui(GtkWidget *chooser_w, char *cf_name)
     return TRUE;
   }
 
-  /* OK, we have the permission bits and, if HAVE_ST_FLAGS is defined,
+  /* OK, we have the permission bits and, if HAVE_STAT_ST_FLAGS is defined,
      the flags.  (If we don't, we don't worry about it.) */
-#ifdef HAVE_ST_FLAGS
+#ifdef HAVE_STAT_ST_FLAGS
   if (statbuf.st_flags & UF_IMMUTABLE) {
     display_basename = g_filename_display_basename(cf_name);
     msg_dialog = gtk_message_dialog_new(GTK_WINDOW(chooser_w),
@@ -336,7 +325,7 @@ file_target_unwritable_ui(GtkWidget *chooser_w, char *cf_name)
                                         display_basename);
     g_free(display_basename);
   } else
-#endif /* HAVE_ST_FLAGS */
+#endif /* HAVE_STAT_ST_FLAGS */
   if ((statbuf.st_mode & (S_IWUSR|S_IWGRP|S_IWOTH)) == 0) {
     display_basename = g_filename_display_basename(cf_name);
     msg_dialog = gtk_message_dialog_new(GTK_WINDOW(chooser_w),
@@ -369,7 +358,7 @@ file_target_unwritable_ui(GtkWidget *chooser_w, char *cf_name)
       return FALSE;
     }
 
-#ifdef HAVE_ST_FLAGS
+#ifdef HAVE_STAT_ST_FLAGS
     /* OK, they want to overwrite the file.  If it has the "user
        immutable" flag, we have to turn that off first, so we
        can move on top of, or overwrite, the file. */
@@ -457,15 +446,8 @@ set_last_open_dir(const char *dirname)
             new_last_open_dir = g_strconcat(dirname,
                                             G_DIR_SEPARATOR_S, NULL);
         }
-
-        if (last_open_dir == NULL ||
-            strcmp(last_open_dir, new_last_open_dir) != 0)
-            updated_last_open_dir = TRUE;
-    }
-    else {
+    } else {
         new_last_open_dir = NULL;
-        if (last_open_dir != NULL)
-            updated_last_open_dir = TRUE;
     }
 
     g_free(last_open_dir);

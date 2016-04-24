@@ -30,6 +30,9 @@
 #include <epan/prefs.h>
 #include <epan/conversation.h>
 #include <epan/reassemble.h>
+#include <epan/proto_data.h>
+
+#include <wsutil/str_util.h>
 
 #include "packet-ber.h"
 #include "packet-ses.h"
@@ -332,9 +335,6 @@ static gboolean ses_desegment = TRUE;
 /* RTSE reassembly data */
 static guint ses_pres_ctx_id = 0;
 static gboolean ses_rtse_reassemble = FALSE;
-
-/* find the dissector for data */
-static dissector_handle_t data_handle;
 
 static void
 call_pres_dissector(tvbuff_t *tvb, int offset, guint16 param_len,
@@ -680,7 +680,7 @@ PICS.    */
 		if (param_len == 0)
 			break;
 
-			proto_tree_add_item(param_tree,
+		proto_tree_add_item(param_tree,
 			    hf_calling_session_selector,
 			    tvb, offset, param_len, ENC_NA);
 		break;
@@ -1003,7 +1003,7 @@ dissect_spdu(tvbuff_t *tvb, int offset, packet_info *pinfo, proto_tree *tree,
 		guint32 ses_id = 0;
 
 		/* Use conversation index as segment id */
-		conversation  = find_conversation (pinfo->fd->num,
+		conversation  = find_conversation (pinfo->num,
 						   &pinfo->src, &pinfo->dst, pinfo->ptype,
 						   pinfo->srcport, pinfo->destport, 0);
 		if (conversation != NULL) {
@@ -1028,7 +1028,7 @@ dissect_spdu(tvbuff_t *tvb, int offset, packet_info *pinfo, proto_tree *tree,
 
 	if (has_user_information && next_tvb) {
 		if (!pres_handle) {
-			call_dissector(data_handle, next_tvb, pinfo, tree);
+			call_data_dissector(next_tvb, pinfo, tree);
 		} else {
 			/* Pass the session pdu to the presentation dissector */
 			call_dissector_with_data(pres_handle, next_tvb, pinfo, tree, &session);
@@ -1050,8 +1050,8 @@ dissect_spdu(tvbuff_t *tvb, int offset, packet_info *pinfo, proto_tree *tree,
 /*
  * Dissect SPDUs inside a TSDU.
  */
-static void
-dissect_ses(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
+static int
+dissect_ses(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data _U_)
 {
 	int offset = 0;
 	guint8 type;
@@ -1080,6 +1080,7 @@ dissect_ses(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
 	/* Dissect the remaining SPDUs. */
 	while (tvb_reported_length_remaining(tvb, offset) > 0)
 		offset = dissect_spdu(tvb, offset, pinfo, tree, NON_TOKENS_SPDU, is_clsp);
+	return tvb_captured_length(tvb);
 }
 
 static void ses_reassemble_init (void)
@@ -1157,7 +1158,7 @@ dissect_ses_heur(tvbuff_t *tvb, packet_info *pinfo, proto_tree *parent_tree, voi
 	  }
 	}
 
-	dissect_ses(tvb, pinfo, parent_tree);
+	dissect_ses(tvb, pinfo, parent_tree, data);
 	return TRUE;
 }
 
@@ -1586,7 +1587,7 @@ proto_register_ses(void)
 			&hf_beginning_of_SSDU,
 			{
 				"beginning of SSDU",
-				"ses.begininng_of_SSDU",
+				"ses.beginning_of_SSDU",
 				FT_BOOLEAN, 8,
 				NULL,
 				BEGINNING_SPDU,
@@ -1908,11 +1909,8 @@ proto_register_ses(void)
 void
 proto_reg_handoff_ses(void)
 {
-	/*   find data dissector  */
-	data_handle = find_dissector("data");
-
 	/* define sub dissector */
-	pres_handle = find_dissector("pres");
+	pres_handle = find_dissector_add_dependency("pres", proto_ses);
 
 	/* add our session dissector to cotp dissector list
 	 * and cotp_is dissector list*/

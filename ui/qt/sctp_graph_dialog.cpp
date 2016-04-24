@@ -19,7 +19,7 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
-#include "ui/utf8_entities.h"
+#include <wsutil/utf8_entities.h>
 
 #include "sctp_graph_dialog.h"
 #include <ui_sctp_graph_dialog.h>
@@ -86,8 +86,8 @@ void SCTPGraphDialog::drawNRSACKGraph()
         list = g_list_last(selected_assoc->sack1);
         min_tsn = selected_assoc->min_tsn1;
     } else {
-        list = g_list_last(selected_assoc->sack1);
-        min_tsn = selected_assoc->min_tsn1;
+        list = g_list_last(selected_assoc->sack2);
+        min_tsn = selected_assoc->min_tsn2;
     }
     while (list) {
         sack = (tsn_t*) (list->data);
@@ -102,12 +102,12 @@ void SCTPGraphDialog::drawNRSACKGraph()
                 tsnumber = g_ntohl(nr_sack_header->cum_tsn_ack);
                 total_gaps = numberOf_gaps + numberOf_nr_gaps;
                 /* If the number of nr_gaps is greater than 0 */
-                if ( total_gaps > 0 ) {
+                if (total_gaps > 0) {
                     nr_gap = &nr_sack_header->gaps[0];
                     for (i = 0; i < total_gaps; i++) {
                         gap_start = g_ntohs(nr_gap->start);
                         gap_end = g_ntohs(nr_gap->end);
-                        for ( j = gap_start; j <= gap_end; j++) {
+                        for (j = gap_start; j <= gap_end; j++) {
                             if (i >= numberOf_gaps) {
                                 yn.append(j + tsnumber);
                                 xn.append(sack->secs + sack->usecs/1000000.0);
@@ -280,7 +280,7 @@ void SCTPGraphDialog::drawTSNGraph()
         while (tlist)
         {
             type = ((struct chunk_header *)tlist->data)->type;
-            if (type == SCTP_DATA_CHUNK_ID || type == SCTP_FORWARD_TSN_CHUNK_ID) {
+            if (type == SCTP_DATA_CHUNK_ID || type == SCTP_I_DATA_CHUNK_ID || type == SCTP_FORWARD_TSN_CHUNK_ID) {
                 tsnumber = g_ntohl(((struct data_chunk_header *)tlist->data)->tsn);
                 yt.append(tsnumber);
                 xt.append(tsn->secs + tsn->usecs/1000000.0);
@@ -314,6 +314,7 @@ void SCTPGraphDialog::drawTSNGraph()
 void SCTPGraphDialog::drawGraph(int which)
 {
     guint32 maxTSN, minTSN;
+    gint64 minBound;
 
     gIsSackChunkPresent = false;
     gIsNRSackChunkPresent = false;
@@ -348,7 +349,12 @@ void SCTPGraphDialog::drawGraph(int which)
     connect(ui->sctpPlot, SIGNAL(plottableClick(QCPAbstractPlottable*,QMouseEvent*)), this, SLOT(graphClicked(QCPAbstractPlottable*, QMouseEvent*)));
     // set axes ranges, so we see all data:
     QCPRange myXRange(selected_assoc->min_secs, (selected_assoc->max_secs+1));
-    QCPRange myYRange(minTSN, maxTSN);
+    if (maxTSN - minTSN < 5) {
+        minBound = 0;
+    } else {
+        minBound = minTSN;
+    }
+    QCPRange myYRange(minBound, maxTSN);
     ui->sctpPlot->xAxis->setRange(myXRange);
     ui->sctpPlot->yAxis->setRange(myYRange);
     ui->sctpPlot->replot();

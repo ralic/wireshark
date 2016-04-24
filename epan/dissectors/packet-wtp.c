@@ -404,7 +404,7 @@ dissect_wtp_common(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
 
 #ifdef DEBUG
     printf("WTP packet %u: tree = %p, pdu = %s (%u) length: %u\n",
-            pinfo->fd->num, tree,
+            pinfo->num, tree,
             val_to_str(pdut, vals_wtp_pdu_type, "Unknown PDU type 0x%x"),
             pdut, tvb_captured_length(tvb));
 #endif
@@ -722,7 +722,7 @@ dissect_wtp_common(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
                     NULL, wtp_tree);
 #ifdef DEBUG
             printf("WTP: Packet %u %s -> %d: wsp_tvb = %p, fd_wtp = %p, frame = %u\n",
-                    pinfo->fd->num,
+                    pinfo->num,
                     fd_wtp ? "Reassembled" : "Not reassembled",
                     fd_wtp ? fd_wtp->reassembled_in : -1,
                     wsp_tvb,
@@ -732,7 +732,7 @@ dissect_wtp_common(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
             if (fd_wtp) {
                 /* Reassembled */
                 reassembled_in = fd_wtp->reassembled_in;
-                if (pinfo->fd->num == reassembled_in) {
+                if (pinfo->num == reassembled_in) {
                     /* Reassembled in this very packet:
                      * We can safely hand the tvb to the WSP dissector */
                     call_dissector(wsp_handle, wsp_tvb, pinfo, tree);
@@ -778,13 +778,14 @@ dissect_wtp_common(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
  * Called directly from UDP.
  * Put "WTP+WSP" into the "Protocol" column.
  */
-static void
-dissect_wtp_fromudp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
+static int
+dissect_wtp_fromudp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data _U_)
 {
     col_set_str(pinfo->cinfo, COL_PROTOCOL, "WTP+WSP");
     col_clear(pinfo->cinfo, COL_INFO);
 
     dissect_wtp_common(tvb, pinfo, tree);
+    return tvb_captured_length(tvb);
 }
 
 /*
@@ -796,13 +797,14 @@ dissect_wtp_fromudp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
  *
  * XXX - can this be called from any other dissector?
  */
-static void
-dissect_wtp_fromwtls(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
+static int
+dissect_wtp_fromwtls(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data _U_)
 {
     col_set_str(pinfo->cinfo, COL_PROTOCOL, "WTLS+WTP+WSP");
     col_clear(pinfo->cinfo, COL_INFO);
 
     dissect_wtp_common(tvb, pinfo, tree);
+    return tvb_captured_length(tvb);
 }
 
 /* Register the protocol with Wireshark */
@@ -1073,7 +1075,7 @@ proto_reg_handoff_wtp(void)
      * Get a handle for the connection-oriented WSP dissector - if WTP
      * PDUs have data, it is WSP.
      */
-    wsp_handle = find_dissector("wsp-co");
+    wsp_handle = find_dissector_add_dependency("wsp-co", proto_wtp);
 
     wtp_fromudp_handle = find_dissector("wtp-udp");
     dissector_add_uint("udp.port", UDP_PORT_WTP_WSP, wtp_fromudp_handle);

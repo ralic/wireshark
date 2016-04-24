@@ -50,7 +50,7 @@ typedef enum seq_analysis_type_ {
 
 /** defines an entry for the graph analysis */
 typedef struct _seq_analysis_item {
-    frame_data *fd;                     /**< Holds the frame number and time information */
+    guint32 frame_number;
     address src_addr;
     guint16 port_src;
     address dst_addr;
@@ -72,11 +72,21 @@ typedef struct _seq_analysis_info {
     gboolean    all_packets; /**< all packets vs only displayed */
     gboolean    any_addr;    /**< any addr (DL+net) vs net-only */
     int         nconv;       /**< number of conversations in the list */
-    GQueue*     items;       /**< list with the graph analysis items */
-    GHashTable *ht;          /**< hash table for retrieving graph analysis items */
+    GQueue*     items;       /**< list of seq_analysis_info_t */
+    GHashTable *ht;          /**< hash table of seq_analysis_info_t */
     address nodes[MAX_NUM_NODES]; /**< horizontal node list */
     guint32 num_nodes;       /**< actual number of nodes */
 } seq_analysis_info_t;
+
+#if 0
+#define SEQ_ANALYSIS_DEBUG(...) { \
+    char *SEQ_ANALYSIS_DEBUG_MSG = g_strdup_printf(__VA_ARGS__); \
+    g_warning("sequence analysis: %s:%d %s", G_STRFUNC, __LINE__, SEQ_ANALYSIS_DEBUG_MSG); \
+    g_free(SEQ_ANALYSIS_DEBUG_MSG); \
+}
+#else
+#define SEQ_ANALYSIS_DEBUG()
+#endif
 
 /** Create and initialize a seq_analysis_info_t struct
  * @return A pointer to a newly allocated seq_analysis_info_t struct.

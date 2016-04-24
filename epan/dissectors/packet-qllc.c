@@ -167,13 +167,13 @@ proto_register_qllc(void)
     proto_qllc = proto_register_protocol("Qualified Logical Link Control", "QLLC", "qllc");
     proto_register_field_array(proto_qllc, hf, array_length(hf));
     proto_register_subtree_array(ett, array_length(ett));
-    new_register_dissector("qllc", dissect_qllc, proto_qllc);
+    register_dissector("qllc", dissect_qllc, proto_qllc);
 }
 
 void
 proto_reg_handoff_qllc(void)
 {
-    sna_handle = find_dissector("sna");
+    sna_handle = find_dissector_add_dependency("sna", proto_qllc);
 }
 
 /*

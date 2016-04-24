@@ -54,6 +54,7 @@ F = 16-bit CRC
 #include <epan/packet.h>
 #include <epan/conversation.h>
 #include <epan/prefs.h>
+#include <epan/proto_data.h>
 
 void proto_reg_handoff_cp2179(void);
 void proto_register_cp2179(void);
@@ -273,6 +274,8 @@ static int hf_cp2179_2bitstatusstatus5 = -1;
 static int hf_cp2179_2bitstatusstatus6 = -1;
 static int hf_cp2179_2bitstatusstatus7 = -1;
 
+static dissector_handle_t cp2179_handle;
+
 static const int *cp2179_simplestatus_bits[] = {
   &hf_cp2179_simplestatusbit0,
   &hf_cp2179_simplestatusbit1,
@@ -328,8 +331,8 @@ clean_telnet_iac(packet_info *pinfo, tvbuff_t *tvb, int offset, int len)
   int           skip_byte, len_remaining;
 
   spos=tvb_get_ptr(tvb, offset, len);
-  buf=(guint8 *)g_malloc(len);
-  dpos=buf;
+  buf = (guint8 *)wmem_alloc(pinfo->pool, len);
+  dpos = buf;
   skip_byte = 0;
   len_remaining = len;
   while(len_remaining > 0){
@@ -341,17 +344,16 @@ clean_telnet_iac(packet_info *pinfo, tvbuff_t *tvb, int offset, int len)
         if((spos[0]==0xff) && (spos[1]==0xff)){
             skip_byte++;
             len_remaining -= 2;
-            *(dpos++)=0xff;
-            spos+=2;
+            *(dpos++) = 0xff;
+            spos += 2;
             continue;
         }
     }
     /* If we only have a single byte left, or there were no sequential 0xFF's, copy byte from src tvb to dest tvb */
-    *(dpos++)=*(spos++);
+    *(dpos++) = *(spos++);
     len_remaining--;
   }
   telnet_tvb = tvb_new_child_real_data(tvb, buf, len-skip_byte, len-skip_byte);
-  tvb_set_free_cb(telnet_tvb, g_free);
   add_new_data_source(pinfo, telnet_tvb, "Processed Telnet Data");
 
   return telnet_tvb;
@@ -550,7 +552,7 @@ dissect_bs_response_frame(tvbuff_t *tvb, proto_tree *tree, packet_info *pinfo, i
             req_frame_num = request_data->fnum;
             req_command_code = request_data->commmand_code;
             req_address_word = request_data->address_word;
-                if ((pinfo->fd->num > req_frame_num) && (req_address_word == address_word)) {
+                if ((pinfo->num > req_frame_num) && (req_address_word == address_word)) {
                     bs_response_item = proto_tree_add_uint(cp2179_proto_tree, hf_cp2179_request_frame, tvb, 0, 0, req_frame_num);
                     PROTO_ITEM_SET_GENERATED(bs_response_item);
                     request_found = TRUE;
@@ -917,7 +919,7 @@ dissect_cp2179_pdu(tvbuff_t *cp2179_tvb, packet_info *pinfo, proto_tree *tree, v
             frame_ptr = copy_bs_request_frame(cp2179_tvb);
 
             /*also hold the current frame number*/
-            frame_ptr->fnum = pinfo->fd->num;
+            frame_ptr->fnum = pinfo->num;
             wmem_list_prepend(bs_conv_data->bs_request_frame_data, frame_ptr);
         }
     } /* !visited */
@@ -1355,7 +1357,7 @@ proto_register_cp2179(void)
     module_t *cp2179_module;
 
     proto_cp2179 = proto_register_protocol ("CP2179 Protocol", "CP2179", "cp2179");
-    new_register_dissector("cp2179", dissect_cp2179, proto_cp2179);
+    cp2179_handle = register_dissector("cp2179", dissect_cp2179, proto_cp2179);
     proto_register_field_array(proto_cp2179, hf, array_length(hf));
     proto_register_subtree_array(ett, array_length(ett));
 
@@ -1382,11 +1384,9 @@ void
 proto_reg_handoff_cp2179(void)
 {
    static int cp2179_prefs_initialized = FALSE;
-   static dissector_handle_t cp2179_handle;
    static unsigned int cp2179_port;
 
     if (!cp2179_prefs_initialized){
-        cp2179_handle = new_create_dissector_handle(dissect_cp2179, proto_cp2179);
         cp2179_prefs_initialized = TRUE;
     }
      else {

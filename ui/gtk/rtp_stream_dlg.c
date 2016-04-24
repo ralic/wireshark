@@ -32,7 +32,7 @@
 #include <epan/addr_resolv.h>
 #include "wsutil/filesystem.h"
 
-#include "../globals.h"
+#include "../../globals.h"
 #include <epan/stat_groups.h>
 
 #include "ui/last_open_dir.h"
@@ -51,6 +51,7 @@ static const gchar FWD_LABEL_TEXT[] = "Select a forward stream with left mouse b
 static const gchar FWD_ONLY_LABEL_TEXT[] = "Select a forward stream with Ctrl + left mouse button";
 static const gchar REV_LABEL_TEXT[] = "Select a reverse stream with Ctrl + left mouse button";
 
+static void rtpstream_tap_reset(rtpstream_tapinfo_t *ti_ptr);
 static void rtpstream_tap_draw(rtpstream_tapinfo_t *ti_ptr);
 static void rtpstream_dlg_mark_packet(rtpstream_tapinfo_t *tapinfo, frame_data *fd);
 void register_tap_listener_rtp_stream_dlg(void);
@@ -58,8 +59,8 @@ void register_tap_listener_rtp_stream_dlg(void);
 /* The one and only global rtpstream_tapinfo_t structure for tshark and wireshark.
  */
 static rtpstream_tapinfo_t the_tapinfo_struct =
-    { rtpstream_tap_draw, rtpstream_dlg_mark_packet, NULL, 0, NULL, 0,
-      TAP_ANALYSE, NULL, NULL, NULL, FALSE
+    { rtpstream_tap_reset, rtpstream_tap_draw, rtpstream_dlg_mark_packet,
+      NULL, 0, NULL, 0, TAP_ANALYSE, NULL, NULL, NULL, FALSE
     };
 
 /****************************************************************************/
@@ -515,23 +516,23 @@ rtpstream_on_analyse(GtkButton *button _U_, gpointer user_data _U_)
         return;
     }
 
-    SET_ADDRESS(&src_fwd,AT_NONE,0,NULL);
-    SET_ADDRESS(&dst_fwd,AT_NONE,0,NULL);
-    SET_ADDRESS(&src_rev,AT_NONE,0,NULL);
-    SET_ADDRESS(&dst_rev,AT_NONE,0,NULL);
+    clear_address(&src_fwd);
+    clear_address(&dst_fwd);
+    clear_address(&src_rev);
+    clear_address(&dst_rev);
 
     if (selected_stream_fwd) {
-        COPY_ADDRESS(&(src_fwd), &(selected_stream_fwd->src_addr));
+        copy_address(&(src_fwd), &(selected_stream_fwd->src_addr));
         port_src_fwd = selected_stream_fwd->src_port;
-        COPY_ADDRESS(&(dst_fwd), &(selected_stream_fwd->dest_addr));
+        copy_address(&(dst_fwd), &(selected_stream_fwd->dest_addr));
         port_dst_fwd = selected_stream_fwd->dest_port;
         ssrc_fwd = selected_stream_fwd->ssrc;
     }
 
     if (selected_stream_rev) {
-        COPY_ADDRESS(&(src_rev), &(selected_stream_rev->src_addr));
+        copy_address(&(src_rev), &(selected_stream_rev->src_addr));
         port_src_rev = selected_stream_rev->src_port;
-        COPY_ADDRESS(&(dst_rev), &(selected_stream_rev->dest_addr));
+        copy_address(&(dst_rev), &(selected_stream_rev->dest_addr));
         port_dst_rev = selected_stream_rev->dest_port;
         ssrc_rev = selected_stream_rev->ssrc;
     }
@@ -634,8 +635,8 @@ rtpstream_view_selection_func(GtkTreeSelection *selection, GtkTreeModel *model, 
     }
 
     if (selected_stream_fwd) {
-        src_addr = (char*)address_to_display(NULL, &(selected_stream_fwd->src_addr));
-        dst_addr = (char*)address_to_display(NULL, &(selected_stream_fwd->dest_addr));
+        src_addr = address_to_display(NULL, &(selected_stream_fwd->src_addr));
+        dst_addr = address_to_display(NULL, &(selected_stream_fwd->dest_addr));
 
         g_snprintf(label_text, sizeof(label_text), "Forward: %s:%u -> %s:%u, SSRC=0x%X",
             src_addr,
@@ -656,8 +657,8 @@ rtpstream_view_selection_func(GtkTreeSelection *selection, GtkTreeModel *model, 
     }
 
     if (selected_stream_rev) {
-        src_addr = (char*)address_to_display(NULL, &(selected_stream_rev->src_addr));
-        dst_addr = (char*)address_to_display(NULL, &(selected_stream_rev->dest_addr));
+        src_addr = address_to_display(NULL, &(selected_stream_rev->src_addr));
+        dst_addr = address_to_display(NULL, &(selected_stream_rev->dest_addr));
 
         g_snprintf(label_text, sizeof(label_text), "Reverse: %s:%u -> %s:%u, SSRC=0x%X",
             src_addr,
@@ -699,9 +700,9 @@ add_to_list_store(rtp_stream_info_t* strinfo)
         in g_snprintf("%f") functions */
     setlocale(LC_NUMERIC, "C");
 
-    data[0] = (gchar*)address_to_display(NULL, &(strinfo->src_addr));
+    data[0] = address_to_display(NULL, &(strinfo->src_addr));
     data[1] = NULL;
-    data[2] = (gchar*)address_to_display(NULL, &(strinfo->dest_addr));
+    data[2] = address_to_display(NULL, &(strinfo->dest_addr));
     data[3] = NULL;
     data[4] = wmem_strdup_printf(NULL, "0x%X", strinfo->ssrc);
     if (strinfo->payload_type_name != NULL) {
@@ -1102,6 +1103,15 @@ rtpstream_dlg_update(GList *list_lcl)
     }
 
     last_list = list_lcl;
+}
+
+static void
+rtpstream_tap_reset(rtpstream_tapinfo_t *tapinfo _U_)
+{
+    if (rtp_stream_dlg != NULL) {
+        gtk_list_store_clear(list_store);
+        streams_nb = 0;
+    }
 }
 
 static void

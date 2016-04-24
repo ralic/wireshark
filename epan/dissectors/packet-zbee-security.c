@@ -32,13 +32,12 @@
 #include <epan/prefs.h>
 #include <epan/expert.h>
 #include <epan/uat.h>
+#include <epan/proto_data.h>
 
 /* We require libgcrpyt in order to decrypt ZigBee packets. Without it the best
  * we can do is parse the security header and give up.
  */
-#ifdef HAVE_LIBGCRYPT
 #include <wsutil/wsgcrypt.h>
-#endif /* HAVE_LIBGCRYPT */
 
 #include "packet-ieee802154.h"
 #include "packet-zbee.h"
@@ -73,8 +72,6 @@ static gint ett_zbee_sec_control = -1;
 static expert_field ei_zbee_sec_encrypted_payload = EI_INIT;
 static expert_field ei_zbee_sec_encrypted_payload_sliced = EI_INIT;
 static expert_field ei_zbee_sec_extended_source_unknown = EI_INIT;
-
-static dissector_handle_t   data_handle;
 
 static const value_string zbee_sec_key_names[] = {
     { ZBEE_SEC_KEY_LINK,        "Link Key" },
@@ -242,7 +239,7 @@ void zbee_security_register(module_t *zbee_prefs, int proto)
             0x0, NULL, HFILL }},
 
         { &hf_zbee_sec_key_id,
-          { "Key Id",                    "zbee.sec.key", FT_UINT8, BASE_HEX, VALS(zbee_sec_key_names),
+          { "Key Id",                    "zbee.sec.key_id", FT_UINT8, BASE_HEX, VALS(zbee_sec_key_names),
             ZBEE_SEC_CONTROL_KEY, NULL, HFILL }},
 
         { &hf_zbee_sec_nonce,
@@ -424,24 +421,6 @@ zbee_security_parse_key(const gchar *key_str, guint8 *key_buf, gboolean byte_ord
 
 /*FUNCTION:------------------------------------------------------
  *  NAME
- *      zbee_security_handoff
- *  DESCRIPTION
- *      Hands off the security dissector.
- *  PARAMETERS
- *      none
- *  RETURNS
- *      tvbuff_t *
- *---------------------------------------------------------------
- */
-void
-zbee_security_handoff(void)
-{
-    /* Lookup the data dissector. */
-    data_handle = find_dissector("data");
-} /* zbee_security_handoff */
-
-/*FUNCTION:------------------------------------------------------
- *  NAME
  *      dissect_zbee_secure
  *  DESCRIPTION
  *      Dissects and decrypts secured ZigBee frames.
@@ -453,7 +432,7 @@ zbee_security_handoff(void)
  *      tvbuff_t    *tvb    - pointer to buffer containing raw packet.
  *      packet_info *pinfo  - pointer to packet information fields
  *      proto_tree  *tree   - pointer to data tree Wireshark uses to display packet.
- *      guint       offset  - pointer to the start of the auxilliary security header.
+ *      guint       offset  - pointer to the start of the auxiliary security header.
  *      guint64     src64   - extended source address, or 0 if unknown.
  *  RETURNS
  *      tvbuff_t *
@@ -547,7 +526,7 @@ dissect_zbee_secure(tvbuff_t *tvb, packet_info *pinfo, proto_tree* tree, guint o
                 if (nwk_hints && ieee_hints) {
                     /* Map this long address with the nwk layer short address. */
                     nwk_hints->map_rec = ieee802154_addr_update(&zbee_nwk_map, nwk_hints->src,
-                            ieee_hints->src_pan, packet.src64, pinfo->current_proto, pinfo->fd->num);
+                            ieee_hints->src_pan, packet.src64, pinfo->current_proto, pinfo->num);
                 }
                 break;
 
@@ -555,7 +534,7 @@ dissect_zbee_secure(tvbuff_t *tvb, packet_info *pinfo, proto_tree* tree, guint o
                 if (ieee_hints) {
                     /* Map this long address with the ieee short address. */
                     ieee_hints->map_rec = ieee802154_addr_update(&zbee_nwk_map, ieee_hints->src16,
-                        ieee_hints->src_pan, packet.src64, pinfo->current_proto, pinfo->fd->num);
+                        ieee_hints->src_pan, packet.src64, pinfo->current_proto, pinfo->num);
                 }
                 break;
 
@@ -663,7 +642,7 @@ dissect_zbee_secure(tvbuff_t *tvb, packet_info *pinfo, proto_tree* tree, guint o
         /* Create a buffer for the undecrypted payload. */
         payload_tvb = tvb_new_subset_length(tvb, offset, payload_len);
         /* Dump the payload to the data dissector. */
-        call_dissector(data_handle, payload_tvb, pinfo, tree);
+        call_data_dissector(payload_tvb, pinfo, tree);
         /* Couldn't decrypt, so return NULL. */
         return NULL;
     }
@@ -784,7 +763,7 @@ dissect_zbee_secure(tvbuff_t *tvb, packet_info *pinfo, proto_tree* tree, guint o
     /* Create a buffer for the undecrypted payload. */
     payload_tvb = tvb_new_subset_length(tvb, offset, payload_len);
     /* Dump the payload to the data dissector. */
-    call_dissector(data_handle, payload_tvb, pinfo, tree);
+    call_data_dissector(payload_tvb, pinfo, tree);
     /* Couldn't decrypt, so return NULL. */
     return NULL;
 } /* dissect_zbee_secure */
@@ -1150,7 +1129,7 @@ zbee_sec_hash(guint8 *input, guint input_len, guint8 *output)
     }
     /* Create the subsequent hash blocks using the formula: Hash[i] = E(Hash[i-1], M[i]) XOR M[i]
      *
-     * because we can't garauntee that M will be exactly a multiple of the
+     * because we can't guarantee that M will be exactly a multiple of the
      * block size, we will need to copy it into local buffers and pad it.
      *
      * Note that we check for the next cipher block at the end of the loop

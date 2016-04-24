@@ -27,7 +27,7 @@
 #include <epan/tfs.h>
 #include <epan/value_string.h>
 
-#include <ui/utf8_entities.h>
+#include <wsutil/utf8_entities.h>
 
 #include "qt_ui_utils.h"
 #include "wireshark_application.h"
@@ -61,17 +61,18 @@ enum {
 Q_DECLARE_METATYPE(header_field_info *)
 
 DisplayFilterExpressionDialog::DisplayFilterExpressionDialog(QWidget *parent) :
-    QDialog(parent),
+    GeometryStateDialog(parent),
     ui(new Ui::DisplayFilterExpressionDialog),
     ftype_(FT_NONE),
     field_(NULL)
 {
     ui->setupUi(this);
+    if (parent) loadGeometry(parent->width() * 2 / 3, parent->height());
+
     setWindowTitle(wsApp->windowTitleString(tr("Display Filter Expression")));
     setWindowIcon(wsApp->normalIcon());
 
-    // XXX Use recent settings instead
-    resize(parent->width() * 2 / 3, parent->height());
+    proto_initialize_all_prefixes();
 
     ui->fieldTreeWidget->setToolTip(ui->fieldLabel->toolTip());
     ui->searchLineEdit->setToolTip(ui->searchLabel->toolTip());
@@ -128,9 +129,10 @@ DisplayFilterExpressionDialog::DisplayFilterExpressionDialog(QWidget *parent) :
     connect(ui->rangeLineEdit, SIGNAL(textEdited(QString)), this, SLOT(updateWidgets()));
 
     // Trigger updateWidgets
-    if (ui->fieldTreeWidget->topLevelItemCount() > 0) {
-        ui->fieldTreeWidget->topLevelItem(0)->setSelected(true);
-    }
+    ui->fieldTreeWidget->selectionModel()->clear();
+//    if (ui->fieldTreeWidget->topLevelItemCount() > 0) {
+//        ui->fieldTreeWidget->topLevelItem(0)->setSelected(true);
+//    }
 }
 
 DisplayFilterExpressionDialog::~DisplayFilterExpressionDialog()
@@ -195,8 +197,8 @@ void DisplayFilterExpressionDialog::updateWidgets()
 
     QPushButton *ok_bt = ui->buttonBox->button(QDialogButtonBox::Ok);
     if (ok_bt) {
-        bool ok_enable = !ui->displayFilterLineEdit->text().isEmpty()
-                && (ui->displayFilterLineEdit->syntaxState() == SyntaxLineEdit::Valid);
+        bool ok_enable = !(ui->displayFilterLineEdit->text().isEmpty()
+                || (ui->displayFilterLineEdit->syntaxState() == SyntaxLineEdit::Invalid));
         ok_bt->setEnabled(ok_enable);
     }
 }

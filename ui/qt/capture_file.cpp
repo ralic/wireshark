@@ -33,6 +33,8 @@ capture_file cfile;
 #include "file.h"
 #include "log.h"
 
+#include "epan/epan_dissect.h"
+
 #include "ui/capture.h"
 
 #include <QFileInfo>
@@ -84,10 +86,17 @@ const QString CaptureFile::fileName()
     if (isValid()) {
         QFileInfo cfi(QString::fromUtf8(cap_file_->filename));
         file_name_ = cfi.baseName();
-    } else {
-        file_name_ = no_capture_file_;
     }
+
     return file_name_;
+}
+
+struct _packet_info *CaptureFile::packetInfo()
+{
+    if (capFile() && capFile()->edt) {
+        return &(capFile()->edt->pi);
+    }
+    return NULL;
 }
 
 void CaptureFile::retapPackets()
@@ -200,6 +209,8 @@ void CaptureFile::captureFileEvent(int event, gpointer data)
         break;
     case(cf_cb_file_retap_finished):
         g_log(LOG_DOMAIN_MAIN, G_LOG_LEVEL_DEBUG, "Callback: Retap finished");
+        /* Flush any pending tapped packet before emitting captureFileRetapFinished() */
+        emit captureFileFlushTapsData();
         emit captureFileRetapFinished();
         break;
 
@@ -227,6 +238,13 @@ void CaptureFile::captureFileEvent(int event, gpointer data)
         break;
     case(cf_cb_file_save_stopped):
         emit captureFileSaveStopped();
+        break;
+
+    case cf_cb_file_export_specified_packets_started:
+    case cf_cb_file_export_specified_packets_finished:
+    case cf_cb_file_export_specified_packets_failed:
+    case cf_cb_file_export_specified_packets_stopped:
+        // Ignored for now
         break;
 
     default:

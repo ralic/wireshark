@@ -248,21 +248,6 @@ static const char initial_sep[] = " (";
 static const char cont_sep[] = ", ";
 
 static void
-dissect_bpdu(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, gboolean is_bpdu_pvst);
-
-static void
-dissect_bpdu_cisco(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
-{
-  dissect_bpdu(tvb, pinfo, tree, TRUE);
-}
-
-static void
-dissect_bpdu_generic(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
-{
-  dissect_bpdu(tvb, pinfo, tree, FALSE);
-}
-
-static void
 dissect_bpdu_pvst_tlv(packet_info *pinfo, proto_tree *tree, tvbuff_t *tvb) {
   gboolean pvst_tlv_origvlan_present = FALSE;
   guint16 tlv_type, tlv_length;
@@ -413,9 +398,6 @@ dissect_bpdu(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, gboolean is_bp
         call_dissector(gvrp_handle, tvb, pinfo, tree);
         return;
       }
-
-      pinfo->current_proto = "GARP";
-
       col_set_str(pinfo->cinfo, COL_PROTOCOL, "GARP");
         /* Generic Attribute Registration Protocol */
 
@@ -1034,6 +1016,20 @@ dissect_bpdu(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, gboolean is_bp
     }
 }
 
+static int
+dissect_bpdu_cisco(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data _U_)
+{
+  dissect_bpdu(tvb, pinfo, tree, TRUE);
+  return tvb_captured_length(tvb);
+}
+
+static int
+dissect_bpdu_generic(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data _U_)
+{
+  dissect_bpdu(tvb, pinfo, tree, FALSE);
+  return tvb_captured_length(tvb);
+}
+
 void
 proto_register_bpdu(void)
 {
@@ -1381,9 +1377,9 @@ proto_reg_handoff_bpdu(void)
   /*
    * Get handle for the GMRP dissector.
    */
-  gmrp_handle = find_dissector("gmrp");
+  gmrp_handle = find_dissector_add_dependency("gmrp", proto_bpdu);
 
-  bpdu_handle = find_dissector("bpdu");
+  bpdu_handle = find_dissector_add_dependency("bpdu", proto_bpdu);
   dissector_add_uint("llc.dsap", SAP_BPDU, bpdu_handle);
   dissector_add_uint("chdlc.protocol", CHDLCTYPE_BPDU, bpdu_handle);
   dissector_add_uint("ethertype", ETHERTYPE_STP, bpdu_handle);

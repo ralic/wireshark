@@ -43,6 +43,8 @@
 #include <epan/expert.h>
 #include <epan/asn1.h>
 
+#include <wsutil/str_util.h>
+
 #include "packet-bssgp.h"
 #include "packet-gsm_a_common.h"
 #include "packet-e212.h"
@@ -3687,8 +3689,8 @@ be_aoip_trans_lay_add(tvbuff_t *tvb, proto_tree *tree, packet_info *pinfo _U_, g
     }
 
     if ((!pinfo->fd->flags.visited) && rtp_port != 0) {
-        rtp_add_address(pinfo, &rtp_dst_addr, rtp_port, 0, "BSS MAP", pinfo->fd->num, FALSE, 0);
-        rtcp_add_address(pinfo, &rtp_dst_addr, rtp_port+1, 0, "BSS MAP", pinfo->fd->num);
+        rtp_add_address(pinfo, &rtp_dst_addr, rtp_port, 0, "BSS MAP", pinfo->num, FALSE, 0);
+        rtcp_add_address(pinfo, &rtp_dst_addr, rtp_port+1, 0, "BSS MAP", pinfo->num);
     }
     return(curr_offset - offset);
 }
@@ -7992,7 +7994,7 @@ proto_register_gsm_a_bssmap(void)
     expert_gsm_a_bssmap = expert_register_protocol(proto_a_bssmap);
     expert_register_field_array(expert_gsm_a_bssmap, ei, array_length(ei));
 
-    new_register_dissector("gsm_a_bssmap", dissect_bssmap, proto_a_bssmap);
+    register_dissector("gsm_a_bssmap", dissect_bssmap, proto_a_bssmap);
 }
 
 
@@ -8004,10 +8006,10 @@ proto_reg_handoff_gsm_a_bssmap(void)
     bssmap_handle = find_dissector("gsm_a_bssmap");
     dissector_add_uint("bssap.pdu_type",  GSM_A_PDU_TYPE_BSSMAP, bssmap_handle);
 
-    dtap_handle       = find_dissector("gsm_a_dtap");
-    gsm_bsslap_handle = find_dissector("gsm_bsslap");
-    bssgp_handle      = find_dissector ("bssgp");
-    rrc_handle        = find_dissector ("rrc");
+    dtap_handle       = find_dissector_add_dependency("gsm_a_dtap", proto_a_bssmap);
+    gsm_bsslap_handle = find_dissector_add_dependency("gsm_bsslap", proto_a_bssmap);
+    bssgp_handle      = find_dissector_add_dependency("bssgp", proto_a_bssmap);
+    rrc_handle        = find_dissector_add_dependency("rrc", proto_a_bssmap);
 
 }
 

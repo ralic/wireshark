@@ -27,6 +27,7 @@
 #include "syntax-tree.h"
 #include "sttype-range.h"
 #include "sttype-test.h"
+#include "sttype-set.h"
 #include "sttype-function.h"
 
 #include <epan/exceptions.h>
@@ -67,6 +68,8 @@ compatible_ftypes(ftenum_t a, ftenum_t b)
 		case FT_DOUBLE:		/* XXX - should be able to compare with INT */
 		case FT_ABSOLUTE_TIME:
 		case FT_RELATIVE_TIME:
+		case FT_IEEE_11073_SFLOAT:
+		case FT_IEEE_11073_FLOAT:
 		case FT_IPv4:
 		case FT_IPv6:
 		case FT_IPXNET:
@@ -201,6 +204,8 @@ mk_fvalue_from_val_string(dfwork_t *dfw, header_field_info *hfinfo, char *s)
 		case FT_PROTOCOL:
 		case FT_FLOAT:
 		case FT_DOUBLE:
+		case FT_IEEE_11073_SFLOAT:
+		case FT_IEEE_11073_FLOAT:
 		case FT_ABSOLUTE_TIME:
 		case FT_RELATIVE_TIME:
 		case FT_IPv4:
@@ -255,10 +260,10 @@ mk_fvalue_from_val_string(dfwork_t *dfw, header_field_info *hfinfo, char *s)
 		}
 
 		if (g_ascii_strcasecmp(s, tf->true_string) == 0) {
-			return mk_uint32_fvalue(TRUE);
+			return mk_uint64_fvalue(TRUE);
 		}
 		else if (g_ascii_strcasecmp(s, tf->false_string) == 0) {
-			return mk_uint32_fvalue(FALSE);
+			return mk_uint64_fvalue(FALSE);
 		}
 		else {
 			/*
@@ -350,6 +355,8 @@ is_bytes_type(enum ftenum type)
 		case FT_PROTOCOL:
 		case FT_FLOAT:
 		case FT_DOUBLE:
+		case FT_IEEE_11073_SFLOAT:
+		case FT_IEEE_11073_FLOAT:
 		case FT_ABSOLUTE_TIME:
 		case FT_RELATIVE_TIME:
 		case FT_IPv4:
@@ -430,6 +437,7 @@ check_exists(dfwork_t *dfw, stnode_t *st_arg1)
 		case STTYPE_TEST:
 		case STTYPE_INTEGER:
 		case STTYPE_FVALUE:
+		case STTYPE_SET:
 		case STTYPE_NUM_TYPES:
 			g_assert_not_reached();
 	}
@@ -615,7 +623,11 @@ check_relation_LHS_FIELD(dfwork_t *dfw, const char *relation_string,
 	hfinfo1 = (header_field_info*)stnode_data(st_arg1);
 	ftype1 = hfinfo1->type;
 
-	DebugLog(("    5 check_relation_LHS_FIELD(%s)\n", relation_string));
+	if (stnode_type_id(st_node) == STTYPE_TEST) {
+		DebugLog(("    5 check_relation_LHS_FIELD(%s)\n", relation_string));
+	} else {
+		DebugLog(("     6 check_relation_LHS_FIELD(%s)\n", relation_string));
+	}
 
 	if (!can_func(ftype1)) {
 		dfilter_fail(dfw, "%s (type=%s) cannot participate in '%s' comparison.",
@@ -674,7 +686,11 @@ check_relation_LHS_FIELD(dfwork_t *dfw, const char *relation_string,
 		}
 
 		new_st = stnode_new(STTYPE_FVALUE, fvalue);
-		sttype_test_set2_args(st_node, st_arg1, new_st);
+		if (stnode_type_id(st_node) == STTYPE_TEST) {
+			sttype_test_set2_args(st_node, st_arg1, new_st);
+		} else {
+			sttype_set_replace_element(st_node, st_arg2, new_st);
+		}
 		stnode_free(st_arg2);
 	}
 	else if (type2 == STTYPE_RANGE) {
@@ -711,6 +727,27 @@ check_relation_LHS_FIELD(dfwork_t *dfw, const char *relation_string,
 		}
 
 		check_function(dfw, st_arg2);
+	}
+	else if (type2 == STTYPE_SET) {
+		GSList *nodelist;
+		/* A set should only ever appear on RHS of 'in' operation */
+		if (strcmp(relation_string, "in") != 0) {
+			g_assert_not_reached();
+		}
+		/* Attempt to interpret one element of the set at a time */
+		nodelist = (GSList*)stnode_data(st_arg2);
+		while (nodelist) {
+			stnode_t *node = (stnode_t*)nodelist->data;
+			/* Don't let a range on the RHS affect the LHS field. */
+			if (stnode_type_id(node) == STTYPE_RANGE) {
+				dfilter_fail(dfw, "A range may not appear inside a set.");
+				THROW(TypeError);
+				break;
+			}
+			check_relation_LHS_FIELD(dfw, "==", can_func,
+					allow_partial_value, st_arg2, st_arg1, node);
+			nodelist = g_slist_next(nodelist);
+		}
 	}
 	else {
 		g_assert_not_reached();
@@ -801,6 +838,10 @@ check_relation_LHS_STRING(dfwork_t *dfw, const char* relation_string,
 		sttype_test_set2_args(st_node, new_st, st_arg2);
 		stnode_free(st_arg1);
 	}
+	else if (type2 == STTYPE_SET) {
+		dfilter_fail(dfw, "Only a field may be tested for membership in a set.");
+		THROW(TypeError);
+	}
 	else {
 		g_assert_not_reached();
 	}
@@ -890,6 +931,10 @@ check_relation_LHS_UNPARSED(dfwork_t *dfw, const char* relation_string,
 		sttype_test_set2_args(st_node, new_st, st_arg2);
 		stnode_free(st_arg1);
 	}
+	else if (type2 == STTYPE_SET) {
+		dfilter_fail(dfw, "Only a field may be tested for membership in a set.");
+		THROW(TypeError);
+	}
 	else {
 		g_assert_not_reached();
 	}
@@ -937,8 +982,12 @@ check_relation_LHS_RANGE(dfwork_t *dfw, const char *relation_string,
 		check_function(dfw, entity1);
 
 	} else {
-		dfilter_fail(dfw, "Range is not supported, details: " G_STRLOC " entity: %p of type %d",
-				entity1, entity1 ? (int) stnode_type_id(entity1) : -1);
+		if (entity1 == NULL) {
+			dfilter_fail(dfw, "Range is not supported, details: " G_STRLOC " entity: NULL");
+		} else {
+			dfilter_fail(dfw, "Range is not supported, details: " G_STRLOC " entity: %p of type %d",
+					(void *)entity1, stnode_type_id(entity1));
+		}
 		THROW(TypeError);
 	}
 
@@ -1041,6 +1090,10 @@ check_relation_LHS_RANGE(dfwork_t *dfw, const char *relation_string,
 		}
 
 		check_function(dfw, st_arg2);
+	}
+	else if (type2 == STTYPE_SET) {
+		dfilter_fail(dfw, "Only a field may be tested for membership in a set.");
+		THROW(TypeError);
 	}
 	else {
 		g_assert_not_reached();
@@ -1192,6 +1245,10 @@ check_relation_LHS_FUNCTION(dfwork_t *dfw, const char *relation_string,
 
 		check_function(dfw, st_arg2);
 	}
+	else if (type2 == STTYPE_SET) {
+		dfilter_fail(dfw, "Only a field may be tested for membership in a set.");
+		THROW(TypeError);
+	}
 	else {
 		g_assert_not_reached();
 	}
@@ -1252,6 +1309,7 @@ header_field_info   *hfinfo;
 		case STTYPE_TEST:
 		case STTYPE_INTEGER:
 		case STTYPE_FVALUE:
+		case STTYPE_SET:
 		default:
 			g_assert_not_reached();
 	}
@@ -1331,7 +1389,13 @@ check_test(dfwork_t *dfw, stnode_t *st_node, GPtrArray *deprecated)
 			check_relation(dfw, "contains", TRUE, ftype_can_contains, st_node, st_arg1, st_arg2);
 			break;
 		case TEST_OP_MATCHES:
-			check_relation(dfw, "matches", TRUE, ftype_can_matches, st_node, st_arg1, st_arg2);			break;
+			check_relation(dfw, "matches", TRUE, ftype_can_matches, st_node, st_arg1, st_arg2);
+			break;
+		case TEST_OP_IN:
+			/* Use the ftype_can_eq as the items in the set are evaluated using the
+			 * semantics of equality. */
+			check_relation(dfw, "in", FALSE, ftype_can_eq, st_node, st_arg1, st_arg2);
+			break;
 
 		default:
 			g_assert_not_reached();

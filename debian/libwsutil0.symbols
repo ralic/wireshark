@@ -4,6 +4,9 @@ libwsutil.so.0 libwsutil0 #MINVER#
  add_plugin_type@Base 1.12.0~rc1
  adler32_bytes@Base 1.12.0~rc1
  adler32_str@Base 1.12.0~rc1
+ aes_cmac_encrypt_finish@Base 2.1.0
+ aes_cmac_encrypt_starts@Base 2.1.0
+ aes_cmac_encrypt_update@Base 2.1.0
  alaw2linear@Base 1.12.0~rc1
  ascii_strdown_inplace@Base 1.10.0
  ascii_strup_inplace@Base 1.10.0
@@ -21,6 +24,7 @@ libwsutil.so.0 libwsutil0 #MINVER#
  crc16_8005_noreflect_noxor@Base 1.10.0
  crc16_ccitt@Base 1.10.0
  crc16_ccitt_seed@Base 1.10.0
+ crc16_iso14443a@Base 2.1.0
  crc16_plain_update@Base 1.10.0
  crc16_x25_ccitt_seed@Base 1.99.3
  crc32_0x0AA725CF_seed@Base 1.12.0~rc1
@@ -47,10 +51,10 @@ libwsutil.so.0 libwsutil0 #MINVER#
  file_open_error_message@Base 1.12.0~rc1
  file_write_error_message@Base 1.12.0~rc1
  files_identical@Base 1.12.0~rc1
+ filetime_to_nstime@Base 2.0.0
  find_last_pathname_separator@Base 1.12.0~rc1
  format_size@Base 1.10.0
  get_basename@Base 1.12.0~rc1
- get_compiled_version_info@Base 1.99.2
  get_copyright_info@Base 1.99.0
  get_cur_groupname@Base 1.10.0
  get_cur_username@Base 1.10.0
@@ -69,10 +73,8 @@ libwsutil.so.0 libwsutil0 #MINVER#
  get_profile_name@Base 1.12.0~rc1
  get_profiles_dir@Base 1.12.0~rc1
  get_progfile_dir@Base 1.12.0~rc1
- get_runtime_version_info@Base 1.99.2
  get_systemfile_dir@Base 1.12.0~rc1
  get_tempfile_path@Base 1.12.0~rc1
- get_ws_vcs_version_info@Base 1.99.0
  has_global_profiles@Base 1.12.0~rc1
  ieee80211_chan_to_mhz@Base 1.99.7
  ieee80211_mhz_to_chan@Base 1.99.7
@@ -101,6 +103,7 @@ libwsutil.so.0 libwsutil0 #MINVER#
  mpa_padding@Base 1.10.0
  mpa_samples@Base 1.10.0
  mpa_version@Base 1.10.0
+ nsfiletime_to_nstime@Base 2.0.0
  nstime_cmp@Base 1.12.0~rc1
  nstime_copy@Base 1.12.0~rc1
  nstime_delta@Base 1.12.0~rc1
@@ -139,7 +142,13 @@ libwsutil.so.0 libwsutil0 #MINVER#
  sha1_hmac_update@Base 1.12.0~rc1
  sha1_starts@Base 1.12.0~rc1
  sha1_update@Base 1.12.0~rc1
- show_version@Base 1.99.2
+ sha256_finish@Base 2.1.0
+ sha256_hmac@Base 2.1.0
+ sha256_hmac_finish@Base 2.1.0
+ sha256_hmac_starts@Base 2.1.0
+ sha256_hmac_update@Base 2.1.0
+ sha256_starts@Base 2.1.0
+ sha256_update@Base 2.1.0
  sober128_add_entropy@Base 1.99.0
  sober128_read@Base 1.99.0
  sober128_start@Base 1.99.0
@@ -148,12 +157,6 @@ libwsutil.so.0 libwsutil0 #MINVER#
  test_for_fifo@Base 1.12.0~rc1
  type_util_gdouble_to_guint64@Base 1.10.0
  type_util_guint64_to_gdouble@Base 1.10.0
- u3_active@Base 1.12.0~rc1
- u3_contract_device_path@Base 1.12.0~rc1
- u3_deregister_pid@Base 1.12.0~rc1
- u3_expand_device_path@Base 1.12.0~rc1
- u3_register_pid@Base 1.12.0~rc1
- u3_runtime_info@Base 1.12.0~rc1
  ulaw2linear@Base 1.12.0~rc1
  update_adler32@Base 1.12.0~rc1
  update_crc10_by_bytes@Base 1.10.0

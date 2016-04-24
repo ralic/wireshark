@@ -1,11 +1,11 @@
 /* Do not modify this file. Changes will be overwritten.                      */
 /* Generated automatically by the ASN.1 to Wireshark dissector compiler       */
 /* packet-h460.c                                                              */
-/* ../../tools/asn2wrs.py -c ./h460.cnf -s ./packet-h460-template -D . -O ../../epan/dissectors NUMBER-PORTABILITY.asn CIRCUIT-STATUS-MAP.asn CALL-PRIORITY.asn QOS-MONITORING-REPORT.asn QOS-MONITORING-EXTENDED-VOIP-REPORT.asn CALL-PARTY-CATEGORY.asn MLPP.asn SIGNALLING-CHANNEL-SUSPEND-REDIRECT.asn SIGNALLING-TRAVERSAL.asn MEDIA-TRAVERSAL.asn MESSAGE-BROADCAST.asn */
+/* asn2wrs.py -c ./h460.cnf -s ./packet-h460-template -D . -O ../.. NUMBER-PORTABILITY.asn CIRCUIT-STATUS-MAP.asn CALL-PRIORITY.asn QOS-MONITORING-REPORT.asn QOS-MONITORING-EXTENDED-VOIP-REPORT.asn CALL-PARTY-CATEGORY.asn MLPP.asn SIGNALLING-CHANNEL-SUSPEND-REDIRECT.asn SIGNALLING-TRAVERSAL.asn MEDIA-TRAVERSAL.asn MESSAGE-BROADCAST.asn */
 
 /* Input file: packet-h460-template.c */
 
-#line 1 "../../asn1/h460/packet-h460-template.c"
+#line 1 "./asn1/h460/packet-h460-template.c"
 /* packet-h460.c
  * Routines for H.460.x packet dissection
  * 2007  Tomas Kukosa
@@ -51,7 +51,7 @@ void proto_reg_handoff_h460(void);
 static int proto_h460 = -1;
 
 /*--- Included file: packet-h460-hf.c ---*/
-#line 1 "../../asn1/h460/packet-h460-hf.c"
+#line 1 "./asn1/h460/packet-h460-hf.c"
 
 /* --- Module NUMBER-PORTABILITY --- --- ---                                  */
 
@@ -254,12 +254,12 @@ static int hf_h460_21_capability = -1;            /* Capability */
 static int hf_h460_21_sourceAddress = -1;         /* UnicastAddress */
 
 /*--- End of included file: packet-h460-hf.c ---*/
-#line 45 "../../asn1/h460/packet-h460-template.c"
+#line 45 "./asn1/h460/packet-h460-template.c"
 
 /* Initialize the subtree pointers */
 
 /*--- Included file: packet-h460-ett.c ---*/
-#line 1 "../../asn1/h460/packet-h460-ett.c"
+#line 1 "./asn1/h460/packet-h460-ett.c"
 
 /* --- Module NUMBER-PORTABILITY --- --- ---                                  */
 
@@ -351,7 +351,7 @@ static gint ett_h460_21_SEQUENCE_SIZE_1_256_OF_Capability = -1;
 static gint ett_h460_21_TransmitCapabilities = -1;
 
 /*--- End of included file: packet-h460-ett.c ---*/
-#line 48 "../../asn1/h460/packet-h460-template.c"
+#line 48 "./asn1/h460/packet-h460-template.c"
 
 /* Subdissectors */
 static dissector_handle_t q931_ie_handle = NULL;
@@ -359,7 +359,7 @@ static dissector_handle_t h225_ras_handle = NULL;
 
 
 /*--- Included file: packet-h460-fn.c ---*/
-#line 1 "../../asn1/h460/packet-h460-fn.c"
+#line 1 "./asn1/h460/packet-h460-fn.c"
 
 /* --- Module NUMBER-PORTABILITY --- --- ---                                  */
 
@@ -1962,7 +1962,7 @@ static int dissect_h460_21_CapabilityAdvertisement_PDU(tvbuff_t *tvb _U_, packet
 
 
 /*--- End of included file: packet-h460-fn.c ---*/
-#line 54 "../../asn1/h460/packet-h460-template.c"
+#line 54 "./asn1/h460/packet-h460-template.c"
 
 static int
 dissect_ies(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data _U_) {
@@ -1990,7 +1990,7 @@ typedef struct _h460_feature_t {
   guint32 opt;
   const gchar *id;
   const gchar *name;
-  new_dissector_t content_pdu;
+  dissector_t content_pdu;
   /*---*/
   const gchar *key_gd;
   const gchar *key_fd;
@@ -2158,7 +2158,7 @@ void proto_register_h460(void) {
   static hf_register_info hf[] = {
 
 /*--- Included file: packet-h460-hfarr.c ---*/
-#line 1 "../../asn1/h460/packet-h460-hfarr.c"
+#line 1 "./asn1/h460/packet-h460-hfarr.c"
 
 /* --- Module NUMBER-PORTABILITY --- --- ---                                  */
 
@@ -2871,14 +2871,14 @@ void proto_register_h460(void) {
         "UnicastAddress", HFILL }},
 
 /*--- End of included file: packet-h460-hfarr.c ---*/
-#line 248 "../../asn1/h460/packet-h460-template.c"
+#line 248 "./asn1/h460/packet-h460-template.c"
   };
 
   /* List of subtrees */
   static gint *ett[] = {
 
 /*--- Included file: packet-h460-ettarr.c ---*/
-#line 1 "../../asn1/h460/packet-h460-ettarr.c"
+#line 1 "./asn1/h460/packet-h460-ettarr.c"
 
 /* --- Module NUMBER-PORTABILITY --- --- ---                                  */
 
@@ -2970,7 +2970,7 @@ void proto_register_h460(void) {
     &ett_h460_21_TransmitCapabilities,
 
 /*--- End of included file: packet-h460-ettarr.c ---*/
-#line 253 "../../asn1/h460/packet-h460-template.c"
+#line 253 "./asn1/h460/packet-h460-template.c"
   };
 
   /* Register protocol */
@@ -2985,7 +2985,7 @@ void proto_register_h460(void) {
     if (ftr->opt & FD) ftr->key_fd = g_strdup_printf("FeatureDescriptor/%s", ftr->id);
     if (ftr->opt & GM) ftr->key_gm = g_strdup_printf("GenericMessage/%s", ftr->id);
     if (ftr->opt & GI) ftr->key_gi = g_strdup_printf("GenericInformation/%s", ftr->id);
-    if (ftr->content_pdu) ftr->content_hnd = new_create_dissector_handle(ftr->content_pdu, proto_h460);
+    if (ftr->content_pdu) ftr->content_hnd = create_dissector_handle(ftr->content_pdu, proto_h460);
   }
 }
 
@@ -2995,10 +2995,10 @@ void proto_reg_handoff_h460(void)
   h460_feature_t *ftr;
   dissector_handle_t h460_name_handle;
 
-  q931_ie_handle = find_dissector("q931.ie");
-  h225_ras_handle = find_dissector("h225.ras");
+  q931_ie_handle = find_dissector_add_dependency("q931.ie", proto_h460);
+  h225_ras_handle = find_dissector_add_dependency("h225.ras", proto_h460);
 
-  h460_name_handle = new_create_dissector_handle(dissect_h460_name, proto_h460);
+  h460_name_handle = create_dissector_handle(dissect_h460_name, proto_h460);
   for (ftr=h460_feature_tab; ftr->id; ftr++) {
     if (ftr->key_gd) dissector_add_string("h225.gef.name", ftr->key_gd, h460_name_handle);
     if (ftr->key_fd) dissector_add_string("h225.gef.name", ftr->key_fd, h460_name_handle);

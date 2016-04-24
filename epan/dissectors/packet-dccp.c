@@ -56,6 +56,9 @@
 #include <epan/expert.h>
 #include <epan/conversation.h>
 #include <epan/tap.h>
+#include <wsutil/str_util.h>
+#include <wsutil/utf8_entities.h>
+
 #include "packet-dccp.h"
 
 /*
@@ -223,7 +226,6 @@ static expert_field ei_dccp_packet_type_reserved = EI_INIT;
 
 static dissector_table_t dccp_subdissector_table;
 static heur_dissector_list_t heur_subdissector_list;
-static dissector_handle_t data_handle;
 
 /* preferences */
 static gboolean dccp_summary_in_tree = TRUE;
@@ -302,7 +304,7 @@ decode_dccp_ports(tvbuff_t *tvb, int offset, packet_info *pinfo,
     }
 
     /* Oh, well, we don't know this; dissect it as data. */
-    call_dissector(data_handle, next_tvb, pinfo, tree);
+    call_data_dissector(next_tvb, pinfo, tree);
 }
 
 /*
@@ -395,7 +397,7 @@ dissect_feature_options(proto_tree *dccp_options_tree, tvbuff_t *tvb,
  * This function dissects DCCP options
  */
 static void
-dissect_options(tvbuff_t *tvb, packet_info *pinfo _U_,
+dissect_options(tvbuff_t *tvb, packet_info *pinfo,
                 proto_tree *dccp_options_tree, proto_tree *tree _U_,
                 e_dccphdr *dccph _U_,
                 int offset_start,
@@ -596,7 +598,6 @@ dissect_dccp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data _U_
     proto_tree *dccp_options_tree = NULL;
     proto_item *dccp_item         = NULL;
     proto_item *hidden_item, *offset_item;
-
     vec_t      cksum_vec[4];
     guint32    phdr[2];
     guint16    computed_cksum;
@@ -609,52 +610,30 @@ dissect_dccp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data _U_
     e_dccphdr *dccph;
 
     dccph = wmem_new0(wmem_packet_scope(), e_dccphdr);
-
-    SET_ADDRESS(&dccph->ip_src, pinfo->src.type, pinfo->src.len,
-                pinfo->src.data);
-    SET_ADDRESS(&dccph->ip_dst, pinfo->dst.type, pinfo->dst.len,
-                pinfo->dst.data);
+    dccph->sport = tvb_get_ntohs(tvb, offset);
+    dccph->dport = tvb_get_ntohs(tvb, offset + 2);
+    copy_address_shallow(&dccph->ip_src, &pinfo->src);
+    copy_address_shallow(&dccph->ip_dst, &pinfo->dst);
 
     col_set_str(pinfo->cinfo, COL_PROTOCOL, "DCCP");
     col_clear(pinfo->cinfo, COL_INFO);
+    col_append_ports(pinfo->cinfo, COL_INFO, PT_DCCP, dccph->sport, dccph->dport);
 
     dccp_item = proto_tree_add_item(tree, proto_dccp, tvb, offset, -1, ENC_NA);
+    if (dccp_summary_in_tree) {
+        proto_item_append_text(dccp_item, ", Src Port: %s, Dst Port: %s",
+                               port_with_resolution_to_str(wmem_packet_scope(), PT_DCCP, dccph->sport),
+                               port_with_resolution_to_str(wmem_packet_scope(), PT_DCCP, dccph->dport));
+    }
     dccp_tree = proto_item_add_subtree(dccp_item, ett_dccp);
 
-    /* Extract generic header */
-    dccph->sport = tvb_get_ntohs(tvb, offset);
-    proto_tree_add_uint_format_value(dccp_tree, hf_dccp_srcport, tvb,
-                                     offset, 2, dccph->sport,
-                                     "%s (%u)",
-                                     dccp_port_to_display(wmem_packet_scope(), dccph->sport),
-                                     dccph->sport);
-    if (dccp_summary_in_tree) {
-        proto_item_append_text(dccp_item, ", Src Port: %s (%u)",
-                               dccp_port_to_display(wmem_packet_scope(), dccph->sport), dccph->sport);
-    }
-    col_add_fstr(pinfo->cinfo, COL_INFO,
-                 "%s ", dccp_port_to_display(wmem_packet_scope(), dccph->sport));
-    hidden_item =
-        proto_tree_add_uint(dccp_tree, hf_dccp_port, tvb, offset, 2,
-                            dccph->sport);
+    proto_tree_add_item(dccp_tree, hf_dccp_srcport, tvb, offset, 2, ENC_BIG_ENDIAN);
+    hidden_item = proto_tree_add_item(dccp_tree, hf_dccp_port, tvb, offset, 2, ENC_BIG_ENDIAN);
     PROTO_ITEM_SET_HIDDEN(hidden_item);
     offset += 2;
 
-    dccph->dport = tvb_get_ntohs(tvb, offset);
-    proto_tree_add_uint_format_value(dccp_tree, hf_dccp_dstport, tvb,
-                                     offset, 2, dccph->dport,
-                                     "%s (%u)",
-                                     dccp_port_to_display(wmem_packet_scope(), dccph->dport),
-                                     dccph->dport);
-    if (dccp_summary_in_tree) {
-        proto_item_append_text(dccp_item, ", Dst Port: %s (%u)",
-                               dccp_port_to_display(wmem_packet_scope(), dccph->dport), dccph->dport);
-    }
-    col_append_fstr(pinfo->cinfo, COL_INFO, " > %s",
-                    dccp_port_to_display(wmem_packet_scope(), dccph->dport));
-    hidden_item =
-        proto_tree_add_uint(dccp_tree, hf_dccp_port, tvb, offset, 2,
-                            dccph->dport);
+    proto_tree_add_item(dccp_tree, hf_dccp_dstport, tvb, offset, 2, ENC_BIG_ENDIAN);
+    hidden_item = proto_tree_add_item(dccp_tree, hf_dccp_port, tvb, offset, 2, ENC_BIG_ENDIAN);
     PROTO_ITEM_SET_HIDDEN(hidden_item);
     offset += 2;
 
@@ -1054,7 +1033,7 @@ proto_register_dccp(void)
             &hf_dccp_srcport,
             {
                 "Source Port", "dccp.srcport",
-                FT_UINT16, BASE_DEC, NULL, 0x0,
+                FT_UINT16, BASE_PT_DCCP, NULL, 0x0,
                 NULL, HFILL
             }
         },
@@ -1062,7 +1041,7 @@ proto_register_dccp(void)
             &hf_dccp_dstport,
             {
                 "Destination Port", "dccp.dstport",
-                FT_UINT16, BASE_DEC, NULL, 0x0,
+                FT_UINT16, BASE_PT_DCCP, NULL, 0x0,
                 NULL, HFILL
             }
         },
@@ -1070,7 +1049,7 @@ proto_register_dccp(void)
             &hf_dccp_port,
             {
                 "Source or Destination Port", "dccp.port",
-                FT_UINT16, BASE_DEC, NULL, 0x0,
+                FT_UINT16, BASE_PT_DCCP, NULL, 0x0,
                 NULL, HFILL
             }
         },
@@ -1316,9 +1295,9 @@ proto_register_dccp(void)
 
     /* subdissectors */
     dccp_subdissector_table =
-        register_dissector_table("dccp.port", "DCCP port", FT_UINT16,
-                                 BASE_DEC);
-    heur_subdissector_list = register_heur_dissector_list("dccp");
+        register_dissector_table("dccp.port", "DCCP port", proto_dccp, FT_UINT16,
+                                 BASE_DEC, DISSECTOR_TABLE_NOT_ALLOW_DUPLICATE);
+    heur_subdissector_list = register_heur_dissector_list("dccp", proto_dccp);
 
     /* reg preferences */
     dccp_module = prefs_register_protocol(proto_dccp, NULL);
@@ -1348,9 +1327,8 @@ proto_reg_handoff_dccp(void)
 {
     dissector_handle_t dccp_handle;
 
-    dccp_handle = new_create_dissector_handle(dissect_dccp, proto_dccp);
+    dccp_handle = create_dissector_handle(dissect_dccp, proto_dccp);
     dissector_add_uint("ip.proto", IP_PROTO_DCCP, dccp_handle);
-    data_handle = find_dissector("data");
     dccp_tap    = register_tap("dccp");
 }
 

@@ -30,6 +30,8 @@
 #include <string.h>
 
 #include <epan/packet.h>
+#include <epan/address_types.h>
+#include <epan/to_str.h>
 #include <epan/conversation.h>
 #include <epan/xdlc.h>
 #include <wiretap/wtap.h>
@@ -137,8 +139,6 @@
 void proto_reg_handoff_irda(void);
 void proto_register_irda(void);
 
-static dissector_handle_t data_handle;
-
 /* Initialize the protocol and registered fields */
 static int proto_irlap = -1;
 static int hf_lap_a = -1;
@@ -238,6 +238,8 @@ static gint ett_ttp = -1;
 static gint ett_param[MAX_PARAMETERS];
 
 static gint ett_iap_entry[MAX_IAP_ENTRIES];
+
+static int irda_address_type = -1;
 
 static const xdlc_cf_items irlap_cf_items = {
     &hf_lap_c_nr,
@@ -529,21 +531,17 @@ static void dissect_iap_request(tvbuff_t* tvb, packet_info* pinfo, proto_tree* r
 
             /* create conversation entry */
             src = circuit_id ^ CMD_FRAME;
-            srcaddr.type  = AT_NONE;
-            srcaddr.len   = 1;
-            srcaddr.data  = (guint8*)&src;
+            set_address(&srcaddr, irda_address_type, 1, &src);
 
-            destaddr.type = AT_NONE;
-            destaddr.len  = 1;
-            destaddr.data = (guint8*)&circuit_id;
+            set_address(&destaddr, irda_address_type, 1, &circuit_id);
 
-            conv = find_conversation(pinfo->fd->num, &srcaddr, &destaddr, PT_NONE, pinfo->srcport, pinfo->destport, 0);
+            conv = find_conversation(pinfo->num, &srcaddr, &destaddr, PT_NONE, pinfo->srcport, pinfo->destport, 0);
             if (conv)
             {
                 iap_conv = (iap_conversation_t*)conversation_get_proto_data(conv, proto_iap);
                 while (1)
                 {
-                    if (iap_conv->iap_query_frame == pinfo->fd->num)
+                    if (iap_conv->iap_query_frame == pinfo->num)
                     {
                         iap_conv = NULL;
                         break;
@@ -559,7 +557,7 @@ static void dissect_iap_request(tvbuff_t* tvb, packet_info* pinfo, proto_tree* r
             }
             else
             {
-                conv = conversation_new(pinfo->fd->num, &srcaddr, &destaddr, PT_NONE, pinfo->srcport, pinfo->destport, 0);
+                conv = conversation_new(pinfo->num, &srcaddr, &destaddr, PT_NONE, pinfo->srcport, pinfo->destport, 0);
                 iap_conv = wmem_new(wmem_file_scope(), iap_conversation_t);
                 conversation_add_proto_data(conv, proto_iap, (void*)iap_conv);
             }
@@ -573,7 +571,7 @@ static void dissect_iap_request(tvbuff_t* tvb, packet_info* pinfo, proto_tree* r
 
 
                 iap_conv->pnext           = NULL;
-                iap_conv->iap_query_frame = pinfo->fd->num;
+                iap_conv->iap_query_frame = pinfo->num;
                 iap_conv->pattr_dissector = NULL;
 
                 tvb_memcpy(tvb, class_name, offset + 1 + 1, clen);
@@ -645,7 +643,7 @@ static void dissect_iap_request(tvbuff_t* tvb, packet_info* pinfo, proto_tree* r
 
     /* If any bytes remain, send it to the generic data dissector */
     tvb = tvb_new_subset_remaining(tvb, offset);
-    call_dissector(data_handle, tvb, pinfo, root);
+    call_data_dissector(tvb, pinfo, root);
 }
 
 
@@ -682,19 +680,15 @@ static void dissect_iap_result(tvbuff_t* tvb, packet_info* pinfo, proto_tree* ro
     retcode = tvb_get_guint8(tvb, offset + 1);
 
     src = circuit_id ^ CMD_FRAME;
-    srcaddr.type  = AT_NONE;
-    srcaddr.len   = 1;
-    srcaddr.data  = (guint8*)&src;
+    set_address(&srcaddr, irda_address_type, 1, &src);
 
-    destaddr.type = AT_NONE;
-    destaddr.len  = 1;
-    destaddr.data = (guint8*)&circuit_id;
+    set_address(&destaddr, irda_address_type, 1, &circuit_id);
 
     /* Find result value dissector */
-    conv = find_conversation(pinfo->fd->num, &srcaddr, &destaddr, PT_NONE, pinfo->srcport, pinfo->destport, 0);
+    conv = find_conversation(pinfo->num, &srcaddr, &destaddr, PT_NONE, pinfo->srcport, pinfo->destport, 0);
     if (conv)
     {
-        num = pinfo->fd->num;
+        num = pinfo->num;
 
         iap_conv = (iap_conversation_t*)conversation_get_proto_data(conv, proto_iap);
         while (iap_conv && (iap_conv->iap_query_frame >= num))
@@ -724,15 +718,14 @@ static void dissect_iap_result(tvbuff_t* tvb, packet_info* pinfo, proto_tree* ro
         case GET_VALUE_BY_CLASS:
             if (retcode == 0)
             {
-                guint8 *string;
                 switch (tvb_get_guint8(tvb, offset + 6))
                 {
                     case IAS_MISSING:
-                        g_snprintf(buf, 300, ", Missing");
+                        col_append_str(pinfo->cinfo, COL_INFO, ", Missing");
                         break;
 
                     case IAS_INTEGER:
-                        g_snprintf(buf, 300, ", Integer: %d", tvb_get_ntohl(tvb, offset + 7));
+                        col_append_fstr(pinfo->cinfo, COL_INFO, ", Integer: %d", tvb_get_ntohl(tvb, offset + 7));
                         break;
 
                     case IAS_OCT_SEQ:
@@ -741,14 +734,11 @@ static void dissect_iap_result(tvbuff_t* tvb, packet_info* pinfo, proto_tree* ro
 
                     case IAS_STRING:
                         n = tvb_get_guint8(tvb, offset + 8);
-                        string = tvb_get_string(wmem_packet_scope(), tvb, offset + 9, n);
-                        g_snprintf(buf, 300, ", \"%s\"", string);
+                        col_append_fstr(pinfo->cinfo, COL_INFO, ", \"%s\"", tvb_get_string_enc(wmem_packet_scope(), tvb, offset + 9, n, ENC_ASCII));
                         break;
                     default:
-                        buf[0] = '\0';
                         break;
                 }
-                col_append_str(pinfo->cinfo, COL_INFO, buf);
                 if (tvb_get_ntohs(tvb, offset + 2) > 1)
                     col_append_str(pinfo->cinfo, COL_INFO, ", ...");
             }
@@ -903,7 +893,7 @@ static void dissect_iap_result(tvbuff_t* tvb, packet_info* pinfo, proto_tree* ro
 
     /* If any bytes remain, send it to the generic data dissector */
     tvb = tvb_new_subset_remaining(tvb, offset);
-    call_dissector(data_handle, tvb, pinfo, root);
+    call_data_dissector(tvb, pinfo, root);
 }
 
 
@@ -971,19 +961,15 @@ static void dissect_appl_proto(tvbuff_t* tvb, packet_info* pinfo, proto_tree* ro
 
 
     src = circuit_id ^ CMD_FRAME;
-    srcaddr.type  = AT_NONE;
-    srcaddr.len   = 1;
-    srcaddr.data  = (guint8*)&src;
+    set_address(&srcaddr, irda_address_type, 1, &src);
 
-    destaddr.type = AT_NONE;
-    destaddr.len  = 1;
-    destaddr.data = (guint8*)&circuit_id;
+    set_address(&destaddr, irda_address_type, 1, &circuit_id);
 
     /* Find result value dissector */
-    conv = find_conversation(pinfo->fd->num, &srcaddr, &destaddr, PT_NONE, pinfo->srcport, pinfo->destport, 0);
+    conv = find_conversation(pinfo->num, &srcaddr, &destaddr, PT_NONE, pinfo->srcport, pinfo->destport, 0);
     if (conv)
     {
-        num = pinfo->fd->num;
+        num = pinfo->num;
 
         lmp_conv = (lmp_conversation_t*)conversation_get_proto_data(conv, proto_irlmp);
         while (lmp_conv && (lmp_conv->iap_result_frame >= num))
@@ -1008,7 +994,7 @@ static void dissect_appl_proto(tvbuff_t* tvb, packet_info* pinfo, proto_tree* ro
     if (lmp_conv)
     {
 /*g_message("%x:%d->%x:%d = %p\n", src, pinfo->srcport, circuit_id, pinfo->destport, lmp_conv); */
-/*g_message("->%d: %d %d %p\n", pinfo->fd->num, lmp_conv->iap_result_frame, lmp_conv->ttp, lmp_conv->proto_dissector); */
+/*g_message("->%d: %d %d %p\n", pinfo->num, lmp_conv->iap_result_frame, lmp_conv->ttp, lmp_conv->proto_dissector); */
         if ((lmp_conv->ttp) && (pdu_type != DISCONNECT_PDU))
         {
             offset += dissect_ttp(tvb, pinfo, root, (pdu_type == DATA_PDU));
@@ -1019,7 +1005,7 @@ static void dissect_appl_proto(tvbuff_t* tvb, packet_info* pinfo, proto_tree* ro
         call_dissector_with_data(lmp_conv->dissector, tvb, pinfo, root, GUINT_TO_POINTER(pdu_type));
     }
     else
-        call_dissector(data_handle, tvb, pinfo, root);
+        call_data_dissector(tvb, pinfo, root);
 }
 
 
@@ -1171,7 +1157,7 @@ static void dissect_irlmp(tvbuff_t* tvb, packet_info* pinfo, proto_tree* root, g
     else
     {
         if ((dlsap == LSAP_IAS) || (slsap == LSAP_IAS))
-            call_dissector(data_handle, tvb, pinfo, root);
+            call_data_dissector(tvb, pinfo, root);
         else
             switch (opcode)
             {
@@ -1185,7 +1171,7 @@ static void dissect_irlmp(tvbuff_t* tvb, packet_info* pinfo, proto_tree* root, g
                     break;
 
                 default:
-                    call_dissector(data_handle, tvb, pinfo, root);
+                    call_data_dissector(tvb, pinfo, root);
             }
     }
 }
@@ -1203,24 +1189,19 @@ void add_lmp_conversation(packet_info* pinfo, guint8 dlsap, gboolean ttp, dissec
     lmp_conversation_t* lmp_conv = NULL;
 
 
-/*g_message("%d: add_lmp_conversation(%p, %d, %d, %p) = ", pinfo->fd->num, pinfo, dlsap, ttp, proto_dissector); */
-    srcaddr.type  = AT_NONE;
-    srcaddr.len   = 1;
-    srcaddr.data  = (guint8*)&circuit_id;
+/*g_message("%d: add_lmp_conversation(%p, %d, %d, %p) = ", pinfo->num, pinfo, dlsap, ttp, proto_dissector); */
+    set_address(&srcaddr, irda_address_type, 1, &circuit_id);
 
-    dest = circuit_id ^ CMD_FRAME;
-    destaddr.type = AT_NONE;
-    destaddr.len  = 1;
-    destaddr.data = (guint8*)&dest;
+    set_address(&destaddr, irda_address_type, 1, &dest);
 
-    conv = find_conversation(pinfo->fd->num, &destaddr, &srcaddr, PT_NONE, dlsap, 0, NO_PORT_B);
+    conv = find_conversation(pinfo->num, &destaddr, &srcaddr, PT_NONE, dlsap, 0, NO_PORT_B);
     if (conv)
     {
         lmp_conv = (lmp_conversation_t*)conversation_get_proto_data(conv, proto_irlmp);
         while (1)
         {
             /* Does entry already exist? */
-            if (lmp_conv->iap_result_frame == pinfo->fd->num)
+            if (lmp_conv->iap_result_frame == pinfo->num)
                 return;
 
             if (lmp_conv->pnext == NULL)
@@ -1234,13 +1215,13 @@ void add_lmp_conversation(packet_info* pinfo, guint8 dlsap, gboolean ttp, dissec
     }
     else
     {
-        conv = conversation_new(pinfo->fd->num, &destaddr, &srcaddr, PT_NONE, dlsap, 0, NO_PORT_B);
+        conv = conversation_new(pinfo->num, &destaddr, &srcaddr, PT_NONE, dlsap, 0, NO_PORT_B);
         lmp_conv = wmem_new(wmem_file_scope(), lmp_conversation_t);
         conversation_add_proto_data(conv, proto_irlmp, (void*)lmp_conv);
     }
 
     lmp_conv->pnext            = NULL;
-    lmp_conv->iap_result_frame = pinfo->fd->num;
+    lmp_conv->iap_result_frame = pinfo->num;
     lmp_conv->ttp              = ttp;
     lmp_conv->dissector        = dissector;
 
@@ -1845,7 +1826,7 @@ static void dissect_irlap(tvbuff_t* tvb, packet_info* pinfo, proto_tree* root)
     if (tvb_reported_length_remaining(tvb, offset) > 0)
     {
         tvb = tvb_new_subset_remaining(tvb, offset);
-        call_dissector(data_handle, tvb, pinfo, root);
+        call_data_dissector(tvb, pinfo, root);
     }
 }
 
@@ -1853,22 +1834,44 @@ static void dissect_irlap(tvbuff_t* tvb, packet_info* pinfo, proto_tree* root)
 /*
  * Dissect IrDA protocol
  */
-static void dissect_irda(tvbuff_t* tvb, packet_info* pinfo, proto_tree* root)
+static int dissect_irda(tvbuff_t* tvb, packet_info* pinfo, proto_tree* root, void* data _U_)
 {
-    /* load the display labels */
-    pinfo->current_proto = "IrDA";
-
     /* check if log message */
     if ((pinfo->pseudo_header->irda.pkttype & IRDA_CLASS_MASK) == IRDA_CLASS_LOG)
     {
         dissect_log(tvb, pinfo, root);
-        return;
+        return tvb_captured_length(tvb);
     }
 
 
     dissect_irlap(tvb, pinfo, root);
+    return tvb_captured_length(tvb);
 }
 
+static int irda_addr_to_str(const address* addr, gchar *buf, int buf_len _U_)
+{
+    const guint8 *addrdata = (const guint8 *)addr->data;
+    gchar *start_buf = buf;
+
+    buf = uint_to_str_back(buf, *addrdata);
+    *buf = '\0';
+    return (int)(buf-start_buf+1);
+}
+
+static int irda_addr_str_len(const address* addr _U_)
+{
+    return 11; /* Leaves required space (10 bytes) for uint_to_str_back() */
+}
+
+static const char* irda_col_filter_str(const address* addr _U_, gboolean is_src _U_)
+{
+    return "irlap.a";
+}
+
+static int irda_addr_len(void)
+{
+    return 1;
+}
 
 /*
  * Register the protocol with Wireshark
@@ -2032,7 +2035,7 @@ void proto_register_irda(void)
                 FT_STRING, BASE_NONE, NULL, 0,
                 NULL, HFILL }},
         { &hf_lmp_xid_name_no_ascii,
-            { "Device Nickname (unsupported character set)", "irlmp.xid.name",
+            { "Device Nickname (unsupported character set)", "irlmp.xid.name.no_ascii",
                 FT_BYTES, BASE_NONE, NULL, 0,
                 NULL, HFILL }},
         { &hf_lmp_dst,
@@ -2226,6 +2229,8 @@ void proto_register_irda(void)
         ett_iap_e[i]     = &ett_iap_entry[i];
     }
     proto_register_subtree_array(ett_iap_e, MAX_IAP_ENTRIES);
+
+    irda_address_type = address_type_dissector_register("AT_IRDA", "IRDA Address", irda_addr_to_str, irda_addr_str_len, irda_col_filter_str, irda_addr_len, NULL, NULL);
 }
 
 
@@ -2241,7 +2246,6 @@ void proto_reg_handoff_irda(void)
     irda_handle = find_dissector("irda");
     dissector_add_uint("wtap_encap", WTAP_ENCAP_IRDA, irda_handle);
     dissector_add_uint("sll.ltype", LINUX_SLL_P_IRDA_LAP, irda_handle);
-    data_handle = find_dissector("data");
 }
 
 /*

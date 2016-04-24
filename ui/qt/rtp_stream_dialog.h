@@ -46,7 +46,7 @@ signals:
     // cf_packet_marked callback to file.[ch] but that's synchronous and
     // might incur too much overhead.
     void packetsMarked();
-    void updateFilter(QString &filter, bool force = false);
+    void updateFilter(QString filter, bool force = false);
     void goToPacket(int packet_num);
 
 protected:
@@ -63,6 +63,7 @@ private:
     QMenu ctx_menu_;
     bool need_redraw_;
 
+    static void tapReset(rtpstream_tapinfo_t *tapinfo);
     static void tapDraw(rtpstream_tapinfo_t *tapinfo);
     static void tapMarkPacket(rtpstream_tapinfo_t *tapinfo, frame_data *fd);
 

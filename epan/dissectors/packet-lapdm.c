@@ -57,7 +57,6 @@
 #include <epan/reassemble.h>
 
 void proto_register_lapdm(void);
-void proto_reg_handoff_lapdm(void);
 
 static int proto_lapdm = -1;
 static int hf_lapdm_address = -1;
@@ -107,8 +106,6 @@ static gint ett_lapdm_fragments = -1;
 static reassembly_table lapdm_reassembly_table;
 
 static dissector_table_t lapdm_sapi_dissector_table;
-
-static dissector_handle_t data_handle;
 
 static gboolean reassemble_lapdm = TRUE;
 
@@ -216,8 +213,8 @@ lapdm_defragment_cleanup (void)
 }
 
 
-static void
-dissect_lapdm(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
+static int
+dissect_lapdm(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data _U_)
 {
     proto_tree *lapdm_tree, *addr_tree, *length_tree;
     proto_item *lapdm_ti, *addr_ti, *length_ti;
@@ -230,7 +227,7 @@ dissect_lapdm(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
 
     /* Check that there's enough data */
     if (tvb_captured_length(tvb) < LAPDM_HEADER_LEN)
-        return;
+        return 0;
 
     col_set_str(pinfo->cinfo, COL_PROTOCOL, "LAPDm");
 
@@ -285,7 +282,7 @@ dissect_lapdm(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
     /* No point in doing anything if no payload
      */
     if( !MIN(len, available_length) )
-        return;
+        return 2;
 
     payload = tvb_new_subset(tvb, LAPDM_HEADER_LEN, MIN(len,available_length), len);
 
@@ -321,10 +318,10 @@ dissect_lapdm(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
 
         /* Reassembled into this packet
          */
-        if (fd_m && pinfo->fd->num == fd_m->reassembled_in) {
+        if (fd_m && pinfo->num == fd_m->reassembled_in) {
             if (!dissector_try_uint(lapdm_sapi_dissector_table, sapi,
                                     reassembled, pinfo, tree))
-                call_dissector(data_handle, reassembled, pinfo, tree);
+                call_data_dissector(reassembled, pinfo, tree);
         }
         else {
             col_append_str(pinfo->cinfo, COL_INFO, " (Fragment)");
@@ -342,8 +339,9 @@ dissect_lapdm(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
         */
         if (!dissector_try_uint(lapdm_sapi_dissector_table, sapi,
                                 payload, pinfo, tree))
-            call_dissector(data_handle,payload, pinfo, tree);
+            call_data_dissector(payload, pinfo, tree);
     }
+    return tvb_captured_length(tvb);
 }
 
 void
@@ -491,7 +489,7 @@ proto_register_lapdm(void)
 
     register_dissector("lapdm", dissect_lapdm, proto_lapdm);
 
-    lapdm_sapi_dissector_table = register_dissector_table("lapdm.sapi", "LAPDm SAPI", FT_UINT8, BASE_DEC);
+    lapdm_sapi_dissector_table = register_dissector_table("lapdm.sapi", "LAPDm SAPI", proto_lapdm, FT_UINT8, BASE_DEC, DISSECTOR_TABLE_NOT_ALLOW_DUPLICATE);
 
     lapdm_module = prefs_register_protocol(proto_lapdm, NULL);
     prefs_register_bool_preference(lapdm_module, "reassemble",
@@ -500,12 +498,6 @@ proto_register_lapdm(void)
                                    &reassemble_lapdm);
     register_init_routine (lapdm_defragment_init);
     register_cleanup_routine (lapdm_defragment_cleanup);
-}
-
-void
-proto_reg_handoff_lapdm(void)
-{
-    data_handle = find_dissector("data");
 }
 
 /*

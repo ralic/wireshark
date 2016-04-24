@@ -30,7 +30,8 @@
 #define __TEXT_IMPORT_H__
 
 #include <glib.h>
-#include "wtap.h"
+
+#include <wiretap/wtap.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -85,8 +86,7 @@ typedef struct
     guint max_frame_length;
 } text_import_info_t;
 
-void text_import_setup(text_import_info_t *info);
-void text_import_cleanup(void);
+int text_import(text_import_info_t *info);
 
 #ifdef __cplusplus
 }

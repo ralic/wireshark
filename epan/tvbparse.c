@@ -227,7 +227,7 @@ tvbparse_wanted_t* tvbparse_chars(const int id,
     accept_str = (char *)g_malloc(256);
     memset(accept_str, 0x00, 256);
     for (i = 0; chr[i]; i++)
-        accept_str[(unsigned) chr[i]] = 0xFF;
+        accept_str[(unsigned)chr[i]] = (char)0xFF;
 
     w->condition = cond_chars_common;
     w->id = id;
@@ -481,7 +481,7 @@ static int cond_hash(tvbparse_t* tt, const int offset, const tvbparse_wanted_t* 
     if (key_len < 0)
         return -1;
 
-    key = tvb_get_string(wmem_packet_scope(),key_elem->tvb,key_elem->offset,key_elem->len);
+    key = tvb_get_string_enc(wmem_packet_scope(),key_elem->tvb,key_elem->offset,key_elem->len, ENC_ASCII);
 #ifdef TVBPARSE_DEBUG
     if (TVBPARSE_DEBUG & TVBPARSE_DEBUG_HASH) g_warning("cond_hash: got key='%s'",key);
 #endif
@@ -1366,7 +1366,7 @@ void tvbparse_tree_add_elem(proto_tree* tree, tvbparse_elem_t* curr) {
     frame->elem = curr;
 
     while (curr) {
-        pi = proto_tree_add_text(frame->tree,curr->tvb,curr->offset,curr->len,"%s",tvb_format_text(curr->tvb,curr->offset,curr->len));
+        pi = proto_tree_add_format_text(frame->tree,curr->tvb,curr->offset,curr->len);
 
         if(curr->sub) {
             frame->elem = curr;

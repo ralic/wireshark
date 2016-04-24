@@ -29,7 +29,7 @@
 #include "file.h"
 #include "fileset.h"
 
-#include <QDialog>
+#include "geometry_state_dialog.h"
 
 class QTreeWidgetItem;
 
@@ -37,7 +37,7 @@ namespace Ui {
 class FileSetDialog;
 }
 
-class FileSetDialog : public QDialog
+class FileSetDialog : public GeometryStateDialog
 {
     Q_OBJECT
 
@@ -50,7 +50,7 @@ public:
     void addFile(fileset_entry *entry = NULL);
 
 signals:
-    void fileSetOpenCaptureFile(QString &);
+    void fileSetOpenCaptureFile(QString);
 
 private slots:
     void on_buttonBox_helpRequested();

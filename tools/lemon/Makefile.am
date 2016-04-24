@@ -23,9 +23,16 @@
 # is an archive library, any executable linking against libwireshark will
 # also need to link against libftypes.
 
-if HAVE_WARNINGS_AS_ERRORS
-AM_CFLAGS = -Werror
-endif
+AUTOMAKE_OPTIONS = -Wno-gnu
+
+CC = $(CC_FOR_BUILD)
+CPPFLAGS = $(CPPFLAGS_FOR_BUILD)
+CFLAGS = $(CFLAGS_FOR_BUILD)
+LDFLAGS = $(LDFLAGS_FOR_BUILD)
+LIBS =
+
+AM_CPPFLAGS = -I$(top_srcdir)
+AM_CFLAGS = $(WS_CFLAGS_FOR_BUILD)
 
 noinst_PROGRAMS = lemon
 
@@ -34,9 +41,6 @@ CLEANFILES = \
 
 MAINTAINERCLEANFILES = \
 	Makefile.in
-
-lemon$(EXEEXT): lemon.c
-	$(CC_FOR_BUILD) -I$(top_builddir) $(CFLAGS_FOR_BUILD) $(LDFLAGS_FOR_BUILD) -o $@ $?
 
 EXTRA_DIST = \
 	cppmagic.h		\
@@ -47,4 +51,3 @@ EXTRA_DIST = \
 	Makefile.nmake		\
 	README			\
 	CMakeLists.txt
-

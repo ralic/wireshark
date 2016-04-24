@@ -453,7 +453,7 @@ typedef struct _fcswils_func_table_t {
     fcswils_dissector_t func;
 } fcswils_func_table_t;
 
-static dissector_handle_t data_handle, fcsp_handle;
+static dissector_handle_t fcsp_handle;
 
 static gint get_zoneobj_len(tvbuff_t *tvb, gint offset);
 
@@ -1713,11 +1713,11 @@ dissect_fcswils(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data)
 
     /* Register conversation if this is not a response */
     if ((opcode != FC_SWILS_SWACC) && (opcode != FC_SWILS_SWRJT)) {
-        conversation = find_conversation(pinfo->fd->num, &pinfo->src, &pinfo->dst,
+        conversation = find_conversation(pinfo->num, &pinfo->src, &pinfo->dst,
                                          pinfo->ptype, fchdr->oxid,
                                          fchdr->rxid, NO_PORT2);
         if (!conversation) {
-            conversation = conversation_new(pinfo->fd->num, &pinfo->src, &pinfo->dst,
+            conversation = conversation_new(pinfo->num, &pinfo->src, &pinfo->dst,
                                             pinfo->ptype, fchdr->oxid,
                                             fchdr->rxid, NO_PORT2);
         }
@@ -1745,7 +1745,7 @@ dissect_fcswils(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data)
     }
     else {
         /* Opcode is ACC or RJT */
-        conversation = find_conversation(pinfo->fd->num, &pinfo->src, &pinfo->dst,
+        conversation = find_conversation(pinfo->num, &pinfo->src, &pinfo->dst,
                                          pinfo->ptype, fchdr->oxid,
                                          fchdr->rxid, NO_PORT2);
         isreq = FC_SWILS_RPLY;
@@ -1802,7 +1802,7 @@ dissect_fcswils(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data)
     } else {
         /* data dissector */
         next_tvb = tvb_new_subset_remaining(tvb, offset+4);
-        call_dissector(data_handle, next_tvb, pinfo, tree);
+        call_data_dissector(next_tvb, pinfo, tree);
     }
 
     return tvb_captured_length(tvb);
@@ -2541,11 +2541,10 @@ proto_reg_handoff_fcswils(void)
 {
     dissector_handle_t swils_handle;
 
-    swils_handle = new_create_dissector_handle(dissect_fcswils, proto_fcswils);
+    swils_handle = create_dissector_handle(dissect_fcswils, proto_fcswils);
     dissector_add_uint("fc.ftype", FC_FTYPE_SWILS, swils_handle);
 
-    data_handle = find_dissector("data");
-    fcsp_handle = find_dissector("fcsp");
+    fcsp_handle = find_dissector_add_dependency("fcsp", proto_fcswils);
 }
 
 /*

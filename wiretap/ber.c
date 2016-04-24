@@ -21,10 +21,6 @@
 
 #include <errno.h>
 
-#ifdef HAVE_SYS_STAT_H
-#include <sys/stat.h>
-#endif
-
 #include "wtap-int.h"
 #include "file_wrappers.h"
 #include <wsutil/buffer.h>
@@ -89,7 +85,7 @@ static gboolean ber_read(wtap *wth, int *err, gchar **err_info, gint64 *data_off
   return ber_read_file(wth, wth->fh, &wth->phdr, wth->frame_buffer, err, err_info);
 }
 
-static gboolean ber_seek_read(wtap *wth, gint64 seek_off, struct wtap_pkthdr *phdr _U_,
+static gboolean ber_seek_read(wtap *wth, gint64 seek_off, struct wtap_pkthdr *phdr,
                               Buffer *buf, int *err, gchar **err_info)
 {
   /* there is only one packet */

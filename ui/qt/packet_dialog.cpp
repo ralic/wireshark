@@ -29,7 +29,7 @@
 
 #include "frame_tvbuff.h"
 
-#include "ui/utf8_entities.h"
+#include <wsutil/utf8_entities.h>
 
 #include "byte_view_tab.h"
 #include "proto_tree.h"
@@ -38,8 +38,6 @@
 #include <QTreeWidgetItemIterator>
 
 // To do:
-// - Don't hide the byte view when we reload.
-// - Find a way to preserve the byte view after the file closes.
 // - Copy over experimental packet editing code.
 // - Fix ElidedText width.
 
@@ -49,10 +47,8 @@ PacketDialog::PacketDialog(QWidget &parent, CaptureFile &cf, frame_data *fdata) 
     packet_data_(NULL)
 {
     ui->setupUi(this);
+    loadGeometry(parent.width() * 4 / 5, parent.height() * 4 / 5);
     ui->hintLabel->setSmallText();
-
-    // XXX Use recent settings instead
-    resize(parent.width() * 4 / 5, parent.height() * 4 / 5);
 
     setWindowSubtitle(tr("Packet %1").arg(fdata->num));
 
@@ -71,7 +67,6 @@ PacketDialog::PacketDialog(QWidget &parent, CaptureFile &cf, frame_data *fdata) 
 
     proto_tree_ = new ProtoTree(ui->packetSplitter);
     proto_tree_->fillProtocolTree(edt_.tree);
-    proto_tree_->expandAll();
 
     byte_view_tab_ = new ByteViewTab(ui->packetSplitter);
     byte_view_tab_->setCaptureFile(cap_file_.capFile());
@@ -84,13 +79,12 @@ PacketDialog::PacketDialog(QWidget &parent, CaptureFile &cf, frame_data *fdata) 
         source = (struct data_source *)src_le->data;
         source_name = get_data_source_name(source);
         byte_view_tab_->addTab(source_name, get_data_source_tvb(source), edt_.tree, proto_tree_,
-                               cap_file_.capFile()->current_frame->flags.encoding);
+                               (packet_char_enc)cap_file_.capFile()->current_frame->flags.encoding);
         wmem_free(NULL, source_name);
     }
     byte_view_tab_->setCurrentIndex(0);
 
-    ui->packetSplitter->setStretchFactor(0, 5);
-    ui->packetSplitter->setStretchFactor(1, 1);
+    ui->packetSplitter->setStretchFactor(1, 0);
 
     QStringList col_parts;
     for (int i = 0; i < cap_file_.capFile()->cinfo.num_cols; ++i) {
@@ -122,16 +116,6 @@ PacketDialog::~PacketDialog()
 
 void PacketDialog::captureFileClosing()
 {
-    delete byte_view_tab_;
-    byte_view_tab_ = NULL;
-
-    QTreeWidgetItemIterator iter(proto_tree_);
-    while (*iter) {
-        QTreeWidgetItem *item = (*iter);
-        item->setData(0, Qt::UserRole, QVariant());
-        ++iter;
-    }
-
     QString closed_title = tr("[%1 closed] " UTF8_MIDDLE_DOT " %2")
             .arg(cap_file_.fileName())
             .arg(col_info_);

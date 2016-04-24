@@ -54,18 +54,15 @@
 #include <getopt.h>
 #endif
 
-#ifdef HAVE_LIBZ
-#include <zlib.h>     /* to get the libz version number */
-#endif
+#include <wiretap/wtap.h>
 
-#include "wtap.h"
+#include "epan/etypes.h"
 
 #ifndef HAVE_GETOPT_LONG
 #include "wsutil/wsgetopt.h"
 #endif
 
 #ifdef _WIN32
-#include <wsutil/file_util.h>
 #include <wsutil/unicode-utils.h>
 #include <process.h>    /* getpid */
 #ifdef HAVE_WINSOCK2_H
@@ -79,13 +76,17 @@
 
 #include <wsutil/crash_info.h>
 #include <wsutil/filesystem.h>
+#include <wsutil/file_util.h>
 #include <wsutil/md5.h>
 #include <wsutil/plugins.h>
 #include <wsutil/privileges.h>
 #include <wsutil/report_err.h>
 #include <wsutil/strnatcmp.h>
-#include <wsutil/ws_diag_control.h>
-#include <wsutil/ws_version_info.h>
+#include <wsutil/str_util.h>
+#include <ws_version_info.h>
+#include <wsutil/pint.h>
+#include <wiretap/wtap_opttypes.h>
+#include <wiretap/pcapng.h>
 
 #include "ringbuffer.h" /* For RINGBUFFER_MAX_NUM_FILES */
 
@@ -94,8 +95,8 @@
  */
 
 struct select_item {
-    int inclusive;
-    int first, second;
+    gboolean inclusive;
+    guint first, second;
 };
 
 /*
@@ -104,7 +105,7 @@ struct select_item {
 typedef struct _fd_hash_t {
     md5_byte_t digest[16];
     guint32    len;
-    nstime_t   time;
+    nstime_t   frame_time;
 } fd_hash_t;
 
 #define DEFAULT_DUP_DEPTH       5   /* Used with -d */
@@ -151,7 +152,7 @@ GTree *frames_user_comments = NULL;
 
 #define MAX_SELECTIONS 512
 static struct select_item     selectfrm[MAX_SELECTIONS];
-static int                    max_selected              = -1;
+static guint                  max_selected              = 0;
 static int                    keep_em                   = 0;
 #ifdef PCAP_NG_DEFAULT
 static int                    out_file_type_subtype     = WTAP_FILE_TYPE_SUBTYPE_PCAPNG; /* default to pcapng   */
@@ -166,6 +167,7 @@ static double                 err_prob                  = 0.0;
 static time_t                 starttime                 = 0;
 static time_t                 stoptime                  = 0;
 static gboolean               check_startstop           = FALSE;
+static gboolean               rem_vlan                  = FALSE;
 static gboolean               dup_detect                = FALSE;
 static gboolean               dup_detect_by_time        = FALSE;
 
@@ -261,12 +263,12 @@ fileset_extract_prefix_suffix(const char *fname, gchar **fprefix, gchar **fsuffi
 
 /* Add a selection item, a simple parser for now */
 static gboolean
-add_selection(char *sel)
+add_selection(char *sel, guint* max_selection)
 {
     char *locn;
     char *next;
 
-    if (++max_selected >= MAX_SELECTIONS) {
+    if (max_selected >= MAX_SELECTIONS) {
         /* Let the user know we stopped selecting */
         fprintf(stderr, "Out of room for packet selections!\n");
         return(FALSE);
@@ -279,8 +281,10 @@ add_selection(char *sel)
         if (verbose)
             fprintf(stderr, "Not inclusive ...");
 
-        selectfrm[max_selected].inclusive = 0;
-        selectfrm[max_selected].first = atoi(sel);
+        selectfrm[max_selected].inclusive = FALSE;
+        selectfrm[max_selected].first = (guint)strtoul(sel, NULL, 10);
+        if (selectfrm[max_selected].first < *max_selection)
+            *max_selection = selectfrm[max_selected].first;
 
         if (verbose)
             fprintf(stderr, " %i\n", selectfrm[max_selected].first);
@@ -289,26 +293,35 @@ add_selection(char *sel)
             fprintf(stderr, "Inclusive ...");
 
         next = locn + 1;
-        selectfrm[max_selected].inclusive = 1;
-        selectfrm[max_selected].first = atoi(sel);
-        selectfrm[max_selected].second = atoi(next);
+        selectfrm[max_selected].inclusive = TRUE;
+        selectfrm[max_selected].first = (guint)strtoul(sel, NULL, 10);
+        selectfrm[max_selected].second = (guint)strtoul(next, NULL, 10);
+
+        if (selectfrm[max_selected].second == 0)
+        {
+            /* Not a valid number, presume all */
+            selectfrm[max_selected].second = *max_selection = G_MAXUINT;
+        }
+        else if (selectfrm[max_selected].second < *max_selection)
+            *max_selection = selectfrm[max_selected].second;
 
         if (verbose)
             fprintf(stderr, " %i, %i\n", selectfrm[max_selected].first,
                    selectfrm[max_selected].second);
     }
 
+    max_selected++;
     return(TRUE);
 }
 
 /* Was the packet selected? */
 
 static int
-selected(int recno)
+selected(guint recno)
 {
-    int i;
+    guint i;
 
-    for (i = 0; i <= max_selected; i++) {
+    for (i = 0; i < max_selected; i++) {
         if (selectfrm[i].inclusive) {
             if (selectfrm[i].first <= recno && selectfrm[i].second >= recno)
                 return 1;
@@ -381,13 +394,12 @@ set_time_adjustment(char *optarg_str_p)
 
     /* adjust fractional portion from fractional to numerator
      * e.g., in "1.5" from 5 to 500000000 since .5*10^9 = 500000000 */
-    if (frac && end) {            /* both are valid */
-        frac_digits = end - frac - 1;   /* fractional digit count (remember '.') */
-        while(frac_digits < 9) {    /* this is frac of 10^9 */
-            val *= 10;
-            frac_digits++;
-        }
+    frac_digits = end - frac - 1;   /* fractional digit count (remember '.') */
+    while(frac_digits < 9) {    /* this is frac of 10^9 */
+        val *= 10;
+        frac_digits++;
     }
+
     time_adj.tv.nsecs = (int)val;
 }
 
@@ -455,13 +467,12 @@ set_strict_time_adj(char *optarg_str_p)
 
     /* adjust fractional portion from fractional to numerator
      * e.g., in "1.5" from 5 to 500000000 since .5*10^9 = 500000000 */
-    if (frac && end) {            /* both are valid */
-        frac_digits = end - frac - 1;   /* fractional digit count (remember '.') */
-        while(frac_digits < 9) {    /* this is frac of 10^9 */
-            val *= 10;
-            frac_digits++;
-        }
+    frac_digits = end - frac - 1;   /* fractional digit count (remember '.') */
+    while(frac_digits < 9) {    /* this is frac of 10^9 */
+        val *= 10;
+        frac_digits++;
     }
+
     strict_time_adj.tv.nsecs = (int)val;
 }
 
@@ -523,14 +534,41 @@ set_rel_time(char *optarg_str_p)
 
     /* adjust fractional portion from fractional to numerator
      * e.g., in "1.5" from 5 to 500000000 since .5*10^9 = 500000000 */
-    if (frac && end) {            /* both are valid */
-        frac_digits = end - frac - 1;   /* fractional digit count (remember '.') */
-        while(frac_digits < 9) {    /* this is frac of 10^9 */
-            val *= 10;
-            frac_digits++;
-        }
+    frac_digits = end - frac - 1;   /* fractional digit count (remember '.') */
+    while(frac_digits < 9) {    /* this is frac of 10^9 */
+        val *= 10;
+        frac_digits++;
     }
+
     relative_time_window.nsecs = (int)val;
+}
+
+#define LINUX_SLL_OFFSETP 14
+#define VLAN_SIZE 4
+static void
+sll_remove_vlan_info(guint8* fd, guint32* len) {
+    if (pntoh16(fd + LINUX_SLL_OFFSETP) == ETHERTYPE_VLAN) {
+        int rest_len;
+        /* point to start of vlan */
+        fd = fd + LINUX_SLL_OFFSETP;
+        /* bytes to read after vlan info */
+        rest_len = *len - (LINUX_SLL_OFFSETP + VLAN_SIZE);
+        /* remove vlan info from packet */
+        memmove(fd, fd + VLAN_SIZE, rest_len);
+        *len -= 4;
+    }
+}
+
+static void
+remove_vlan_info(const struct wtap_pkthdr *phdr, guint8* fd, guint32* len) {
+    switch (phdr->pkt_encap) {
+        case WTAP_ENCAP_SLL:
+            sll_remove_vlan_info(fd, len);
+            break;
+        default:
+            /* no support for current pkt_encap */
+            break;
+    }
 }
 
 static gboolean
@@ -592,8 +630,8 @@ is_duplicate_rel_time(guint8* fd, guint32 len, const nstime_t *current) {
     md5_finish(&ms, fd_hash[cur_dup_entry].digest);
 
     fd_hash[cur_dup_entry].len = len;
-    fd_hash[cur_dup_entry].time.secs = current->secs;
-    fd_hash[cur_dup_entry].time.nsecs = current->nsecs;
+    fd_hash[cur_dup_entry].frame_time.secs = current->secs;
+    fd_hash[cur_dup_entry].frame_time.nsecs = current->nsecs;
 
     /*
      * Look for relative time related duplicates.
@@ -631,7 +669,7 @@ is_duplicate_rel_time(guint8* fd, guint32 len, const nstime_t *current) {
             break;
         }
 
-        if (nstime_is_unset(&(fd_hash[i].time))) {
+        if (nstime_is_unset(&(fd_hash[i].frame_time))) {
             /*
              * We've decremented to an unused fd_hash[] entry.
              * Check no more!
@@ -639,7 +677,7 @@ is_duplicate_rel_time(guint8* fd, guint32 len, const nstime_t *current) {
             break;
         }
 
-        nstime_delta(&delta, current, &fd_hash[i].time);
+        nstime_delta(&delta, current, &fd_hash[i].frame_time);
 
         if (delta.secs < 0 || delta.nsecs < 0) {
             /*
@@ -698,6 +736,7 @@ print_usage(FILE *output)
     fprintf(output, "                         given time (format as YYYY-MM-DD hh:mm:ss).\n");
     fprintf(output, "\n");
     fprintf(output, "Duplicate packet removal:\n");
+    fprintf(output, "  --novlan                remove vlan info from packets before checking for duplicates.\n");
     fprintf(output, "  -d                     remove packet if duplicate (window == %d).\n", DEFAULT_DUP_DEPTH);
     fprintf(output, "  -D <dup window>        remove packet if duplicate; configurable <dup window>\n");
     fprintf(output, "                         Valid <dup window> values are 0 to %d.\n", MAX_DUP_DEPTH);
@@ -747,8 +786,8 @@ print_usage(FILE *output)
     fprintf(output, "                         all packets to the timestamp of the first packet.\n");
     fprintf(output, "  -E <error probability> set the probability (between 0.0 and 1.0 incl.) that\n");
     fprintf(output, "                         a particular packet byte will be randomly changed.\n");
-    fprintf(output, "  -o <change offset>     When used in conjuction with -E, skip some bytes from the\n");
-    fprintf(output, "                         beginning of the packet. This allows to preserve some\n");
+    fprintf(output, "  -o <change offset>     When used in conjunction with -E, skip some bytes from the\n");
+    fprintf(output, "                         beginning of the packet. This allows one to preserve some\n");
     fprintf(output, "                         bytes, in order to have some headers untouched.\n");
     fprintf(output, "\n");
     fprintf(output, "Output File(s):\n");
@@ -840,14 +879,17 @@ list_encap_types(void) {
     g_free(encaps);
 }
 
-/* TODO: is there the equivalent of g_direct_equal? */
 static int
-framenum_equal(gconstpointer a, gconstpointer b, gpointer user_data _U_)
+framenum_compare(gconstpointer a, gconstpointer b, gpointer user_data _U_)
 {
-    return (a != b);
+    if (GPOINTER_TO_UINT(a) < GPOINTER_TO_UINT(b))
+        return -1;
+
+    if (GPOINTER_TO_UINT(a) > GPOINTER_TO_UINT(b))
+        return 1;
+
+    return 0;
 }
-
-
 
 #ifdef HAVE_PLUGINS
 /*
@@ -861,30 +903,27 @@ failure_message(const char *msg_format _U_, va_list ap _U_)
 }
 #endif
 
-static void
-get_editcap_compiled_info(GString *str)
+static wtap_dumper *
+editcap_dump_open(const char *filename, guint32 snaplen,
+                  wtap_optionblock_t shb_hdr,
+                  wtapng_iface_descriptions_t *idb_inf,
+                  wtap_optionblock_t nrb_hdr, int *write_err)
 {
-  /* LIBZ */
-  g_string_append(str, ", ");
-#ifdef HAVE_LIBZ
-  g_string_append(str, "with libz ");
-#ifdef ZLIB_VERSION
-  g_string_append(str, ZLIB_VERSION);
-#else /* ZLIB_VERSION */
-  g_string_append(str, "(version unknown)");
-#endif /* ZLIB_VERSION */
-#else /* HAVE_LIBZ */
-  g_string_append(str, "without libz");
-#endif /* HAVE_LIBZ */
-}
+  wtap_dumper *pdh;
 
-static void
-get_editcap_runtime_info(GString *str)
-{
-  /* zlib */
-#if defined(HAVE_LIBZ) && !defined(_WIN32)
-  g_string_append_printf(str, ", with libz %s", zlibVersion());
-#endif
+  if (strcmp(filename, "-") == 0) {
+    /* Write to the standard output. */
+    pdh = wtap_dump_open_stdout_ng(out_file_type_subtype, out_frame_type,
+                                   snaplen, FALSE /* compressed */,
+                                   shb_hdr, idb_inf, nrb_hdr,
+                                   write_err);
+  } else {
+    pdh = wtap_dump_open_ng(filename, out_file_type_subtype, out_frame_type,
+                            snaplen, FALSE /* compressed */,
+                            shb_hdr, idb_inf, nrb_hdr,
+			    write_err);
+  }
+  return pdh;
 }
 
 int
@@ -896,13 +935,12 @@ main(int argc, char *argv[])
     int           i, j, read_err, write_err;
     gchar        *read_err_info, *write_err_info;
     int           opt;
-DIAG_OFF(cast-qual)
     static const struct option long_options[] = {
-        {(char *)"help", no_argument, NULL, 'h'},
-        {(char *)"version", no_argument, NULL, 'V'},
+        {"novlan", no_argument, NULL, 0x8100},
+        {"help", no_argument, NULL, 'h'},
+        {"version", no_argument, NULL, 'V'},
         {0, 0, 0, 0 }
     };
-DIAG_ON(cast-qual)
 
     char         *p;
     guint32       snaplen            = 0; /* No limit               */
@@ -925,12 +963,13 @@ DIAG_ON(cast-qual)
     gchar        *fprefix            = NULL;
     gchar        *fsuffix            = NULL;
     guint32       change_offset      = 0;
-
+    guint         max_packet_number  = G_MAXUINT;
     const struct wtap_pkthdr    *phdr;
     struct wtap_pkthdr           temp_phdr;
     wtapng_iface_descriptions_t *idb_inf = NULL;
-    wtapng_section_t            *shb_hdr = NULL;
-    wtapng_name_res_t           *nrb_hdr = NULL;
+    wtap_optionblock_t           shb_hdr = NULL;
+    wtap_optionblock_t           nrb_hdr = NULL;
+    char                        *shb_user_appl;
 
 #ifdef HAVE_PLUGINS
     char* init_progfile_dir_error;
@@ -942,10 +981,10 @@ DIAG_ON(cast-qual)
 #endif /* _WIN32 */
 
     /* Get the compile-time version information string */
-    comp_info_str = get_compiled_version_info(NULL, get_editcap_compiled_info);
+    comp_info_str = get_compiled_version_info(NULL, NULL);
 
     /* Get the run-time version information string */
-    runtime_info_str = get_runtime_version_info(get_editcap_runtime_info);
+    runtime_info_str = get_runtime_version_info(NULL);
 
     /* Add it to the information to be reported on a crash. */
     ws_add_crash_info("Editcap (Wireshark) %s\n"
@@ -963,7 +1002,7 @@ DIAG_ON(cast-qual)
 
 #ifdef HAVE_PLUGINS
     /* Register wiretap plugins */
-    if ((init_progfile_dir_error = init_progfile_dir(argv[0], (void *)main))) {
+    if ((init_progfile_dir_error = init_progfile_dir(argv[0], main))) {
         g_warning("editcap: init_progfile_dir(): %s", init_progfile_dir_error);
         g_free(init_progfile_dir_error);
     } else {
@@ -984,6 +1023,12 @@ DIAG_ON(cast-qual)
     /* Process the options */
     while ((opt = getopt_long(argc, argv, "a:A:B:c:C:dD:E:F:hi:I:Lo:rs:S:t:T:vVw:", long_options, NULL)) != -1) {
         switch (opt) {
+        case 0x8100:
+        {
+            rem_vlan = TRUE;
+            break;
+        }
+
         case 'a':
         {
             guint frame_number;
@@ -997,7 +1042,7 @@ DIAG_ON(cast-qual)
 
             /* Lazily create the table */
             if (!frames_user_comments) {
-                frames_user_comments = g_tree_new_full(framenum_equal, NULL, NULL, g_free);
+                frames_user_comments = g_tree_new_full(framenum_compare, NULL, NULL, g_free);
             }
 
             /* Insert this entry (framenum -> comment) */
@@ -1120,7 +1165,7 @@ DIAG_ON(cast-qual)
                         optarg);
                 exit(1);
             }
-            srand( (unsigned int) (time(NULL) + getpid()) );
+            srand( (unsigned int) (time(NULL) + ws_getpid()) );
             break;
 
         case 'F':
@@ -1136,7 +1181,7 @@ DIAG_ON(cast-qual)
         case 'h':
             printf("Editcap (Wireshark) %s\n"
                    "Edit and/or translate the format of capture files.\n"
-                   "See http://www.wireshark.org for more information.\n",
+                   "See https://www.wireshark.org for more information.\n",
                get_ws_vcs_version_info());
             print_usage(stdout);
             exit(0);
@@ -1299,19 +1344,25 @@ DIAG_ON(cast-qual)
             out_frame_type = wtap_file_encap(wth);
 
         for (i = optind + 2; i < argc; i++)
-            if (add_selection(argv[i]) == FALSE)
+            if (add_selection(argv[i], &max_packet_number) == FALSE)
                 break;
+
+        if (keep_em == FALSE)
+            max_packet_number = G_MAXUINT;
 
         if (dup_detect || dup_detect_by_time) {
             for (i = 0; i < dup_window; i++) {
                 memset(&fd_hash[i].digest, 0, 16);
                 fd_hash[i].len = 0;
-                nstime_set_unset(&fd_hash[i].time);
+                nstime_set_unset(&fd_hash[i].frame_time);
             }
         }
 
         /* Read all of the packets in turn */
         while (wtap_read(wth, &read_err, &read_err_info, &data_offset)) {
+            if (max_packet_number <= read_count)
+                break;
+
             read_count++;
 
             phdr = wtap_phdr(wth);
@@ -1329,13 +1380,16 @@ DIAG_ON(cast-qual)
                 g_assert(filename);
 
                 /* If we don't have an application name add Editcap */
-                if (shb_hdr->shb_user_appl == NULL) {
-                    shb_hdr->shb_user_appl = g_strdup("Editcap " VERSION);
+                wtap_optionblock_get_option_string(shb_hdr, OPT_SHB_USERAPPL, &shb_user_appl);
+                if (shb_user_appl == NULL) {
+                    shb_user_appl = g_strdup("Editcap " VERSION);
+                    wtap_optionblock_set_option_string(shb_hdr, OPT_SHB_USERAPPL, shb_user_appl);
+                    g_free(shb_user_appl);
                 }
 
-                pdh = wtap_dump_open_ng(filename, out_file_type_subtype, out_frame_type,
+                pdh = editcap_dump_open(filename,
                                         snaplen ? MIN(snaplen, wtap_snapshot_length(wth)) : wtap_snapshot_length(wth),
-                                        FALSE /* compressed */, shb_hdr, idb_inf, nrb_hdr, &write_err);
+                                        shb_hdr, idb_inf, nrb_hdr, &write_err);
 
                 if (pdh == NULL) {
                     fprintf(stderr, "editcap: Can't open or create %s: %s\n",
@@ -1353,8 +1407,7 @@ DIAG_ON(cast-qual)
              */
             if (phdr->presence_flags & WTAP_HAS_TS) {
                 if (nstime_is_unset(&block_start)) {
-                    block_start.secs = phdr->ts.secs;
-                    block_start.nsecs = phdr->ts.nsecs;
+                    block_start = phdr->ts;
                 }
 
                 if (secs_per_block > 0) {
@@ -1375,9 +1428,9 @@ DIAG_ON(cast-qual)
                         if (verbose)
                             fprintf(stderr, "Continuing writing in file %s\n", filename);
 
-                        pdh = wtap_dump_open_ng(filename, out_file_type_subtype, out_frame_type,
+                        pdh = editcap_dump_open(filename,
                                                 snaplen ? MIN(snaplen, wtap_snapshot_length(wth)) : wtap_snapshot_length(wth),
-                                                FALSE /* compressed */, shb_hdr, idb_inf, nrb_hdr, &write_err);
+                                                shb_hdr, idb_inf, nrb_hdr, &write_err);
 
                         if (pdh == NULL) {
                             fprintf(stderr, "editcap: Can't open or create %s: %s\n",
@@ -1404,9 +1457,9 @@ DIAG_ON(cast-qual)
                     if (verbose)
                         fprintf(stderr, "Continuing writing in file %s\n", filename);
 
-                    pdh = wtap_dump_open_ng(filename, out_file_type_subtype, out_frame_type,
+                    pdh = editcap_dump_open(filename,
                                             snaplen ? MIN(snaplen, wtap_snapshot_length(wth)) : wtap_snapshot_length(wth),
-                                            FALSE /* compressed */, shb_hdr, idb_inf, nrb_hdr, &write_err);
+                                            shb_hdr, idb_inf, nrb_hdr, &write_err);
                     if (pdh == NULL) {
                         fprintf(stderr, "editcap: Can't open or create %s: %s\n",
                                 filename, wtap_strerror(write_err));
@@ -1474,8 +1527,7 @@ DIAG_ON(cast-qual)
                                 nstime_t current;
                                 nstime_t delta;
 
-                                current.secs = phdr->ts.secs;
-                                current.nsecs = phdr->ts.nsecs;
+                                current = phdr->ts;
 
                                 nstime_delta(&delta, &current, &previous_time);
 
@@ -1519,13 +1571,10 @@ DIAG_ON(cast-qual)
                                 phdr = &temp_phdr;
                             }
                         }
-                        previous_time.secs = phdr->ts.secs;
-                        previous_time.nsecs = phdr->ts.nsecs;
+                        previous_time = phdr->ts;
                     }
 
-                    /* assume that if the frame's tv_sec is 0, then
-                     * the timestamp isn't supported */
-                    if (phdr->ts.secs > 0 && time_adj.tv.secs != 0) {
+                    if (time_adj.tv.secs != 0) {
                         temp_phdr = *phdr;
                         if (time_adj.is_negative)
                             temp_phdr.ts.secs -= time_adj.tv.secs;
@@ -1534,9 +1583,7 @@ DIAG_ON(cast-qual)
                         phdr = &temp_phdr;
                     }
 
-                    /* assume that if the frame's tv_sec is 0, then
-                     * the timestamp isn't supported */
-                    if (phdr->ts.secs > 0 && time_adj.tv.nsecs != 0) {
+                    if (time_adj.tv.nsecs != 0) {
                         temp_phdr = *phdr;
                         if (time_adj.is_negative) { /* subtract */
                             if (temp_phdr.ts.nsecs < time_adj.tv.nsecs) { /* borrow */
@@ -1556,6 +1603,12 @@ DIAG_ON(cast-qual)
                         phdr = &temp_phdr;
                     }
                 } /* time stamp adjustment */
+
+                /* remove vlan info */
+                if (rem_vlan) {
+                    /* TODO: keep casting const like this? change pointer instead of value? */
+                    remove_vlan_info(phdr, buf, (guint32 *) &phdr->caplen);
+                }
 
                 /* suppress duplicates by packet window */
                 if (dup_detect) {
@@ -1775,9 +1828,9 @@ DIAG_ON(cast-qual)
             g_free (filename);
             filename = g_strdup(argv[optind+1]);
 
-            pdh = wtap_dump_open_ng(filename, out_file_type_subtype, out_frame_type,
+            pdh = editcap_dump_open(filename,
                                     snaplen ? MIN(snaplen, wtap_snapshot_length(wth)): wtap_snapshot_length(wth),
-                                    FALSE /* compressed */, shb_hdr, idb_inf, nrb_hdr, &write_err);
+                                    shb_hdr, idb_inf, nrb_hdr, &write_err);
             if (pdh == NULL) {
                 fprintf(stderr, "editcap: Can't open or create %s: %s\n",
                         filename, wtap_strerror(write_err));
@@ -1793,9 +1846,9 @@ DIAG_ON(cast-qual)
                     wtap_strerror(write_err));
             goto error_on_exit;
         }
-        wtap_free_shb(shb_hdr);
+        wtap_optionblock_free(shb_hdr);
         shb_hdr = NULL;
-        wtap_free_nrb(nrb_hdr);
+        wtap_optionblock_free(nrb_hdr);
         nrb_hdr = NULL;
         g_free(filename);
 
@@ -1819,8 +1872,8 @@ DIAG_ON(cast-qual)
     return 0;
 
 error_on_exit:
-    wtap_free_shb(shb_hdr);
-    wtap_free_nrb(nrb_hdr);
+    wtap_optionblock_free(shb_hdr);
+    wtap_optionblock_free(nrb_hdr);
     g_free(idb_inf);
     exit(2);
 }
@@ -1961,4 +2014,3 @@ handle_chopping(chop_t chop, struct wtap_pkthdr *out_phdr,
  * vi: set shiftwidth=4 tabstop=8 expandtab:
  * :indentSize=4:tabSize=8:noTabs=true:
  */
-

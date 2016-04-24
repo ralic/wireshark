@@ -105,11 +105,67 @@ typedef enum {
   NGHTTP2_TOKEN_VARY = 58,
   NGHTTP2_TOKEN_VIA = 59,
   NGHTTP2_TOKEN_WWW_AUTHENTICATE = 60,
-  NGHTTP2_TOKEN_TE,
+  NGHTTP2_TOKEN_ACCEPT_CH,
+  NGHTTP2_TOKEN_ACCEPT_DATETIME,
+  NGHTTP2_TOKEN_ACCEPT_FEATURES,
+  NGHTTP2_TOKEN_ACCEPT_PATCH,
+  NGHTTP2_TOKEN_ACCESS_CONTROL_ALLOW_CREDENTIALS,
+  NGHTTP2_TOKEN_ACCESS_CONTROL_ALLOW_HEADERS,
+  NGHTTP2_TOKEN_ACCESS_CONTROL_ALLOW_METHODS,
+  NGHTTP2_TOKEN_ACCESS_CONTROL_EXPOSE_HEADERS,
+  NGHTTP2_TOKEN_ACCESS_CONTROL_MAX_AGE,
+  NGHTTP2_TOKEN_ACCESS_CONTROL_REQUEST_HEADERS,
+  NGHTTP2_TOKEN_ACCESS_CONTROL_REQUEST_METHOD,
+  NGHTTP2_TOKEN_ALT_SVC,
+  NGHTTP2_TOKEN_ALTERNATES,
   NGHTTP2_TOKEN_CONNECTION,
+  NGHTTP2_TOKEN_CONTENT_MD5,
+  NGHTTP2_TOKEN_CONTENT_SECURITY_POLICY,
+  NGHTTP2_TOKEN_CONTENT_SECURITY_POLICY_REPORT_ONLY,
+  NGHTTP2_TOKEN_DNT,
+  NGHTTP2_TOKEN_FORWARDED,
+  NGHTTP2_TOKEN_FRONT_END_HTTPS,
   NGHTTP2_TOKEN_KEEP_ALIVE,
+  NGHTTP2_TOKEN_LAST_EVENT_ID,
+  NGHTTP2_TOKEN_NEGOTIATE,
+  NGHTTP2_TOKEN_ORIGIN,
+  NGHTTP2_TOKEN_P3P,
+  NGHTTP2_TOKEN_PRAGMA,
   NGHTTP2_TOKEN_PROXY_CONNECTION,
-  NGHTTP2_TOKEN_UPGRADE
+  NGHTTP2_TOKEN_PUBLIC_KEY_PINS,
+  NGHTTP2_TOKEN_SEC_WEBSOCKET_EXTENSIONS,
+  NGHTTP2_TOKEN_SEC_WEBSOCKET_KEY,
+  NGHTTP2_TOKEN_SEC_WEBSOCKET_ORIGIN,
+  NGHTTP2_TOKEN_SEC_WEBSOCKET_PROTOCOL,
+  NGHTTP2_TOKEN_SEC_WEBSOCKET_VERSION,
+  NGHTTP2_TOKEN_SET_COOKIE2,
+  NGHTTP2_TOKEN_STATUS,
+  NGHTTP2_TOKEN_TCN,
+  NGHTTP2_TOKEN_TE,
+  NGHTTP2_TOKEN_TRAILER,
+  NGHTTP2_TOKEN_TSV,
+  NGHTTP2_TOKEN_UPGRADE,
+  NGHTTP2_TOKEN_UPGRADE_INSECURE_REQUESTS,
+  NGHTTP2_TOKEN_VARIANT_VARY,
+  NGHTTP2_TOKEN_WARNING,
+  NGHTTP2_TOKEN_X_API_VERSION,
+  NGHTTP2_TOKEN_X_ATT_DEVICEID,
+  NGHTTP2_TOKEN_X_CACHE,
+  NGHTTP2_TOKEN_X_CACHE_LOOKUP,
+  NGHTTP2_TOKEN_X_CONTENT_DURATION,
+  NGHTTP2_TOKEN_X_CONTENT_SECURITY_POLICY,
+  NGHTTP2_TOKEN_X_CONTENT_TYPE_OPTIONS,
+  NGHTTP2_TOKEN_X_DNSPREFETCH_CONTROL,
+  NGHTTP2_TOKEN_X_FORWARDED_FOR,
+  NGHTTP2_TOKEN_X_FORWARDED_HOST,
+  NGHTTP2_TOKEN_X_FORWARDED_PROTO,
+  NGHTTP2_TOKEN_X_FRAME_OPTIONS,
+  NGHTTP2_TOKEN_X_POWERED_BY,
+  NGHTTP2_TOKEN_X_REQUESTED_WITH,
+  NGHTTP2_TOKEN_X_UA_COMPATIBLE,
+  NGHTTP2_TOKEN_X_WAP_PROFILE,
+  NGHTTP2_TOKEN_X_WEBKIT_CSP,
+  NGHTTP2_TOKEN_X_XSS_PROTECTION,
 } nghttp2_token;
 
 typedef enum {
@@ -126,15 +182,25 @@ typedef enum {
   NGHTTP2_HD_FLAG_VALUE_GIFT = 1 << 3
 } nghttp2_hd_flags;
 
-typedef struct {
+struct nghttp2_hd_entry;
+typedef struct nghttp2_hd_entry nghttp2_hd_entry;
+
+struct nghttp2_hd_entry {
   nghttp2_nv nv;
+  /* The next entry which shares same bucket in hash table. */
+  nghttp2_hd_entry *next;
+  /* The sequence number.  We will increment it by one whenever we
+     store nghttp2_hd_entry to dynamic header table. */
+  uint32_t seq;
+  /* The hash value for header name (nv.name). */
+  uint32_t hash;
   /* nghttp2_token value for nv.name.  It could be -1 if we have no
      token for that header field name. */
   int token;
   /* Reference count */
   uint8_t ref;
   uint8_t flags;
-} nghttp2_hd_entry;
+};
 
 typedef struct {
   nghttp2_hd_entry **buffer;
@@ -183,14 +249,21 @@ typedef struct {
   size_t hd_table_bufsize;
   /* The effective header table size. */
   size_t hd_table_bufsize_max;
+  /* Next sequence number for nghttp2_hd_entry */
+  uint32_t next_seq;
   /* If inflate/deflate error occurred, this value is set to 1 and
      further invocation of inflate/deflate will fail with
      NGHTTP2_ERR_HEADER_COMP. */
   uint8_t bad;
 } nghttp2_hd_context;
 
+#define HD_MAP_SIZE 128
+
+typedef struct { nghttp2_hd_entry *table[HD_MAP_SIZE]; } nghttp2_hd_map;
+
 struct nghttp2_hd_deflater {
   nghttp2_hd_context ctx;
+  nghttp2_hd_map map;
   /* The upper limit of the header table size the deflater accepts. */
   size_t deflate_hd_table_bufsize_max;
   /* Minimum header table size notified in the next context update */
@@ -223,6 +296,8 @@ struct nghttp2_hd_inflater {
   /* The maximum header table size the inflater supports. This is the
      same value transmitted in SETTINGS_HEADER_TABLE_SIZE */
   size_t settings_hd_table_bufsize_max;
+  /* Minimum header table size set by nghttp2_hd_inflate_change_table_size */
+  size_t min_hd_table_bufsize_max;
   /* The number of next shift to decode integer */
   size_t shift;
   nghttp2_hd_opcode opcode;
@@ -358,8 +433,8 @@ int nghttp2_hd_emit_newname_block(nghttp2_bufs *bufs, nghttp2_nv *nv,
 int nghttp2_hd_emit_table_size(nghttp2_bufs *bufs, size_t table_size);
 
 /* For unittesting purpose */
-NGHTTP2_EXTERN nghttp2_hd_entry *
-nghttp2_hd_table_get(nghttp2_hd_context *context, size_t index);
+nghttp2_hd_entry *nghttp2_hd_table_get(nghttp2_hd_context *context,
+                                       size_t index);
 
 /* For unittesting purpose */
 ssize_t nghttp2_hd_decode_length(uint32_t *res, size_t *shift_ptr, int *final,

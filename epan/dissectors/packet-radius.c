@@ -83,14 +83,41 @@ typedef struct _e_radiushdr {
 } e_radiushdr;
 
 typedef struct {
-	wmem_array_t* hf;
-	wmem_array_t* ett;
-	wmem_array_t* vend_vs;
+	wmem_array_t *hf;
+	wmem_array_t *ett;
+	wmem_array_t *vend_vs;
 } hfett_t;
 
 #define AUTHENTICATOR_LENGTH	16
 #define RD_HDR_LENGTH		4
 #define HDR_LENGTH		(RD_HDR_LENGTH + AUTHENTICATOR_LENGTH)
+
+/* Item of request list */
+typedef struct _radius_call_t
+{
+	guint code;
+	guint ident;
+	guint8 req_authenticator[AUTHENTICATOR_LENGTH];
+
+	guint32 req_num; /* frame number request seen */
+	guint32 rsp_num; /* frame number response seen */
+	guint32 rspcode;
+	nstime_t req_time;
+	gboolean responded;
+} radius_call_t;
+
+/* Container for tapping relevant data */
+typedef struct _radius_info_t
+{
+	guint code;
+	guint ident;
+	nstime_t req_time;
+	gboolean is_duplicate;
+	gboolean request_available;
+	guint32 req_num; /* frame number request seen */
+	guint32 rspcode;
+} radius_info_t;
+
 
 /*
  * Default RADIUS ports:
@@ -103,7 +130,7 @@ typedef struct {
 */
 #define DEFAULT_RADIUS_PORT_RANGE "1645,1646,1700,1812,1813,3799"
 
-static radius_dictionary_t* dict = NULL;
+static radius_dictionary_t *dict = NULL;
 
 static int proto_radius = -1;
 
@@ -121,8 +148,8 @@ static int hf_radius_id = -1;
 static int hf_radius_code = -1;
 static int hf_radius_length = -1;
 static int hf_radius_authenticator = -1;
-static int hf_radius_authenticator_valid = -1 ;
-static int hf_radius_authenticator_invalid = -1 ;
+static int hf_radius_authenticator_valid = -1;
+static int hf_radius_authenticator_invalid = -1;
 
 static int hf_radius_chap_password = -1;
 static int hf_radius_chap_ident = -1;
@@ -136,14 +163,45 @@ static int hf_radius_cosine_vpi = -1;
 static int hf_radius_cosine_vci = -1;
 
 static int hf_radius_ascend_data_filter = -1;
+static int hf_radius_ascend_data_filter_type = -1;
+static int hf_radius_ascend_data_filter_filteror = -1;
+static int hf_radius_ascend_data_filter_inout = -1;
+static int hf_radius_ascend_data_filter_spare = -1;
+static int hf_radius_ascend_data_filter_src_ipv4 = -1;
+static int hf_radius_ascend_data_filter_dst_ipv4 = -1;
+static int hf_radius_ascend_data_filter_src_ipv6 = -1;
+static int hf_radius_ascend_data_filter_dst_ipv6 = -1;
+static int hf_radius_ascend_data_filter_src_ip_prefix = -1;
+static int hf_radius_ascend_data_filter_dst_ip_prefix = -1;
+static int hf_radius_ascend_data_filter_protocol = -1;
+static int hf_radius_ascend_data_filter_established = -1;
+static int hf_radius_ascend_data_filter_src_port = -1;
+static int hf_radius_ascend_data_filter_dst_port = -1;
+static int hf_radius_ascend_data_filter_src_port_qualifier = -1;
+static int hf_radius_ascend_data_filter_dst_port_qualifier = -1;
+static int hf_radius_ascend_data_filter_reserved = -1;
+
 static int hf_radius_vsa_fragment = -1;
 static int hf_radius_eap_fragment = -1;
 static int hf_radius_avp = -1;
+static int hf_radius_avp_length = -1;
+static int hf_radius_avp_type = -1;
 static int hf_radius_3gpp_ms_tmime_zone = -1;
+
+static int hf_radius_egress_vlanid_tag = -1;
+static int hf_radius_egress_vlanid_pad = -1;
+static int hf_radius_egress_vlanid = -1;
+
+static int hf_radius_egress_vlan_name_tag = -1;
+static int hf_radius_egress_vlan_name = -1;
+
 
 static gint ett_radius = -1;
 static gint ett_radius_avp = -1;
-static gint ett_radius_authenticator = -1 ;
+
+static gint ett_radius_authenticator = -1;
+static gint ett_radius_ascend = -1;
+
 static gint ett_eap = -1;
 static gint ett_chap = -1;
 
@@ -154,18 +212,17 @@ static expert_field ei_radius_invalid_length = EI_INIT;
  */
 static int radius_tap = -1;
 
-static radius_vendor_info_t no_vendor = {"Unknown Vendor",0,NULL,-1,1,1,FALSE};
+static radius_vendor_info_t no_vendor = {"Unknown Vendor", 0, NULL, -1, 1, 1, FALSE};
 
-static radius_attr_info_t no_dictionary_entry = {"Unknown-Attribute",0,FALSE,FALSE,radius_octets, NULL, NULL, -1, -1, -1, -1, -1, NULL };
+static radius_attr_info_t no_dictionary_entry = {"Unknown-Attribute", 0, FALSE, FALSE, radius_octets, NULL, NULL, -1, -1, -1, -1, -1, NULL };
 
 static dissector_handle_t eap_handle;
 
-static const gchar* shared_secret = "";
+static const gchar *shared_secret = "";
 static gboolean validate_authenticator = FALSE;
 static gboolean show_length = FALSE;
 static guint alt_port_pref = 0;
 static range_t *global_ports_range;
-static guint request_ttl = 5;
 
 static guint8 authenticator[AUTHENTICATOR_LENGTH];
 
@@ -216,8 +273,8 @@ static const value_string radius_pkt_type_codes[] =
 	{RADIUS_PKT_TYPE_ALU_STATE_REJECT,			"ALU-State-Reject"},			/* 131 ALU AAA */
 	{RADIUS_PKT_TYPE_ALU_STATE_ERROR,			"ALU-State-Error"},				/* 132 ALU AAA */
 /*
-250-253  Experimental Use             [RFC3575]
-254-255  Reserved                     [RFC3575]
+250-253  Experimental Use	[RFC3575]
+254-255  Reserved		[RFC3575]
 */
 	{0, NULL}
 };
@@ -239,26 +296,26 @@ typedef enum _radius_category {
 } radius_category;
 
 static const value_string radius_message_code[] = {
-	{  RADIUS_CAT_OVERALL,        "Overall"},
-	{  RADIUS_CAT_ACCESS,         "Access"},
-	{  RADIUS_CAT_ACCOUNTING,     "Accounting"},
-	{  RADIUS_CAT_PASSWORD,       "Password"},
-	{  RADIUS_CAT_RESOURCE_FREE,  "Resource Free"},
-	{  RADIUS_CAT_RESOURCE_QUERY, "Resource Query"},
-	{  RADIUS_CAT_NAS_REBOOT,     "NAS Reboot"},
-	{  RADIUS_CAT_EVENT,          "Event"},
-	{  RADIUS_CAT_DISCONNECT,     "Disconnect"},
-	{  RADIUS_CAT_COA,            "CoA"},
-	{  RADIUS_CAT_OTHERS,         "Other"},
+	{  RADIUS_CAT_OVERALL,		"Overall"},
+	{  RADIUS_CAT_ACCESS,		"Access"},
+	{  RADIUS_CAT_ACCOUNTING,	"Accounting"},
+	{  RADIUS_CAT_PASSWORD,		"Password"},
+	{  RADIUS_CAT_RESOURCE_FREE,	"Resource Free"},
+	{  RADIUS_CAT_RESOURCE_QUERY,	"Resource Query"},
+	{  RADIUS_CAT_NAS_REBOOT,	"NAS Reboot"},
+	{  RADIUS_CAT_EVENT,		"Event"},
+	{  RADIUS_CAT_DISCONNECT,	"Disconnect"},
+	{  RADIUS_CAT_COA,		"CoA"},
+	{  RADIUS_CAT_OTHERS,		"Other"},
 	{  0, NULL}
 };
 
 static int
 radiusstat_packet(void *prs, packet_info *pinfo, epan_dissect_t *edt _U_, const void *pri)
 {
-	rtd_data_t* rtd_data = (rtd_data_t*)prs;
-	rtd_stat_table* rs = &rtd_data->stat_table;
-	const radius_info_t *ri=(radius_info_t *)pri;
+	rtd_data_t *rtd_data = (rtd_data_t *)prs;
+	rtd_stat_table *rs = &rtd_data->stat_table;
+	const radius_info_t *ri = (const radius_info_t *)pri;
 	nstime_t delta;
 	radius_category radius_cat = RADIUS_CAT_OTHERS;
 	int ret = 0;
@@ -314,12 +371,11 @@ radiusstat_packet(void *prs, packet_info *pinfo, epan_dissect_t *edt _U_, const 
 	case RADIUS_PKT_TYPE_EVENT_REQUEST:
 	case RADIUS_PKT_TYPE_DISCONNECT_REQUEST:
 	case RADIUS_PKT_TYPE_COA_REQUEST:
-		if(ri->is_duplicate){
+		if (ri->is_duplicate) {
 			/* Duplicate is ignored */
 			rs->time_stats[RADIUS_CAT_OVERALL].req_dup_num++;
 			rs->time_stats[radius_cat].req_dup_num++;
-		}
-		else {
+		} else {
 			rs->time_stats[RADIUS_CAT_OVERALL].open_req_num++;
 			rs->time_stats[radius_cat].open_req_num++;
 		}
@@ -335,21 +391,19 @@ radiusstat_packet(void *prs, packet_info *pinfo, epan_dissect_t *edt _U_, const 
 	case RADIUS_PKT_TYPE_DISCONNECT_NAK:
 	case RADIUS_PKT_TYPE_COA_ACK:
 	case RADIUS_PKT_TYPE_COA_NAK:
-		if(ri->is_duplicate){
+		if (ri->is_duplicate) {
 			/* Duplicate is ignored */
 			rs->time_stats[RADIUS_CAT_OVERALL].rsp_dup_num++;
 			rs->time_stats[radius_cat].rsp_dup_num++;
-		}
-		else if (!ri->request_available) {
+		} else if (!ri->request_available) {
 			/* no request was seen */
 			rs->time_stats[RADIUS_CAT_OVERALL].disc_rsp_num++;
 			rs->time_stats[radius_cat].disc_rsp_num++;
-		}
-		else {
+		} else {
 			rs->time_stats[RADIUS_CAT_OVERALL].open_req_num--;
 			rs->time_stats[radius_cat].open_req_num--;
 			/* calculate time delta between request and response */
-			nstime_delta(&delta, &pinfo->fd->abs_ts, &ri->req_time);
+			nstime_delta(&delta, &pinfo->abs_ts, &ri->req_time);
 
 			time_stat_update(&(rs->time_stats[RADIUS_CAT_OVERALL].rtd[0]),&delta, pinfo);
 			time_stat_update(&(rs->time_stats[radius_cat].rtd[0]),&delta, pinfo);
@@ -379,7 +433,7 @@ typedef struct _radius_call_info_key
 	nstime_t req_time;
 } radius_call_info_key;
 
-static GHashTable *radius_calls;
+static wmem_map_t *radius_calls;
 
 typedef struct _radius_vsa_buffer_key
 {
@@ -390,79 +444,113 @@ typedef struct _radius_vsa_buffer_key
 typedef struct _radius_vsa_buffer
 {
 	radius_vsa_buffer_key key;
-	guint8* data;
+	guint8 *data;
 	guint seg_num;
 	guint len;
 } radius_vsa_buffer;
 
-static gint radius_vsa_equal(gconstpointer k1, gconstpointer k2)
+static gint
+radius_vsa_equal(gconstpointer k1, gconstpointer k2)
 {
-	const radius_vsa_buffer_key* key1 = (const radius_vsa_buffer_key*) k1;
-	const radius_vsa_buffer_key* key2 = (const radius_vsa_buffer_key*) k2;
+	const radius_vsa_buffer_key *key1 = (const radius_vsa_buffer_key *) k1;
+	const radius_vsa_buffer_key *key2 = (const radius_vsa_buffer_key *) k2;
 
 	return (((key1->vendor_id == key2->vendor_id) &&
 		(key1->vsa_type == key2->vsa_type)
 		) ? TRUE : FALSE);
 }
 
-static guint radius_vsa_hash(gconstpointer k)
+static guint
+radius_vsa_hash(gconstpointer k)
 {
-	const radius_vsa_buffer_key* key = (const radius_vsa_buffer_key*) k;
+	const radius_vsa_buffer_key *key = (const radius_vsa_buffer_key *) k;
 
 	return key->vendor_id + key->vsa_type;
 }
 
 /* Compare 2 keys */
-static gboolean radius_call_equal(gconstpointer k1, gconstpointer k2)
+static gboolean
+radius_call_equal(gconstpointer k1, gconstpointer k2)
 {
-	const radius_call_info_key* key1 = (const radius_call_info_key*) k1;
-	const radius_call_info_key* key2 = (const radius_call_info_key*) k2;
+	const radius_call_info_key *key1 = (const radius_call_info_key *) k1;
+	const radius_call_info_key *key2 = (const radius_call_info_key *) k2;
 
 	if (key1->ident == key2->ident && key1->conversation == key2->conversation) {
-		nstime_t delta;
-
-		nstime_delta(&delta, &key1->req_time, &key2->req_time);
-		if (abs( (int) nstime_to_sec(&delta)) > (double) request_ttl) return 0;
-
 		if (key1->code == key2->code)
 			return TRUE;
+
 		/* check the request and response are of the same code type */
 		if ((key1->code == RADIUS_PKT_TYPE_ACCESS_REQUEST) &&
 		    ((key2->code == RADIUS_PKT_TYPE_ACCESS_ACCEPT) ||
 		     (key2->code == RADIUS_PKT_TYPE_ACCESS_REJECT) ||
 		     (key2->code == RADIUS_PKT_TYPE_ACCESS_CHALLENGE)))
 			return TRUE;
+		if ((key2->code == RADIUS_PKT_TYPE_ACCESS_REQUEST) &&
+		    ((key1->code == RADIUS_PKT_TYPE_ACCESS_ACCEPT) ||
+		     (key1->code == RADIUS_PKT_TYPE_ACCESS_REJECT) ||
+		     (key1->code == RADIUS_PKT_TYPE_ACCESS_CHALLENGE)))
+			return TRUE;
 
 		if ((key1->code == RADIUS_PKT_TYPE_ACCOUNTING_REQUEST) &&
 		    (key2->code == RADIUS_PKT_TYPE_ACCOUNTING_RESPONSE))
 			return TRUE;
+		if ((key2->code == RADIUS_PKT_TYPE_ACCOUNTING_REQUEST) &&
+		    (key1->code == RADIUS_PKT_TYPE_ACCOUNTING_RESPONSE))
+			return TRUE;
 
 		if ((key1->code == RADIUS_PKT_TYPE_PASSWORD_REQUEST) &&
-		    ((key2->code == RADIUS_PKT_TYPE_PASSWORD_ACK) || (key2->code == RADIUS_PKT_TYPE_PASSWORD_REJECT)))
+		    ((key2->code == RADIUS_PKT_TYPE_PASSWORD_ACK) ||
+		     (key2->code == RADIUS_PKT_TYPE_PASSWORD_REJECT)))
+			return TRUE;
+		if ((key2->code == RADIUS_PKT_TYPE_PASSWORD_REQUEST) &&
+		    ((key1->code == RADIUS_PKT_TYPE_PASSWORD_ACK) ||
+		     (key1->code == RADIUS_PKT_TYPE_PASSWORD_REJECT)))
 			return TRUE;
 
 		if ((key1->code == RADIUS_PKT_TYPE_RESOURCE_FREE_REQUEST) &&
 		    (key2->code == RADIUS_PKT_TYPE_RESOURCE_FREE_RESPONSE))
 			return TRUE;
+		if ((key2->code == RADIUS_PKT_TYPE_RESOURCE_FREE_REQUEST) &&
+		    (key1->code == RADIUS_PKT_TYPE_RESOURCE_FREE_RESPONSE))
+			return TRUE;
 
 		if ((key1->code == RADIUS_PKT_TYPE_RESOURCE_QUERY_REQUEST) &&
 		    (key2->code == RADIUS_PKT_TYPE_RESOURCE_QUERY_RESPONSE))
+			return TRUE;
+		if ((key2->code == RADIUS_PKT_TYPE_RESOURCE_QUERY_REQUEST) &&
+		    (key1->code == RADIUS_PKT_TYPE_RESOURCE_QUERY_RESPONSE))
 			return TRUE;
 
 		if ((key1->code == RADIUS_PKT_TYPE_NAS_REBOOT_REQUEST) &&
 		    (key2->code == RADIUS_PKT_TYPE_NAS_REBOOT_RESPONSE))
 			return TRUE;
+		if ((key2->code == RADIUS_PKT_TYPE_NAS_REBOOT_REQUEST) &&
+		    (key1->code == RADIUS_PKT_TYPE_NAS_REBOOT_RESPONSE))
+			return TRUE;
 
 		if ((key1->code == RADIUS_PKT_TYPE_EVENT_REQUEST) &&
 		    (key2->code == RADIUS_PKT_TYPE_EVENT_RESPONSE))
 			return TRUE;
+		if ((key2->code == RADIUS_PKT_TYPE_EVENT_REQUEST) &&
+		    (key1->code == RADIUS_PKT_TYPE_EVENT_RESPONSE))
+			return TRUE;
 
 		if ((key1->code == RADIUS_PKT_TYPE_DISCONNECT_REQUEST) &&
-		    ((key2->code == RADIUS_PKT_TYPE_DISCONNECT_ACK) || (key2->code == RADIUS_PKT_TYPE_DISCONNECT_NAK)))
+		    ((key2->code == RADIUS_PKT_TYPE_DISCONNECT_ACK) ||
+		     (key2->code == RADIUS_PKT_TYPE_DISCONNECT_NAK)))
+			return TRUE;
+		if ((key2->code == RADIUS_PKT_TYPE_DISCONNECT_REQUEST) &&
+		    ((key1->code == RADIUS_PKT_TYPE_DISCONNECT_ACK) ||
+		     (key1->code == RADIUS_PKT_TYPE_DISCONNECT_NAK)))
 			return TRUE;
 
 		if ((key1->code == RADIUS_PKT_TYPE_COA_REQUEST) &&
-		    ((key2->code == RADIUS_PKT_TYPE_COA_ACK) || (key2->code == RADIUS_PKT_TYPE_COA_NAK)))
+		    ((key2->code == RADIUS_PKT_TYPE_COA_ACK) ||
+		     (key2->code == RADIUS_PKT_TYPE_COA_NAK)))
+			return TRUE;
+		if ((key2->code == RADIUS_PKT_TYPE_COA_REQUEST) &&
+		    ((key1->code == RADIUS_PKT_TYPE_COA_ACK) ||
+		     (key1->code == RADIUS_PKT_TYPE_COA_NAK)))
 			return TRUE;
 
 		if ((key1->code == RADIUS_PKT_TYPE_ALU_STATE_REQUEST) &&
@@ -470,20 +558,28 @@ static gboolean radius_call_equal(gconstpointer k1, gconstpointer k2)
 		     (key2->code == RADIUS_PKT_TYPE_ALU_STATE_REJECT) ||
 		     (key2->code == RADIUS_PKT_TYPE_ALU_STATE_ERROR)))
 			return TRUE;
+		if ((key2->code == RADIUS_PKT_TYPE_ALU_STATE_REQUEST) &&
+		    ((key1->code == RADIUS_PKT_TYPE_ALU_STATE_ACCEPT) ||
+		     (key1->code == RADIUS_PKT_TYPE_ALU_STATE_REJECT) ||
+		     (key1->code == RADIUS_PKT_TYPE_ALU_STATE_ERROR)))
+			return TRUE;
 	}
 	return FALSE;
 }
 
 /* Calculate a hash key */
-static guint radius_call_hash(gconstpointer k)
+static guint
+radius_call_hash(gconstpointer k)
 {
-	const radius_call_info_key* key = (const radius_call_info_key*) k;
+	const radius_call_info_key *key = (const radius_call_info_key *) k;
 
-	return key->ident + /*key->code + */ key->conversation->index;
+	return key->ident + key->conversation->index;
 }
 
 
-static const gchar *dissect_chap_password(proto_tree* tree, tvbuff_t* tvb, packet_info* pinfo _U_) {
+static const gchar *
+dissect_chap_password(proto_tree *tree, tvbuff_t *tvb, packet_info *pinfo _U_)
+{
 	int len;
 	proto_item *ti;
 	proto_tree *chap_tree;
@@ -499,7 +595,9 @@ static const gchar *dissect_chap_password(proto_tree* tree, tvbuff_t* tvb, packe
 	return (tvb_bytes_to_str(wmem_packet_scope(), tvb, 0, len));
 }
 
-static const gchar *dissect_framed_ip_address(proto_tree* tree, tvbuff_t* tvb, packet_info* pinfo _U_) {
+static const gchar *
+dissect_framed_ip_address(proto_tree *tree, tvbuff_t *tvb, packet_info *pinfo _U_)
+{
 	int len;
 	guint32 ip;
 	guint32 ip_h;
@@ -509,8 +607,8 @@ static const gchar *dissect_framed_ip_address(proto_tree* tree, tvbuff_t* tvb, p
 	if (len != 4)
 		return "[wrong length for IP address]";
 
-	ip=tvb_get_ipv4(tvb,0);
-	ip_h=g_ntohl(ip);
+	ip = tvb_get_ipv4(tvb, 0);
+	ip_h = g_ntohl(ip);
 
 	if (ip_h == 0xFFFFFFFF) {
 		str = "Negotiated";
@@ -529,7 +627,9 @@ static const gchar *dissect_framed_ip_address(proto_tree* tree, tvbuff_t* tvb, p
 	return str;
 }
 
-static const gchar *dissect_login_ip_host(proto_tree* tree, tvbuff_t* tvb, packet_info* pinfo _U_) {
+static const gchar *
+dissect_login_ip_host(proto_tree *tree, tvbuff_t *tvb, packet_info *pinfo _U_)
+{
 	int len;
 	guint32 ip;
 	guint32 ip_h;
@@ -539,8 +639,8 @@ static const gchar *dissect_login_ip_host(proto_tree* tree, tvbuff_t* tvb, packe
 	if (len != 4)
 		return "[wrong length for IP address]";
 
-	ip=tvb_get_ipv4(tvb,0);
-	ip_h=g_ntohl(ip);
+	ip = tvb_get_ipv4(tvb, 0);
+	ip_h = g_ntohl(ip);
 
 	if (ip_h == 0xFFFFFFFF) {
 		str = "User-selected";
@@ -559,60 +659,125 @@ static const gchar *dissect_login_ip_host(proto_tree* tree, tvbuff_t* tvb, packe
 	return str;
 }
 
-static const value_string ascenddf_filtertype[] = { {0, "generic"}, {1, "ip"}, {0, NULL} };
+static const value_string ascenddf_filtertype[] = { {0, "generic"}, {1, "ipv4"}, {3, "ipv6"}, {0, NULL} };
 static const value_string ascenddf_filteror[]   = { {0, "drop"}, {1, "forward"}, {0, NULL} };
 static const value_string ascenddf_inout[]      = { {0, "out"}, {1, "in"}, {0, NULL} };
 static const value_string ascenddf_proto[]      = { {1, "icmp"}, {6, "tcp"}, {17, "udp"}, {0, NULL} };
 static const value_string ascenddf_portq[]      = { {1, "lt"}, {2, "eq"}, {3, "gt"}, {4, "ne"}, {0, NULL} };
 
-static const gchar *dissect_ascend_data_filter(proto_tree* tree, tvbuff_t* tvb, packet_info* pinfo _U_) {
+static const gchar *
+dissect_ascend_data_filter(proto_tree *tree, tvbuff_t *tvb, packet_info *pinfo _U_)
+{
 	wmem_strbuf_t *filterstr;
+	proto_item *ti;
+	proto_tree *ascend_tree;
 	int len;
-	guint8 proto, srclen, dstlen;
-	guint32 srcip, dstip;
+	guint8 type, proto, srclen, dstlen;
+	address srcip, dstip;
 	guint16 srcport, dstport;
 	guint8 srcportq, dstportq;
-
+	guint8 iplen = 4;
+	guint offset = 0;
 	len=tvb_reported_length(tvb);
 
-	if (len != 24) {
+	if (len != 24 && len != 48) {
 		return wmem_strdup_printf(wmem_packet_scope(), "Wrong attribute length %d", len);
 	}
 
-	filterstr=wmem_strbuf_sized_new(wmem_packet_scope(), 64, 64);
+	filterstr = wmem_strbuf_sized_new(wmem_packet_scope(), 128, 128);
 
-	proto_tree_add_item(tree, hf_radius_ascend_data_filter, tvb, 0, -1, ENC_NA);
+	ti = proto_tree_add_item(tree, hf_radius_ascend_data_filter, tvb, 0, -1, ENC_NA);
+	ascend_tree = proto_item_add_subtree(ti, ett_radius_ascend);
+
+	proto_tree_add_item(ascend_tree, hf_radius_ascend_data_filter_type, tvb, offset, 1, ENC_BIG_ENDIAN);
+	type = tvb_get_guint8(tvb, 0);
+	offset += 1;
+	if (type == 3) { /* IPv6 */
+		iplen = 16;
+	}
+
+	proto_tree_add_item(ascend_tree, hf_radius_ascend_data_filter_filteror, tvb, offset, 1, ENC_BIG_ENDIAN);
+	offset += 1;
+	proto_tree_add_item(ascend_tree, hf_radius_ascend_data_filter_inout, tvb, offset, 1, ENC_BIG_ENDIAN);
+	offset += 1;
+	proto_tree_add_item(ascend_tree, hf_radius_ascend_data_filter_spare, tvb, offset, 1, ENC_BIG_ENDIAN);
+	offset += 1;
+
+	if (type == 3) { /* IPv6 */
+		proto_tree_add_item(ascend_tree, hf_radius_ascend_data_filter_src_ipv6, tvb, offset, 16, ENC_NA);
+		offset += 16;
+		proto_tree_add_item(ascend_tree, hf_radius_ascend_data_filter_dst_ipv6, tvb, offset, 16, ENC_NA);
+		offset += 16;
+	} else { /* IPv4 */
+		proto_tree_add_item(ascend_tree, hf_radius_ascend_data_filter_src_ipv4, tvb, offset, 4, ENC_BIG_ENDIAN);
+		offset += 4;
+		proto_tree_add_item(ascend_tree, hf_radius_ascend_data_filter_dst_ipv4, tvb, offset, 4, ENC_BIG_ENDIAN);
+		offset += 4;
+	}
+	proto_tree_add_item(ascend_tree, hf_radius_ascend_data_filter_src_ip_prefix, tvb, offset, 1, ENC_BIG_ENDIAN);
+	offset += 1;
+	proto_tree_add_item(ascend_tree, hf_radius_ascend_data_filter_dst_ip_prefix, tvb, offset, 1, ENC_BIG_ENDIAN);
+	offset += 1;
+
+	proto_tree_add_item(ascend_tree, hf_radius_ascend_data_filter_protocol, tvb, offset, 1, ENC_BIG_ENDIAN);
+	offset += 1;
+
+	proto_tree_add_item(ascend_tree, hf_radius_ascend_data_filter_established, tvb, offset, 1, ENC_BIG_ENDIAN);
+	offset += 1;
+
+	proto_tree_add_item(ascend_tree, hf_radius_ascend_data_filter_src_port, tvb, offset, 2, ENC_BIG_ENDIAN);
+	offset += 2;
+
+	proto_tree_add_item(ascend_tree, hf_radius_ascend_data_filter_dst_port, tvb, offset, 2, ENC_BIG_ENDIAN);
+	offset += 2;
+
+	proto_tree_add_item(ascend_tree, hf_radius_ascend_data_filter_src_port_qualifier, tvb, offset, 1, ENC_BIG_ENDIAN);
+	offset += 1;
+
+	proto_tree_add_item(ascend_tree, hf_radius_ascend_data_filter_dst_port_qualifier, tvb, offset, 1, ENC_BIG_ENDIAN);
+	offset += 1;
+
+	proto_tree_add_item(ascend_tree, hf_radius_ascend_data_filter_reserved, tvb, offset, 2, ENC_BIG_ENDIAN);
 
 	wmem_strbuf_append_printf(filterstr, "%s %s %s",
-		val_to_str(tvb_get_guint8(tvb, 0), ascenddf_filtertype, "%u"),
+		val_to_str(type, ascenddf_filtertype, "%u"),
 		val_to_str(tvb_get_guint8(tvb, 2), ascenddf_inout, "%u"),
 		val_to_str(tvb_get_guint8(tvb, 1), ascenddf_filteror, "%u"));
 
-	proto=tvb_get_guint8(tvb, 14);
+
+	proto = tvb_get_guint8(tvb, 6+iplen*2);
 	if (proto) {
 		wmem_strbuf_append_printf(filterstr, " %s",
 				val_to_str(proto, ascenddf_proto, "%u"));
 	}
 
-	srcip=tvb_get_ipv4(tvb, 4);
-	srclen=tvb_get_guint8(tvb, 12);
-	srcport=tvb_get_ntohs(tvb, 16);
-	srcportq=tvb_get_guint8(tvb, 20);
+	if (type == 3) { /* IPv6 */
+		set_address_tvb(&srcip, AT_IPv6, 16, tvb, 4);
+	} else {
+		set_address_tvb(&srcip, AT_IPv4, 4, tvb, 4);
+	}
+	srclen = tvb_get_guint8(tvb, 4+iplen*2);
+	srcport = tvb_get_ntohs(tvb, 9+iplen*2);
+	srcportq = tvb_get_guint8(tvb, 12+iplen*2);
 
-	if (srcip || srclen || srcportq) {
-		wmem_strbuf_append_printf(filterstr, " srcip %s/%d", tvb_ip_to_str(tvb, 4), srclen);
+	if (srclen || srcportq) {
+		wmem_strbuf_append_printf(filterstr, " srcip %s/%d", address_to_display(wmem_packet_scope(), &srcip), srclen);
 		if (srcportq)
 			wmem_strbuf_append_printf(filterstr, " srcport %s %d",
 				val_to_str(srcportq, ascenddf_portq, "%u"), srcport);
 	}
 
-	dstip=tvb_get_ipv4(tvb, 8);
-	dstlen=tvb_get_guint8(tvb, 13);
-	dstport=tvb_get_ntohs(tvb, 18);
-	dstportq=tvb_get_guint8(tvb, 21);
+	if (type == 3) { /* IPv6-*/
+		set_address_tvb(&dstip, AT_IPv6, 16, tvb, 4+iplen);
+	} else {
+		set_address_tvb(&dstip, AT_IPv4, 4, tvb, 4+iplen);
+	}
+	dstlen = tvb_get_guint8(tvb, 5+iplen*2);
+	dstport = tvb_get_ntohs(tvb, 10+iplen*2);
+	dstportq = tvb_get_guint8(tvb, 13+iplen*2);
 
-	if (dstip || dstlen || dstportq) {
-		wmem_strbuf_append_printf(filterstr, " dstip %s/%d", tvb_ip_to_str(tvb, 8), dstlen);
+	if (dstlen || dstportq) {
+		wmem_strbuf_append_printf(filterstr, " dstip %s/%d", address_to_display(wmem_packet_scope(), &dstip), dstlen);
 		if (dstportq)
 			wmem_strbuf_append_printf(filterstr, " dstport %s %d",
 				val_to_str(dstportq, ascenddf_portq, "%u"), dstport);
@@ -621,7 +786,9 @@ static const gchar *dissect_ascend_data_filter(proto_tree* tree, tvbuff_t* tvb, 
 	return wmem_strbuf_get_str(filterstr);
 }
 
-static const gchar *dissect_framed_ipx_network(proto_tree* tree, tvbuff_t* tvb, packet_info* pinfo _U_) {
+static const gchar *
+dissect_framed_ipx_network(proto_tree *tree, tvbuff_t *tvb, packet_info *pinfo _U_)
+{
 	int len;
 	guint32 net;
 	const gchar *str;
@@ -630,7 +797,7 @@ static const gchar *dissect_framed_ipx_network(proto_tree* tree, tvbuff_t* tvb, 
 	if (len != 4)
 		return "[wrong length for IPX network]";
 
-	net=tvb_get_ntohl(tvb,0);
+	net = tvb_get_ntohl(tvb, 0);
 
 	if (net == 0xFFFFFFFE)
 		str = "NAS-selected";
@@ -642,19 +809,21 @@ static const gchar *dissect_framed_ipx_network(proto_tree* tree, tvbuff_t* tvb, 
 	return str;
 }
 
-static const gchar* dissect_cosine_vpvc(proto_tree* tree, tvbuff_t* tvb, packet_info* pinfo _U_) {
+static const gchar *
+dissect_cosine_vpvc(proto_tree *tree, tvbuff_t *tvb, packet_info *pinfo _U_)
+{
 	guint vpi, vci;
 
-	if ( tvb_reported_length(tvb) != 4 )
+	if (tvb_reported_length(tvb) != 4)
 		return "[Wrong Length for VP/VC AVP]";
 
-	vpi = tvb_get_ntohs(tvb,0);
-	vci = tvb_get_ntohs(tvb,2);
+	vpi = tvb_get_ntohs(tvb, 0);
+	vci = tvb_get_ntohs(tvb, 2);
 
-	proto_tree_add_uint(tree,hf_radius_cosine_vpi,tvb,0,2,vpi);
-	proto_tree_add_uint(tree,hf_radius_cosine_vci,tvb,2,2,vci);
+	proto_tree_add_uint(tree, hf_radius_cosine_vpi, tvb, 0, 2, vpi);
+	proto_tree_add_uint(tree, hf_radius_cosine_vci, tvb, 2, 2, vci);
 
-	return wmem_strdup_printf(wmem_packet_scope(), "%u/%u",vpi,vci);
+	return wmem_strdup_printf(wmem_packet_scope(), "%u/%u", vpi, vci);
 }
 
 static const value_string daylight_saving_time_vals[] = {
@@ -665,12 +834,13 @@ static const value_string daylight_saving_time_vals[] = {
 	{0, NULL}
 };
 
-static const gchar*
-dissect_radius_3gpp_ms_tmime_zone(proto_tree* tree, tvbuff_t* tvb, packet_info* pinfo _U_) {
+static const gchar *
+dissect_radius_3gpp_ms_tmime_zone(proto_tree *tree, tvbuff_t *tvb, packet_info *pinfo _U_)
+{
 
 	int offset = 0;
-	guint8      oct, daylight_saving_time;
-	char        sign;
+	guint8 oct, daylight_saving_time;
+	char sign;
 
 	/* 3GPP TS 23.040 version 6.6.0 Release 6
 	 * 9.2.3.11 TP-Service-Centre-Time-Stamp (TP-SCTS)
@@ -695,8 +865,51 @@ dissect_radius_3gpp_ms_tmime_zone(proto_tree* tree, tvbuff_t* tvb, packet_info* 
 
 }
 
+static const value_string egress_vlan_tag_vals[] = {
+	{ 0x31, "Tagged"},
+	{ 0x32, "Untagged"},
+	{  0, NULL}
+};
+static const gchar *
+dissect_rfc4675_egress_vlanid(proto_tree *tree, tvbuff_t *tvb, packet_info *pinfo _U_)
+{
+	int len;
+	guint32 vlanid;
+
+	len = tvb_reported_length(tvb);
+	if (len != 4)
+		return "[wrong length for Egress-VLANID ]";
+
+	proto_tree_add_item(tree, hf_radius_egress_vlanid_tag, tvb, 0, 4, ENC_BIG_ENDIAN);
+	proto_tree_add_item(tree, hf_radius_egress_vlanid_pad, tvb, 0, 4, ENC_BIG_ENDIAN);
+	proto_tree_add_item(tree, hf_radius_egress_vlanid, tvb, 0, 4, ENC_BIG_ENDIAN);
+	vlanid = tvb_get_ntohl(tvb, 0);
+
+	return wmem_strdup_printf(wmem_packet_scope(), "%s, Vlan ID: %u",
+				   val_to_str_const(((vlanid&0xFF000000)>>24), egress_vlan_tag_vals, "Unknown"), vlanid&0xFFF);
+}
+
+static const gchar *
+dissect_rfc4675_egress_vlan_name(proto_tree *tree, tvbuff_t *tvb, packet_info *pinfo _U_)
+{
+	int len;
+	guint8 tag;
+
+	len = tvb_reported_length(tvb);
+	if (len < 2)
+		return "[wrong length for Egress-VLAN-Name ]";
+
+	proto_tree_add_item(tree, hf_radius_egress_vlan_name_tag, tvb, 0, 1, ENC_BIG_ENDIAN);
+	tag = tvb_get_guint8(tvb, 0);
+	len -= 1;
+	proto_tree_add_item(tree, hf_radius_egress_vlan_name, tvb, 1, len, ENC_ASCII|ENC_NA);
+
+	return wmem_strdup_printf(wmem_packet_scope(), "%s, Vlan Name: %s",
+				   val_to_str_const(tag, egress_vlan_tag_vals, "Unknown"), tvb_get_string_enc(wmem_packet_scope(), tvb, 1, len, ENC_ASCII|ENC_NA));
+}
+
 static void
-radius_decrypt_avp(gchar *dest,int dest_len,tvbuff_t *tvb,int offset,int length)
+radius_decrypt_avp(gchar *dest, int dest_len, tvbuff_t *tvb, int offset, int length)
 {
 	md5_state_t md_ctx, old_md_ctx;
 	md5_byte_t digest[AUTHENTICATOR_LENGTH];
@@ -707,7 +920,7 @@ radius_decrypt_avp(gchar *dest,int dest_len,tvbuff_t *tvb,int offset,int length)
 
 	DISSECTOR_ASSERT(dest_len > 0);
 	dest[0] = '\0';
-	if ( length <= 0 )
+	if (length <= 0)
 		return;
 
 	/* The max avp length is 253 (255 - 2 for type & length), but only the
@@ -715,11 +928,11 @@ radius_decrypt_avp(gchar *dest,int dest_len,tvbuff_t *tvb,int offset,int length)
 	 * User-Password max length is only 128 (130 - 2 for type & length) per
 	 * tools.ietf.org/html/rfc2865#section-5.2, so enforce that limit here.
 	 */
-	if ( length > 128 )
+	if (length > 128)
 		length = 128;
 
 	md5_init(&md_ctx);
-	md5_append(&md_ctx, (const guint8*)shared_secret, (int)strlen(shared_secret));
+	md5_append(&md_ctx, (const guint8 *)shared_secret, (int)strlen(shared_secret));
 	old_md_ctx = md_ctx;
 	md5_append(&md_ctx, authenticator, AUTHENTICATOR_LENGTH);
 	md5_finish(&md_ctx, digest);
@@ -729,15 +942,15 @@ radius_decrypt_avp(gchar *dest,int dest_len,tvbuff_t *tvb,int offset,int length)
 	pd = (guint8 *)wmem_alloc0(wmem_packet_scope(), padded_length);
 	tvb_memcpy(tvb, pd, offset, length);
 
-	for ( i = 0; i < padded_length; i += AUTHENTICATOR_LENGTH ) {
-		for ( j = 0; j < AUTHENTICATOR_LENGTH; j++ ) {
+	for (i = 0; i < padded_length; i += AUTHENTICATOR_LENGTH) {
+		for (j = 0; j < AUTHENTICATOR_LENGTH; j++) {
 			c = pd[i + j] ^ digest[j];
-			if ( g_ascii_isprint(c) ) {
+			if (g_ascii_isprint(c)) {
 				returned_length = g_snprintf(&dest[totlen], dest_len - totlen,
 					"%c", c);
 				totlen += MIN(returned_length, dest_len - totlen - 1);
 			}
-			else if ( c ) {
+			else if (c) {
 				returned_length = g_snprintf(&dest[totlen], dest_len - totlen,
 					"\\%03o", c);
 				totlen += MIN(returned_length, dest_len - totlen - 1);
@@ -751,25 +964,27 @@ radius_decrypt_avp(gchar *dest,int dest_len,tvbuff_t *tvb,int offset,int length)
 }
 
 
-void radius_integer(radius_attr_info_t* a, proto_tree* tree, packet_info *pinfo _U_, tvbuff_t* tvb, int offset, int len, proto_item* avp_item) {
+void
+radius_integer(radius_attr_info_t *a, proto_tree *tree, packet_info *pinfo _U_, tvbuff_t *tvb, int offset, int len, proto_item *avp_item)
+{
 	guint32 uintv;
 
 	switch (len) {
 		case 1:
-			uintv = tvb_get_guint8(tvb,offset);
+			uintv = tvb_get_guint8(tvb, offset);
 			break;
 		case 2:
-			uintv = tvb_get_ntohs(tvb,offset);
+			uintv = tvb_get_ntohs(tvb, offset);
 			break;
 		case 3:
-			uintv = tvb_get_ntoh24(tvb,offset);
+			uintv = tvb_get_ntoh24(tvb, offset);
 			break;
 		case 4:
-			uintv = tvb_get_ntohl(tvb,offset);
+			uintv = tvb_get_ntohl(tvb, offset);
 			break;
 		case 8: {
-			guint64 uintv64 = tvb_get_ntoh64(tvb,offset);
-			proto_tree_add_uint64(tree,a->hf_alt,tvb,offset,len,uintv64);
+			guint64 uintv64 = tvb_get_ntoh64(tvb, offset);
+			proto_tree_add_uint64(tree, a->hf_alt, tvb, offset, len, uintv64);
 			proto_item_append_text(avp_item, "%" G_GINT64_MODIFIER "u", uintv64);
 			return;
 		}
@@ -777,34 +992,36 @@ void radius_integer(radius_attr_info_t* a, proto_tree* tree, packet_info *pinfo 
 			proto_item_append_text(avp_item, "[unhandled integer length(%u)]", len);
 			return;
 	}
-	proto_tree_add_item(tree,a->hf,tvb, offset, len, ENC_BIG_ENDIAN);
+	proto_tree_add_item(tree, a->hf, tvb, offset, len, ENC_BIG_ENDIAN);
 
 	if (a->vs) {
-		proto_item_append_text(avp_item, "%s(%u)", val_to_str_const(uintv, a->vs, "Unknown"),uintv);
+		proto_item_append_text(avp_item, "%s(%u)", val_to_str_const(uintv, a->vs, "Unknown"), uintv);
 	} else {
 		proto_item_append_text(avp_item, "%u", uintv);
 	}
 }
 
-void radius_signed(radius_attr_info_t* a, proto_tree* tree, packet_info *pinfo _U_, tvbuff_t* tvb, int offset, int len, proto_item* avp_item) {
+void
+radius_signed(radius_attr_info_t *a, proto_tree *tree, packet_info *pinfo _U_, tvbuff_t *tvb, int offset, int len, proto_item *avp_item)
+{
 	guint32 uintv;
 
 	switch (len) {
 		case 1:
-			uintv = tvb_get_guint8(tvb,offset);
+			uintv = tvb_get_guint8(tvb, offset);
 			break;
 		case 2:
-			uintv = tvb_get_ntohs(tvb,offset);
+			uintv = tvb_get_ntohs(tvb, offset);
 			break;
 		case 3:
-			uintv = tvb_get_ntoh24(tvb,offset);
+			uintv = tvb_get_ntoh24(tvb, offset);
 			break;
 		case 4:
-			uintv = tvb_get_ntohl(tvb,offset);
+			uintv = tvb_get_ntohl(tvb, offset);
 			break;
 		case 8: {
-			guint64 uintv64 = tvb_get_ntoh64(tvb,offset);
-			proto_tree_add_int64(tree,a->hf_alt,tvb,offset,len,uintv64);
+			guint64 uintv64 = tvb_get_ntoh64(tvb, offset);
+			proto_tree_add_int64(tree, a->hf_alt, tvb, offset, len, uintv64);
 			proto_item_append_text(avp_item, "%" G_GINT64_MODIFIER "u", uintv64);
 			return;
 		}
@@ -813,16 +1030,18 @@ void radius_signed(radius_attr_info_t* a, proto_tree* tree, packet_info *pinfo _
 			return;
 	}
 
-	proto_tree_add_int(tree,a->hf,tvb,offset,len,uintv);
+	proto_tree_add_int(tree, a->hf, tvb, offset, len, uintv);
 
 	if (a->vs) {
-		proto_item_append_text(avp_item, "%s(%d)", val_to_str_const(uintv, a->vs, "Unknown"),uintv);
+		proto_item_append_text(avp_item, "%s(%d)", val_to_str_const(uintv, a->vs, "Unknown"), uintv);
 	} else {
 		proto_item_append_text(avp_item, "%d", uintv);
 	}
 }
 
-void radius_string(radius_attr_info_t* a, proto_tree* tree, packet_info *pinfo _U_, tvbuff_t* tvb, int offset, int len, proto_item* avp_item) {
+void
+radius_string(radius_attr_info_t *a, proto_tree *tree, packet_info *pinfo _U_, tvbuff_t *tvb, int offset, int len, proto_item *avp_item)
+{
 	switch (a->encrypt) {
 
 	case 0: /* not encrypted */
@@ -836,8 +1055,8 @@ void radius_string(radius_attr_info_t* a, proto_tree* tree, packet_info *pinfo _
 			proto_tree_add_item(tree, a->hf_alt, tvb, offset, len, ENC_NA);
 		} else {
 			gchar *buffer;
-			buffer=(gchar *)wmem_alloc(wmem_packet_scope(), 1024); /* an AVP value can be at most 253 bytes */
-			radius_decrypt_avp(buffer,1024,tvb,offset,len);
+			buffer = (gchar *)wmem_alloc(wmem_packet_scope(), 1024); /* an AVP value can be at most 253 bytes */
+			radius_decrypt_avp(buffer, 1024, tvb, offset, len);
 			proto_item_append_text(avp_item, "Decrypted: %s", buffer);
 			proto_tree_add_string(tree, a->hf, tvb, offset, len, buffer);
 		}
@@ -855,31 +1074,30 @@ void radius_string(radius_attr_info_t* a, proto_tree* tree, packet_info *pinfo _
 	}
 }
 
-void radius_octets(radius_attr_info_t* a, proto_tree* tree, packet_info *pinfo _U_, tvbuff_t* tvb, int offset, int len, proto_item* avp_item) {
+void
+radius_octets(radius_attr_info_t *a, proto_tree *tree, packet_info *pinfo _U_, tvbuff_t *tvb, int offset, int len, proto_item *avp_item)
+{
 	proto_tree_add_item(tree, a->hf, tvb, offset, len, ENC_NA);
 	proto_item_append_text(avp_item, "%s", tvb_bytes_to_str(wmem_packet_scope(), tvb, offset, len));
 }
 
-void radius_ipaddr(radius_attr_info_t* a, proto_tree* tree, packet_info *pinfo _U_, tvbuff_t* tvb, int offset, int len, proto_item* avp_item) {
-	guint32 ip;
-	gchar buf[MAX_IP_STR_LEN];
+void
+radius_ipaddr(radius_attr_info_t *a, proto_tree *tree, packet_info *pinfo _U_, tvbuff_t *tvb, int offset, int len, proto_item *avp_item)
+{
 
 	if (len != 4) {
 		proto_item_append_text(avp_item, "[wrong length for IP address]");
 		return;
 	}
 
-	ip=tvb_get_ipv4(tvb,offset);
-
 	proto_tree_add_item(tree, a->hf, tvb, offset, len, ENC_BIG_ENDIAN);
 
-	ip_to_str_buf((guint8 *)&ip, buf, MAX_IP_STR_LEN);
-	proto_item_append_text(avp_item, "%s", buf);
+	proto_item_append_text(avp_item, "%s", tvb_ip_to_str(tvb, offset));
 }
 
-void radius_ipv6addr(radius_attr_info_t* a, proto_tree* tree, packet_info *pinfo _U_, tvbuff_t* tvb, int offset, int len, proto_item* avp_item) {
-	struct e_in6_addr ipv6_buff;
-	gchar txtbuf[256];
+void
+radius_ipv6addr(radius_attr_info_t *a, proto_tree *tree, packet_info *pinfo _U_, tvbuff_t *tvb, int offset, int len, proto_item *avp_item)
+{
 
 	if (len != 16) {
 		proto_item_append_text(avp_item, "[wrong length for IPv6 address]");
@@ -888,17 +1106,17 @@ void radius_ipv6addr(radius_attr_info_t* a, proto_tree* tree, packet_info *pinfo
 
 	proto_tree_add_item(tree, a->hf, tvb, offset, len, ENC_NA);
 
-	tvb_get_ipv6(tvb, offset, &ipv6_buff);
-	ip6_to_str_buf(&ipv6_buff, txtbuf);
-	proto_item_append_text(avp_item, "%s", txtbuf);
+	proto_item_append_text(avp_item, "%s", tvb_ip6_to_str(tvb, offset));
 }
 
-void radius_ipv6prefix(radius_attr_info_t* a, proto_tree* tree, packet_info *pinfo _U_, tvbuff_t* tvb, int offset, int len, proto_item* avp_item) {
+void
+radius_ipv6prefix(radius_attr_info_t *a, proto_tree *tree, packet_info *pinfo _U_, tvbuff_t *tvb, int offset, int len, proto_item *avp_item)
+{
 	struct e_in6_addr ipv6_buff;
 	gchar txtbuf[256];
 	guint8 n;
 
-	if ((len < 2) || (len > 18) ) {
+	if ((len < 2) || (len > 18)) {
 		proto_item_append_text(avp_item, "[wrong length for IPv6 prefix]");
 		return;
 	}
@@ -926,31 +1144,25 @@ void radius_ipv6prefix(radius_attr_info_t* a, proto_tree* tree, packet_info *pin
 }
 
 
-void radius_combo_ip(radius_attr_info_t* a, proto_tree* tree, packet_info *pinfo _U_, tvbuff_t* tvb, int offset, int len, proto_item* avp_item) {
-	guint32 ip;
-	struct e_in6_addr ipv6_buff;
-	gchar buf[256];
+void
+radius_combo_ip(radius_attr_info_t *a, proto_tree *tree, packet_info *pinfo _U_, tvbuff_t *tvb, int offset, int len, proto_item *avp_item)
+{
 
-	if (len == 4){
-		ip=tvb_get_ipv4(tvb,offset);
-
+	if (len == 4) {
 		proto_tree_add_item(tree, a->hf, tvb, offset, len, ENC_BIG_ENDIAN);
-
-		ip_to_str_buf((guint8 *)&ip, buf, MAX_IP_STR_LEN);
-		proto_item_append_text(avp_item, "%s", buf);
+		proto_item_append_text(avp_item, "%s", tvb_ip_to_str(tvb, offset));
 	} else if (len == 16) {
 		proto_tree_add_item(tree, a->hf_alt, tvb, offset, len, ENC_NA);
-
-		tvb_get_ipv6(tvb, offset, &ipv6_buff);
-		ip6_to_str_buf(&ipv6_buff, buf);
-		proto_item_append_text(avp_item, "%s", buf);
+		proto_item_append_text(avp_item, "%s", tvb_ip6_to_str(tvb, offset));
 	} else {
 		proto_item_append_text(avp_item, "[wrong length for both of IPv4 and IPv6 address]");
 		return;
 	}
 }
 
-void radius_ipxnet(radius_attr_info_t* a, proto_tree* tree, packet_info *pinfo _U_, tvbuff_t* tvb, int offset, int len, proto_item* avp_item) {
+void
+radius_ipxnet(radius_attr_info_t *a, proto_tree *tree, packet_info *pinfo _U_, tvbuff_t *tvb, int offset, int len, proto_item *avp_item)
+{
 	guint32 net;
 
 	if (len != 4) {
@@ -958,21 +1170,24 @@ void radius_ipxnet(radius_attr_info_t* a, proto_tree* tree, packet_info *pinfo _
 		return;
 	}
 
-	net=tvb_get_ntohl(tvb,offset);
+	net = tvb_get_ntohl(tvb, offset);
 
 	proto_tree_add_item(tree, a->hf, tvb, offset, len, ENC_NA);
 
 	proto_item_append_text(avp_item, "0x%08X", net);
 }
 
-void radius_date(radius_attr_info_t* a, proto_tree* tree, packet_info *pinfo _U_, tvbuff_t* tvb, int offset, int len, proto_item* avp_item) {
+void
+radius_date(radius_attr_info_t *a, proto_tree *tree, packet_info *pinfo _U_, tvbuff_t *tvb, int offset, int len, proto_item *avp_item)
+{
 	nstime_t time_ptr;
 
 	if (len != 4) {
 		proto_item_append_text(avp_item, "[wrong length for timestamp]");
 		return;
 	}
-	time_ptr.secs = tvb_get_ntohl(tvb,offset);
+
+	time_ptr.secs = tvb_get_ntohl(tvb, offset);
 	time_ptr.nsecs = 0;
 
 	proto_tree_add_time(tree, a->hf, tvb, offset, len, &time_ptr);
@@ -982,12 +1197,16 @@ void radius_date(radius_attr_info_t* a, proto_tree* tree, packet_info *pinfo _U_
 /*
  * "abinary" is Ascend's binary format for filters.  See dissect_ascend_data_filter().
  */
-void radius_abinary(radius_attr_info_t* a, proto_tree* tree, packet_info *pinfo _U_, tvbuff_t* tvb, int offset, int len, proto_item* avp_item) {
+void
+radius_abinary(radius_attr_info_t *a, proto_tree *tree, packet_info *pinfo _U_, tvbuff_t *tvb, int offset, int len, proto_item *avp_item)
+{
 	proto_tree_add_item(tree, a->hf, tvb, offset, len, ENC_NA);
 	proto_item_append_text(avp_item, "%s", tvb_bytes_to_str(wmem_packet_scope(), tvb, offset, len));
 }
 
-void radius_ether(radius_attr_info_t* a, proto_tree* tree, packet_info *pinfo _U_, tvbuff_t* tvb, int offset, int len, proto_item* avp_item) {
+void
+radius_ether(radius_attr_info_t *a, proto_tree *tree, packet_info *pinfo _U_, tvbuff_t *tvb, int offset, int len, proto_item *avp_item)
+{
 	if (len != 6) {
 		proto_item_append_text(avp_item, "[wrong length for ethernet address]");
 		return;
@@ -997,35 +1216,41 @@ void radius_ether(radius_attr_info_t* a, proto_tree* tree, packet_info *pinfo _U
 	proto_item_append_text(avp_item, "%s", tvb_ether_to_str(tvb, offset));
 }
 
-void radius_ifid(radius_attr_info_t* a, proto_tree* tree, packet_info *pinfo _U_, tvbuff_t* tvb, int offset, int len, proto_item* avp_item) {
+void
+radius_ifid(radius_attr_info_t *a, proto_tree *tree, packet_info *pinfo _U_, tvbuff_t *tvb, int offset, int len, proto_item *avp_item)
+{
 	proto_tree_add_item(tree, a->hf, tvb, offset, len, ENC_NA);
 	proto_item_append_text(avp_item, "%s", tvb_bytes_to_str(wmem_packet_scope(), tvb, offset, len));
 }
 
-static void add_tlv_to_tree(proto_tree* tlv_tree, proto_item* tlv_item, packet_info* pinfo, tvbuff_t* tvb, radius_attr_info_t* dictionary_entry, guint32 tlv_length, guint32 offset) {
+static void
+add_tlv_to_tree(proto_tree *tlv_tree, proto_item *tlv_item, packet_info *pinfo, tvbuff_t *tvb, radius_attr_info_t *dictionary_entry, guint32 tlv_length, guint32 offset)
+{
 	proto_item_append_text(tlv_item, ": ");
-	dictionary_entry->type(dictionary_entry,tlv_tree,pinfo,tvb,offset,tlv_length,tlv_item);
+	dictionary_entry->type(dictionary_entry, tlv_tree, pinfo, tvb, offset, tlv_length, tlv_item);
 }
 
-void radius_tlv(radius_attr_info_t* a, proto_tree* tree, packet_info *pinfo _U_, tvbuff_t* tvb, int offset, int len, proto_item* avp_item) {
+void
+radius_tlv(radius_attr_info_t *a, proto_tree *tree, packet_info *pinfo _U_, tvbuff_t *tvb, int offset, int len, proto_item *avp_item)
+{
 	gint tlv_num = 0;
 
 	while (len > 0) {
-		radius_attr_info_t* dictionary_entry = NULL;
+		radius_attr_info_t *dictionary_entry = NULL;
 		guint32 tlv_type;
 		guint32 tlv_length;
 
-		proto_item* tlv_item;
-		proto_item* tlv_len_item;
-		proto_tree* tlv_tree;
+		proto_item *tlv_item;
+		proto_item *tlv_len_item;
+		proto_tree *tlv_tree;
 
 		if (len < 2) {
 			proto_tree_add_expert_format(tree, pinfo, &ei_radius_invalid_length, tvb, offset, 0,
 						   "Not enough room in packet for TLV header");
 			return;
 		}
-		tlv_type = tvb_get_guint8(tvb,offset);
-		tlv_length = tvb_get_guint8(tvb,offset+1);
+		tlv_type = tvb_get_guint8(tvb, offset);
+		tlv_length = tvb_get_guint8(tvb, offset+1);
 
 		if (tlv_length < 2) {
 			proto_tree_add_expert_format(tree, pinfo, &ei_radius_invalid_length, tvb, offset, 0,
@@ -1041,9 +1266,9 @@ void radius_tlv(radius_attr_info_t* a, proto_tree* tree, packet_info *pinfo _U_,
 
 		len -= tlv_length;
 
-		dictionary_entry = (radius_attr_info_t *)g_hash_table_lookup(a->tlvs_by_id,GUINT_TO_POINTER(tlv_type));
+		dictionary_entry = (radius_attr_info_t *)g_hash_table_lookup(a->tlvs_by_id, GUINT_TO_POINTER(tlv_type));
 
-		if (! dictionary_entry ) {
+		if (!dictionary_entry) {
 			dictionary_entry = &no_dictionary_entry;
 		}
 
@@ -1057,7 +1282,7 @@ void radius_tlv(radius_attr_info_t* a, proto_tree* tree, packet_info *pinfo _U_,
 		if (show_length) {
 			tlv_len_item = proto_tree_add_uint(tlv_tree,
 							   dictionary_entry->hf_len,
-							   tvb,0,0,tlv_length);
+							   tvb, 0, 0, tlv_length);
 			PROTO_ITEM_SET_GENERATED(tlv_len_item);
 		}
 
@@ -1070,7 +1295,9 @@ void radius_tlv(radius_attr_info_t* a, proto_tree* tree, packet_info *pinfo _U_,
 	proto_item_append_text(avp_item, "%d TLV(s) inside", tlv_num);
 }
 
-static void add_avp_to_tree(proto_tree* avp_tree, proto_item* avp_item, packet_info* pinfo, tvbuff_t* tvb, radius_attr_info_t* dictionary_entry, guint32 avp_length, guint32 offset) {
+static void
+add_avp_to_tree(proto_tree *avp_tree, proto_item *avp_item, packet_info *pinfo, tvbuff_t *tvb, radius_attr_info_t *dictionary_entry, guint32 avp_length, guint32 offset)
+{
 
 	if (dictionary_entry->tagged) {
 		guint tag;
@@ -1096,50 +1323,57 @@ static void add_avp_to_tree(proto_tree* avp_tree, proto_item* avp_item, packet_i
 		}
 	}
 
-	if ( dictionary_entry->dissector ) {
-		tvbuff_t* tvb_value;
-		const gchar* str;
+	if (dictionary_entry->dissector) {
+		tvbuff_t *tvb_value;
+		const gchar *str;
 
 		tvb_value = tvb_new_subset_length(tvb, offset, avp_length);
 
-		str = dictionary_entry->dissector(avp_tree,tvb_value,pinfo);
+		str = dictionary_entry->dissector(avp_tree, tvb_value, pinfo);
 
-		proto_item_append_text(avp_item, ": %s",str);
+		proto_item_append_text(avp_item, ": %s", str);
 	} else {
 		proto_item_append_text(avp_item, ": ");
 
-		dictionary_entry->type(dictionary_entry,avp_tree,pinfo,tvb,offset,avp_length,avp_item);
+		dictionary_entry->type(dictionary_entry, avp_tree, pinfo, tvb, offset, avp_length, avp_item);
 	}
 }
 
-static gboolean vsa_buffer_destroy(gpointer k _U_, gpointer v, gpointer p _U_) {
-	radius_vsa_buffer* vsa_buffer = (radius_vsa_buffer*)v;
+static gboolean
+vsa_buffer_destroy(gpointer k _U_, gpointer v, gpointer p _U_)
+{
+	radius_vsa_buffer *vsa_buffer = (radius_vsa_buffer *)v;
 	g_free((gpointer)vsa_buffer->data);
 	g_free(v);
 	return TRUE;
 }
 
-static void vsa_buffer_table_destroy(void *table) {
+static void
+vsa_buffer_table_destroy(void *table)
+{
 	if (table) {
 		g_hash_table_foreach_remove((GHashTable *)table, vsa_buffer_destroy, NULL);
 		g_hash_table_destroy((GHashTable *)table);
 	}
 }
 
+static void register_radius_fields(const char *);
 
-void dissect_attribute_value_pairs(proto_tree *tree, packet_info *pinfo, tvbuff_t *tvb, int offset, guint length) {
+void
+dissect_attribute_value_pairs(proto_tree *tree, packet_info *pinfo, tvbuff_t *tvb, int offset, guint length)
+{
 	gboolean last_eap = FALSE;
-	guint8* eap_buffer = NULL;
+	guint8 *eap_buffer = NULL;
 	guint eap_seg_num = 0;
 	guint eap_tot_len_captured = 0;
 	guint eap_tot_len = 0;
-	proto_tree* eap_tree = NULL;
-	tvbuff_t* eap_tvb = NULL;
+	proto_tree *eap_tree = NULL;
+	tvbuff_t *eap_tvb = NULL;
 
-	GHashTable* vsa_buffer_table = NULL;
+	GHashTable *vsa_buffer_table = NULL;
 
-	/* Forces load of header fields, if not already done so */
-	DISSECTOR_ASSERT(proto_registrar_get_byname("radius.code"));
+	if (hf_radius_code == -1)
+		register_radius_fields("");
 
 	/*
 	 * In case we throw an exception, clean up whatever stuff we've
@@ -1149,23 +1383,23 @@ void dissect_attribute_value_pairs(proto_tree *tree, packet_info *pinfo, tvbuff_
 	CLEANUP_PUSH_PFX(lb, vsa_buffer_table_destroy, (void *)vsa_buffer_table);
 
 	while (length > 0) {
-		radius_attr_info_t* dictionary_entry = NULL;
+		radius_attr_info_t *dictionary_entry = NULL;
 		gint tvb_len;
 		guint32 avp_type;
 		guint32 avp_length;
 		guint32 vendor_id;
 
-		proto_item* avp_item;
-		proto_item* avp_len_item;
-		proto_tree* avp_tree;
+		proto_item *avp_item;
+		proto_item *avp_len_item;
+		proto_tree *avp_tree;
 
 		if (length < 2) {
 			proto_tree_add_expert_format(tree, pinfo, &ei_radius_invalid_length, tvb, offset, 0,
 						   "Not enough room in packet for AVP header");
 			break;  /* exit outer loop, then cleanup & return */
 		}
-		avp_type = tvb_get_guint8(tvb,offset);
-		avp_length = tvb_get_guint8(tvb,offset+1);
+		avp_type = tvb_get_guint8(tvb, offset);
+		avp_length = tvb_get_guint8(tvb, offset+1);
 
 		if (avp_length < 2) {
 			proto_tree_add_expert_format(tree, pinfo, &ei_radius_invalid_length, tvb, offset, 0,
@@ -1183,7 +1417,7 @@ void dissect_attribute_value_pairs(proto_tree *tree, packet_info *pinfo, tvbuff_
 
 		dictionary_entry = (radius_attr_info_t *)g_hash_table_lookup(dict->attrs_by_id, GUINT_TO_POINTER(avp_type));
 
-		if (! dictionary_entry ) {
+		if (!dictionary_entry) {
 			dictionary_entry = &no_dictionary_entry;
 		}
 
@@ -1195,10 +1429,10 @@ void dissect_attribute_value_pairs(proto_tree *tree, packet_info *pinfo, tvbuff_
 		offset += 2;
 
 		if (avp_type == RADIUS_ATTR_TYPE_VENDOR_SPECIFIC) {
-			radius_vendor_info_t* vendor;
-			proto_tree* vendor_tree;
+			radius_vendor_info_t *vendor;
+			proto_tree *vendor_tree;
 			gint max_offset = offset + avp_length;
-			const gchar* vendor_str;
+			const gchar *vendor_str;
 
 			/* XXX TODO: handle 2 byte codes for USR */
 
@@ -1207,12 +1441,12 @@ void dissect_attribute_value_pairs(proto_tree *tree, packet_info *pinfo, tvbuff_
 				offset += avp_length;
 				continue; /* while (length > 0) */
 			}
-			vendor_id = tvb_get_ntohl(tvb,offset);
+			vendor_id = tvb_get_ntohl(tvb, offset);
 
 			avp_length -= 4;
 			offset += 4;
 
-			vendor = (radius_vendor_info_t *)g_hash_table_lookup(dict->vendors_by_id,GUINT_TO_POINTER(vendor_id));
+			vendor = (radius_vendor_info_t *)g_hash_table_lookup(dict->vendors_by_id, GUINT_TO_POINTER(vendor_id));
 			vendor_str = val_to_str_ext_const(vendor_id, &sminmpec_values_ext, "Unknown");
 			if (!vendor) {
 				vendor = &no_vendor;
@@ -1220,7 +1454,10 @@ void dissect_attribute_value_pairs(proto_tree *tree, packet_info *pinfo, tvbuff_
 			proto_item_append_text(avp_item, " v=%s(%u)", vendor_str,
 					       vendor_id);
 
-			vendor_tree = proto_item_add_subtree(avp_item,vendor->ett);
+			vendor_tree = proto_item_add_subtree(avp_item, vendor->ett);
+
+			proto_tree_add_item(vendor_tree, hf_radius_avp_type, tvb, offset-6, 1, ENC_BIG_ENDIAN);
+			proto_tree_add_item(vendor_tree, hf_radius_avp_length, tvb, offset-5, 1, ENC_BIG_ENDIAN);
 
 			while (offset < max_offset) {
 				guint32 avp_vsa_type;
@@ -1230,37 +1467,37 @@ void dissect_attribute_value_pairs(proto_tree *tree, packet_info *pinfo, tvbuff_
 
 				switch (vendor->type_octets) {
 					case 1:
-						avp_vsa_type = tvb_get_guint8(tvb,offset++);
+						avp_vsa_type = tvb_get_guint8(tvb, offset++);
 						break;
 					case 2:
-						avp_vsa_type = tvb_get_ntohs(tvb,offset);
+						avp_vsa_type = tvb_get_ntohs(tvb, offset);
 						offset += 2;
 						break;
 					case 4:
-						avp_vsa_type = tvb_get_ntohl(tvb,offset);
+						avp_vsa_type = tvb_get_ntohl(tvb, offset);
 						offset += 4;
 						break;
 					default:
-						avp_vsa_type = tvb_get_guint8(tvb,offset++);
+						avp_vsa_type = tvb_get_guint8(tvb, offset++);
 				}
 
 				switch (vendor->length_octets) {
 					case 1:
-						avp_vsa_len = tvb_get_guint8(tvb,offset++);
+						avp_vsa_len = tvb_get_guint8(tvb, offset++);
 						break;
 					case 0:
 						avp_vsa_len = avp_length;
 						break;
 					case 2:
-						avp_vsa_len = tvb_get_ntohs(tvb,offset);
+						avp_vsa_len = tvb_get_ntohs(tvb, offset);
 						offset += 2;
 						break;
 					default:
-						avp_vsa_len = tvb_get_guint8(tvb,offset++);
+						avp_vsa_len = tvb_get_guint8(tvb, offset++);
 				}
 
 				if (vendor->has_flags) {
-					avp_vsa_flags = tvb_get_guint8(tvb,offset++);
+					avp_vsa_flags = tvb_get_guint8(tvb, offset++);
 				}
 
 				if (avp_vsa_len < avp_vsa_header_len) {
@@ -1271,18 +1508,18 @@ void dissect_attribute_value_pairs(proto_tree *tree, packet_info *pinfo, tvbuff_
 
 				avp_vsa_len -= avp_vsa_header_len;
 
-				dictionary_entry = (radius_attr_info_t *)g_hash_table_lookup(vendor->attrs_by_id,GUINT_TO_POINTER(avp_vsa_type));
+				dictionary_entry = (radius_attr_info_t *)g_hash_table_lookup(vendor->attrs_by_id, GUINT_TO_POINTER(avp_vsa_type));
 
-				if ( !dictionary_entry ) {
+				if (!dictionary_entry) {
 					dictionary_entry = &no_dictionary_entry;
 				}
 
-				if (vendor->has_flags){
-					avp_tree = proto_tree_add_subtree_format(vendor_tree,tvb,offset-avp_vsa_header_len,avp_vsa_len+avp_vsa_header_len,
+				if (vendor->has_flags) {
+					avp_tree = proto_tree_add_subtree_format(vendor_tree, tvb, offset-avp_vsa_header_len, avp_vsa_len+avp_vsa_header_len,
 								       dictionary_entry->ett, &avp_item, "VSA: l=%u t=%s(%u) C=0x%02x",
 								       avp_vsa_len+avp_vsa_header_len, dictionary_entry->name, avp_vsa_type, avp_vsa_flags);
 				} else {
-					avp_tree = proto_tree_add_subtree_format(vendor_tree,tvb,offset-avp_vsa_header_len,avp_vsa_len+avp_vsa_header_len,
+					avp_tree = proto_tree_add_subtree_format(vendor_tree, tvb, offset-avp_vsa_header_len, avp_vsa_len+avp_vsa_header_len,
 								       dictionary_entry->ett, &avp_item, "VSA: l=%u t=%s(%u)",
 								       avp_vsa_len+avp_vsa_header_len, dictionary_entry->name, avp_vsa_type);
 				}
@@ -1290,13 +1527,13 @@ void dissect_attribute_value_pairs(proto_tree *tree, packet_info *pinfo, tvbuff_
 				if (show_length) {
 					avp_len_item = proto_tree_add_uint(avp_tree,
 									   dictionary_entry->hf_len,
-									   tvb,0,0,avp_length);
+									   tvb, 0, 0, avp_length);
 					PROTO_ITEM_SET_GENERATED(avp_len_item);
 				}
 
 				if (vendor->has_flags) {
 					radius_vsa_buffer_key key;
-					radius_vsa_buffer* vsa_buffer = NULL;
+					radius_vsa_buffer *vsa_buffer = NULL;
 					key.vendor_id = vendor_id;
 					key.vsa_type = avp_vsa_type;
 
@@ -1327,7 +1564,7 @@ void dissect_attribute_value_pairs(proto_tree *tree, packet_info *pinfo, tvbuff_
 						proto_item_append_text(avp_item, ": VSA fragment[%u]", vsa_buffer->seg_num);
 					} else {
 						if (vsa_buffer) {
-							tvbuff_t* vsa_tvb = NULL;
+							tvbuff_t *vsa_tvb = NULL;
 							proto_tree_add_item(avp_tree, hf_radius_vsa_fragment, tvb, offset, avp_vsa_len, ENC_NA);
 							proto_item_append_text(avp_item, ": Last VSA fragment[%u]", vsa_buffer->seg_num);
 							vsa_tvb = tvb_new_child_real_data(tvb, vsa_buffer->data, vsa_buffer->len, vsa_buffer->len);
@@ -1350,12 +1587,15 @@ void dissect_attribute_value_pairs(proto_tree *tree, packet_info *pinfo, tvbuff_
 			continue;  /* while (length > 0) */
 		}
 
-		avp_tree = proto_item_add_subtree(avp_item,dictionary_entry->ett);
+		avp_tree = proto_item_add_subtree(avp_item, dictionary_entry->ett);
+
+		proto_tree_add_item(avp_tree, hf_radius_avp_type, tvb, offset-2, 1, ENC_BIG_ENDIAN);
+		proto_tree_add_item(avp_tree, hf_radius_avp_length, tvb, offset-1, 1, ENC_BIG_ENDIAN);
 
 		if (show_length) {
 			avp_len_item = proto_tree_add_uint(avp_tree,
 							   dictionary_entry->hf_len,
-							   tvb,0,0,avp_length);
+							   tvb, 0, 0, avp_length);
 			PROTO_ITEM_SET_GENERATED(avp_len_item);
 		}
 
@@ -1393,7 +1633,7 @@ void dissect_attribute_value_pairs(proto_tree *tree, packet_info *pinfo, tvbuff_
 				 *    attributes in the Access-Request or
 				 *    Access-Challenge packet.
 				 *
-				 *        ...
+				 *	...
 				 *
 				 *    The String field contains EAP packets,
 				 *    as defined in [3].  If multiple
@@ -1420,10 +1660,10 @@ void dissect_attribute_value_pairs(proto_tree *tree, packet_info *pinfo, tvbuff_
 				eap_tot_len_captured += tvb_len;
 				eap_tot_len += avp_length;
 
-				if ( tvb_bytes_exist(tvb, offset + avp_length + 1, 1) ) {
+				if (tvb_bytes_exist(tvb, offset + avp_length + 1, 1)) {
 					guint8 next_type = tvb_get_guint8(tvb, offset + avp_length);
 
-					if ( next_type != RADIUS_ATTR_TYPE_EAP_MESSAGE ) {
+					if (next_type != RADIUS_ATTR_TYPE_EAP_MESSAGE) {
 						/* Non-EAP-Message attribute */
 						last_eap = TRUE;
 					}
@@ -1443,7 +1683,7 @@ void dissect_attribute_value_pairs(proto_tree *tree, packet_info *pinfo, tvbuff_
 					proto_item_append_text(avp_item, " Last Segment[%u]",
 							       eap_seg_num);
 
-					eap_tree = proto_item_add_subtree(avp_item,ett_eap);
+					eap_tree = proto_item_add_subtree(avp_item, ett_eap);
 
 					eap_tvb = tvb_new_child_real_data(tvb, eap_buffer,
 									  eap_tot_len_captured,
@@ -1500,7 +1740,7 @@ is_radius(tvbuff_t *tvb)
 	guint8 code;
 	guint16 length;
 
-	code=tvb_get_guint8(tvb, 0);
+	code = tvb_get_guint8(tvb, 0);
 	if (try_val_to_str_ext(code, &radius_pkt_type_codes_ext) == NULL) {
 		return FALSE;
 	}
@@ -1516,15 +1756,13 @@ is_radius(tvbuff_t *tvb)
 	 *  silently discarded.  The minimum length is 20 and maximum length
 	 *  is 4096.
 	 */
-	length=tvb_get_ntohs(tvb, 2);
-	if ( (length<20) || (length>4096) ) {
+	length = tvb_get_ntohs(tvb, 2);
+	if ((length < 20) || (length > 4096)) {
 		return FALSE;
 	}
 
 	return TRUE;
 }
-
-static void register_radius_fields(const char*);
 
 /*
  * returns true if the response authenticator is valid
@@ -1539,23 +1777,23 @@ valid_authenticator(tvbuff_t *tvb, guint8 request_authenticator[])
 	md5_state_t md_ctx;
 	md5_byte_t digest[16];
 	guint tvb_length;
-	guint8 * payload;
+	guint8 *payload;
 
-	tvb_length = tvb_captured_length(tvb) ; /* should it be tvb_reported_length ? */
+	tvb_length = tvb_captured_length(tvb); /* should it be tvb_reported_length ? */
 
 	/* copy response into payload */
-	payload = (guint8 *)tvb_memdup(wmem_packet_scope(), tvb, 0, tvb_length) ;
+	payload = (guint8 *)tvb_memdup(wmem_packet_scope(), tvb, 0, tvb_length);
 
-	/* replace authenticator in reply with the one in request*/
+	/* replace authenticator in reply with the one in request */
 	memcpy(payload+4, request_authenticator, AUTHENTICATOR_LENGTH);
 
 	/* calculate MD5 hash (payload+shared_secret) */
 	md5_init(&md_ctx);
-	md5_append(&md_ctx, payload, tvb_length) ;
-	md5_append(&md_ctx, shared_secret, strlen(shared_secret)) ;
+	md5_append(&md_ctx, payload, tvb_length);
+	md5_append(&md_ctx, shared_secret, strlen(shared_secret));
 	md5_finish(&md_ctx, digest);
 
-	return !memcmp(digest, authenticator, AUTHENTICATOR_LENGTH) ;
+	return !memcmp(digest, authenticator, AUTHENTICATOR_LENGTH);
 }
 
 static int
@@ -1568,23 +1806,24 @@ dissect_radius(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data _
 	e_radiushdr rh;
 	radius_info_t *rad_info;
 
-	conversation_t* conversation;
+	conversation_t *conversation;
 	radius_call_info_key radius_call_key;
 	radius_call_info_key *new_radius_call_key;
+	wmem_tree_t *radius_call_tree;
 	radius_call_t *radius_call = NULL;
-	static address null_address = { AT_NONE, 0, NULL };
+	static address null_address = ADDRESS_INIT_NONE;
 
 	/* does this look like radius ? */
-	if(!is_radius(tvb)){
+	if (!is_radius(tvb)) {
 		return 0;
 	}
 
 	col_set_str(pinfo->cinfo, COL_PROTOCOL, "RADIUS");
 	col_clear(pinfo->cinfo, COL_INFO);
 
-	rh.rh_code=tvb_get_guint8(tvb,0);
-	rh.rh_ident=tvb_get_guint8(tvb,1);
-	rh.rh_pktlength=tvb_get_ntohs(tvb,2);
+	rh.rh_code = tvb_get_guint8(tvb, 0);
+	rh.rh_ident = tvb_get_guint8(tvb, 1);
+	rh.rh_pktlength = tvb_get_ntohs(tvb, 2);
 
 
 	/* Initialise stat info for passing to tap */
@@ -1602,42 +1841,33 @@ dissect_radius(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data _
 	rad_info->ident = rh.rh_ident;
 	tap_queue_packet(radius_tap, pinfo, rad_info);
 
-	col_add_fstr(pinfo->cinfo,COL_INFO,"%s(%d) (id=%d, l=%d)",
+	col_add_fstr(pinfo->cinfo, COL_INFO, "%s(%d) (id=%d, l=%d)",
 			val_to_str_ext_const(rh.rh_code, &radius_pkt_type_codes_ext, "Unknown Packet"),
 			rh.rh_code, rh.rh_ident, rh.rh_pktlength);
 
-	if (tree)
-	{
-		/* Forces load of header fields, if not already done so */
-		DISSECTOR_ASSERT(proto_registrar_get_byname("radius.code"));
+	/* Load header fields if not already done */
+	if (hf_radius_code == -1)
+		register_radius_fields("");
 
-		ti = proto_tree_add_item(tree,proto_radius, tvb, 0, rh.rh_pktlength, ENC_NA);
-		radius_tree = proto_item_add_subtree(ti, ett_radius);
-		proto_tree_add_uint(radius_tree,hf_radius_code, tvb, 0, 1, rh.rh_code);
-		proto_tree_add_uint_format(radius_tree,hf_radius_id, tvb, 1, 1, rh.rh_ident,
-			"Packet identifier: 0x%01x (%d)", rh.rh_ident, rh.rh_ident);
-	}
+	ti = proto_tree_add_item(tree, proto_radius, tvb, 0, rh.rh_pktlength, ENC_NA);
+	radius_tree = proto_item_add_subtree(ti, ett_radius);
+	proto_tree_add_uint(radius_tree, hf_radius_code, tvb, 0, 1, rh.rh_code);
+	proto_tree_add_uint_format(radius_tree, hf_radius_id, tvb, 1, 1, rh.rh_ident,
+		"Packet identifier: 0x%01x (%d)", rh.rh_ident, rh.rh_ident);
 
 	/*
 	 * Make sure the length is sane.
 	 */
-	if (rh.rh_pktlength < HDR_LENGTH)
-	{
-		if (tree)
-		{
-			proto_tree_add_uint_format_value(radius_tree, hf_radius_length,
-				tvb, 2, 2, rh.rh_pktlength, "%u (bogus, < %u)",
-				rh.rh_pktlength, HDR_LENGTH);
-		}
+	if (rh.rh_pktlength < HDR_LENGTH) {
+		proto_tree_add_uint_format_value(radius_tree, hf_radius_length,
+			tvb, 2, 2, rh.rh_pktlength, "%u (bogus, < %u)",
+			rh.rh_pktlength, HDR_LENGTH);
 		return tvb_captured_length(tvb);
 	}
 
 	avplength = rh.rh_pktlength - HDR_LENGTH;
-	if (tree)
-	{
-		proto_tree_add_uint(radius_tree, hf_radius_length, tvb, 2, 2, rh.rh_pktlength);
-		authenticator_item = proto_tree_add_item(radius_tree, hf_radius_authenticator, tvb, 4, AUTHENTICATOR_LENGTH, ENC_NA);
-	}
+	proto_tree_add_uint(radius_tree, hf_radius_length, tvb, 2, 2, rh.rh_pktlength);
+	authenticator_item = proto_tree_add_item(radius_tree, hf_radius_authenticator, tvb, 4, AUTHENTICATOR_LENGTH, ENC_NA);
 	tvb_memcpy(tvb, authenticator, 4, AUTHENTICATOR_LENGTH);
 
 	/* Conversation support REQUEST/RESPONSES */
@@ -1658,11 +1888,8 @@ dissect_radius(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data _
 			if (pinfo->flags.in_error_pkt)
 				break;
 
-			if (tree)
-			{
-				hidden_item = proto_tree_add_boolean(radius_tree, hf_radius_req, tvb, 0, 0, TRUE);
-				PROTO_ITEM_SET_HIDDEN(hidden_item);
-			}
+			hidden_item = proto_tree_add_boolean(radius_tree, hf_radius_req, tvb, 0, 0, TRUE);
+			PROTO_ITEM_SET_HIDDEN(hidden_item);
 
 			/* Keep track of the address and port whence the call came
 			 *  so that we can match up requests with replies.
@@ -1679,13 +1906,13 @@ dissect_radius(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data _
 			 * pointer for the second address argument even
 			 * if you do that.
 			 */
-			conversation = find_conversation(pinfo->fd->num, &pinfo->src,
+			conversation = find_conversation(pinfo->num, &pinfo->src,
 				&null_address, pinfo->ptype, pinfo->srcport,
 				pinfo->destport, 0);
 			if (conversation == NULL)
 			{
 				/* It's not part of any conversation - create a new one. */
-				conversation = conversation_new(pinfo->fd->num, &pinfo->src,
+				conversation = conversation_new(pinfo->num, &pinfo->src,
 					&null_address, pinfo->ptype, pinfo->srcport,
 					pinfo->destport, 0);
 			}
@@ -1694,63 +1921,64 @@ dissect_radius(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data _
 			radius_call_key.code = rh.rh_code;
 			radius_call_key.ident = rh.rh_ident;
 			radius_call_key.conversation = conversation;
-			radius_call_key.req_time = pinfo->fd->abs_ts;
+			radius_call_key.req_time = pinfo->abs_ts;
 
-			/* Look up the request */
-			radius_call = (radius_call_t *)g_hash_table_lookup(radius_calls, &radius_call_key);
-			if (radius_call != NULL)
-			{
-				/* We've seen a request with this ID, with the same
-				   destination, before - but was it *this* request? */
-				if (pinfo->fd->num != radius_call->req_num)
-				{
-					/* No, so it's a duplicate request. Mark it as such.
-					  FIXME: This is way too simple, as the request number
-					         is only an 8-bit value. See bug#4096 */
+			/* Look up the tree of calls with this ident */
+			radius_call_tree = (wmem_tree_t *)wmem_map_lookup(radius_calls, &radius_call_key);
+
+			if (!radius_call_tree) {
+				radius_call_tree = wmem_tree_new(wmem_file_scope());
+				new_radius_call_key = wmem_new(wmem_file_scope(), radius_call_info_key);
+				*new_radius_call_key = radius_call_key;
+				wmem_map_insert(radius_calls, new_radius_call_key, radius_call_tree);
+			}
+
+			/* Find the last call we've seen (for this ident in this conversation) */
+			radius_call = (radius_call_t *)wmem_tree_lookup32_le(radius_call_tree, pinfo->num);
+			if (radius_call != NULL) {
+				/* We found a request with the same ident (in this conversation).
+				 * Is it really a duplicate?
+				 */
+				if (pinfo->num != radius_call->req_num &&
+				    !memcmp(radius_call->req_authenticator, authenticator, AUTHENTICATOR_LENGTH)) {
+					/* Yes, mark it as such */
 					rad_info->is_duplicate = TRUE;
 					rad_info->req_num = radius_call->req_num;
-					col_append_fstr(pinfo->cinfo, COL_INFO,
-							", Duplicate Request ID:%u", rh.rh_ident);
+					col_append_fstr(pinfo->cinfo, COL_INFO, ", Duplicate Request");
 
-					if (tree)
-					{
-						proto_item* item;
-						hidden_item = proto_tree_add_uint(radius_tree, hf_radius_dup, tvb, 0,0, rh.rh_ident);
+					if (tree) {
+						proto_item *item;
+						hidden_item = proto_tree_add_uint(radius_tree, hf_radius_dup, tvb, 0, 0, rh.rh_ident);
 						PROTO_ITEM_SET_HIDDEN(hidden_item);
-						item = proto_tree_add_uint(radius_tree, hf_radius_req_dup, tvb, 0,0, rh.rh_ident);
+						item = proto_tree_add_uint(radius_tree, hf_radius_req_dup, tvb, 0, 0, radius_call->req_num);
 						PROTO_ITEM_SET_GENERATED(item);
 					}
 				}
 			}
-			else
-			{
+
+			if (!PINFO_FD_VISITED(pinfo) && (radius_call == NULL || !rad_info->is_duplicate)) {
 				/* Prepare the value data.
-				   "req_num" and "rsp_num" are frame numbers;
-				   frame numbers are 1-origin, so we use 0
-				   to mean "we don't yet know in which frame
-				   the reply for this call appears". */
-				new_radius_call_key = wmem_new(wmem_file_scope(), radius_call_info_key);
-				*new_radius_call_key = radius_call_key;
+				 * "req_num" and "rsp_num" are frame numbers;
+				 * frame numbers are 1-origin, so we use 0
+				 * to mean "we don't yet know in which frame
+				 * the reply for this call appears".
+				 */
 				radius_call = wmem_new(wmem_file_scope(), radius_call_t);
-				radius_call->req_num = pinfo->fd->num;
+				radius_call->req_num = pinfo->num;
 				radius_call->rsp_num = 0;
 				radius_call->ident = rh.rh_ident;
 				radius_call->code = rh.rh_code;
+				memcpy(radius_call->req_authenticator, authenticator, AUTHENTICATOR_LENGTH);
 				radius_call->responded = FALSE;
-				radius_call->req_time = pinfo->fd->abs_ts;
+				radius_call->req_time = pinfo->abs_ts;
 				radius_call->rspcode = 0;
-				/* Copy request authenticator for future validation */
-				if (validate_authenticator && *shared_secret != '\0')
-				{
-					radius_call->req_authenticator=(guint8 *)tvb_memdup(wmem_file_scope(), tvb, 4, AUTHENTICATOR_LENGTH);
-				}
 
 				/* Store it */
-				g_hash_table_insert(radius_calls, new_radius_call_key, radius_call);
+				wmem_tree_insert32(radius_call_tree, pinfo->num, radius_call);
 			}
-			if (tree && radius_call->rsp_num)
-			{
-				proto_item* item;
+
+			if (radius_call && radius_call->rsp_num) {
+				proto_item *item;
 				item = proto_tree_add_uint_format(radius_tree,
 					hf_radius_rsp_frame, tvb, 0, 0, radius_call->rsp_num,
 					"The response to this request is in frame %u",
@@ -1780,11 +2008,8 @@ dissect_radius(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data _
 			if (pinfo->flags.in_error_pkt)
 				break;
 
-			if (tree)
-			{
-				hidden_item = proto_tree_add_boolean(radius_tree, hf_radius_rsp, tvb, 0, 0, TRUE);
-				PROTO_ITEM_SET_HIDDEN(hidden_item);
-			}
+			hidden_item = proto_tree_add_boolean(radius_tree, hf_radius_rsp, tvb, 0, 0, TRUE);
+			PROTO_ITEM_SET_HIDDEN(hidden_item);
 
 			/* Check for RADIUS response.  A response must match a call that
 			 * we've seen, and the response must be sent to the same
@@ -1801,112 +2026,107 @@ dissect_radius(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data _
 			 * pointer for the second address argument even
 			 * if you do that.
 			 */
-			conversation = find_conversation(pinfo->fd->num, &null_address,
+			conversation = find_conversation(pinfo->num, &null_address,
 				&pinfo->dst, pinfo->ptype, pinfo->srcport, pinfo->destport, 0);
-			if (conversation != NULL)
-			{
-				/* Look only for matching request, if
-				   matching conversation is available. */
-				/* Prepare the key data */
-				radius_call_key.code = rh.rh_code;
-				radius_call_key.ident = rh.rh_ident;
-				radius_call_key.conversation = conversation;
-				radius_call_key.req_time = pinfo->fd->abs_ts;
+			if (conversation == NULL) {
+				/* Nothing more to do here */
+				break;
+			}
 
-				radius_call = (radius_call_t *)g_hash_table_lookup(radius_calls, &radius_call_key);
-				if (radius_call)
-				{
-					/* Indicate the frame to which this is a reply. */
-					if (radius_call->req_num)
-					{
-						rad_info->request_available = TRUE;
-						rad_info->req_num = radius_call->req_num;
-						radius_call->responded = TRUE;
+			/* Prepare the key data */
+			radius_call_key.code = rh.rh_code;
+			radius_call_key.ident = rh.rh_ident;
+			radius_call_key.conversation = conversation;
+			radius_call_key.req_time = pinfo->abs_ts;
 
-						if (tree)
-						{
-							nstime_t delta;
-							proto_item* item;
-							item = proto_tree_add_uint_format(radius_tree,
-								hf_radius_req_frame, tvb, 0, 0,
-								radius_call->req_num,
-								"This is a response to a request in frame %u",
-								radius_call->req_num);
-							PROTO_ITEM_SET_GENERATED(item);
-							nstime_delta(&delta, &pinfo->fd->abs_ts, &radius_call->req_time);
-							item = proto_tree_add_time(radius_tree, hf_radius_time, tvb, 0, 0, &delta);
-							PROTO_ITEM_SET_GENERATED(item);
-							/* Resonse Authenticator Validation */
-							if (validate_authenticator && *shared_secret != '\0')
-							{
-								proto_item * authenticator_tree ;
-								int valid ;
-								valid = valid_authenticator(tvb, radius_call->req_authenticator) ;
+			/* Look up the tree of calls with this ident */
+			radius_call_tree = (wmem_tree_t *)wmem_map_lookup(radius_calls, &radius_call_key);
+			if (radius_call_tree == NULL) {
+				/* Nothing more to do here */
+				break;
+			}
 
-								proto_item_append_text(authenticator_item, " [%s]", valid? "correct" : "incorrect");
-								authenticator_tree = proto_item_add_subtree(authenticator_item, ett_radius_authenticator);
-								item = proto_tree_add_boolean(authenticator_tree, hf_radius_authenticator_valid, tvb, 4, AUTHENTICATOR_LENGTH, valid ? TRUE : FALSE);
-								PROTO_ITEM_SET_GENERATED(item);
-								item = proto_tree_add_boolean(authenticator_tree, hf_radius_authenticator_invalid, tvb, 4, AUTHENTICATOR_LENGTH, valid ? FALSE : TRUE);
-								PROTO_ITEM_SET_GENERATED(item);
+			/* Find the last call we've seen (for this ident in this conversation) */
+			radius_call = (radius_call_t *)wmem_tree_lookup32_le(radius_call_tree, pinfo->num);
+			if (radius_call == NULL) {
+				/* Nothing more to do here */
+				break;
+			}
 
-								if (!valid)
-								{
-									/* FIXME: this information disappears when a display filter is enterred */
-									col_append_fstr(pinfo->cinfo,COL_INFO," [incorrect authenticator]") ;
-								}
-							}
-						}
+			/* Indicate the frame to which this is a reply. */
+			if (radius_call->req_num) {
+				nstime_t delta;
+				proto_item *item;
+
+				rad_info->request_available = TRUE;
+				rad_info->req_num = radius_call->req_num;
+				radius_call->responded = TRUE;
+
+				item = proto_tree_add_uint_format(radius_tree,
+					hf_radius_req_frame, tvb, 0, 0,
+					radius_call->req_num,
+					"This is a response to a request in frame %u",
+					radius_call->req_num);
+				PROTO_ITEM_SET_GENERATED(item);
+				nstime_delta(&delta, &pinfo->abs_ts, &radius_call->req_time);
+				item = proto_tree_add_time(radius_tree, hf_radius_time, tvb, 0, 0, &delta);
+				PROTO_ITEM_SET_GENERATED(item);
+				/* Response Authenticator Validation */
+				if (validate_authenticator && *shared_secret != '\0') {
+					proto_item *authenticator_tree;
+					int valid;
+					valid = valid_authenticator(tvb, radius_call->req_authenticator);
+
+					proto_item_append_text(authenticator_item, " [%s]", valid? "correct" : "incorrect");
+					authenticator_tree = proto_item_add_subtree(authenticator_item, ett_radius_authenticator);
+					item = proto_tree_add_boolean(authenticator_tree, hf_radius_authenticator_valid, tvb, 4, AUTHENTICATOR_LENGTH, valid ? TRUE : FALSE);
+					PROTO_ITEM_SET_GENERATED(item);
+					item = proto_tree_add_boolean(authenticator_tree, hf_radius_authenticator_invalid, tvb, 4, AUTHENTICATOR_LENGTH, valid ? FALSE : TRUE);
+					PROTO_ITEM_SET_GENERATED(item);
+
+					if (!valid) {
+						col_append_fstr(pinfo->cinfo, COL_INFO, " [incorrect authenticator]");
 					}
-
-					if (radius_call->rsp_num == 0)
-					{
-						/* We have not yet seen a response to that call, so
-						   this must be the first response; remember its
-						   frame number. */
-						radius_call->rsp_num = pinfo->fd->num;
-					}
-					else
-					{
-						/* We have seen a response to this call - but was it
-						   *this* response? (disregard provisional responses) */
-						if ( (radius_call->rsp_num != pinfo->fd->num) && (radius_call->rspcode == rh.rh_code) )
-						{
-							/* No, so it's a duplicate response. Mark it as such. */
-							rad_info->is_duplicate = TRUE;
-							col_append_fstr(pinfo->cinfo, COL_INFO,
-									", Duplicate Response ID:%u", rh.rh_ident);
-
-							if (tree)
-							{
-								proto_item* item;
-								hidden_item = proto_tree_add_uint(radius_tree,
-									hf_radius_dup, tvb, 0,0, rh.rh_ident);
-								PROTO_ITEM_SET_HIDDEN(hidden_item);
-								item = proto_tree_add_uint(radius_tree,
-									hf_radius_rsp_dup, tvb, 0, 0, rh.rh_ident);
-								PROTO_ITEM_SET_GENERATED(item);
-							}
-						}
-					}
-					/* Now store the response code (after comparison above) */
-					radius_call->rspcode = rh.rh_code;
-					rad_info->rspcode = rh.rh_code;
 				}
 			}
+
+			if (radius_call->rsp_num == 0) {
+				/* We have not yet seen a response to that call, so
+				   this must be the first response; remember its
+				   frame number. */
+				radius_call->rsp_num = pinfo->num;
+			} else {
+				/* We have seen a response to this call - but was it
+				   *this* response? (disregard provisional responses) */
+				if ((radius_call->rsp_num != pinfo->num) && (radius_call->rspcode == rh.rh_code)) {
+					/* No, so it's a duplicate response. Mark it as such. */
+					rad_info->is_duplicate = TRUE;
+					col_append_fstr(pinfo->cinfo, COL_INFO, ", Duplicate Response");
+
+					if (tree) {
+						proto_item *item;
+						hidden_item = proto_tree_add_uint(radius_tree,
+							hf_radius_dup, tvb, 0, 0, rh.rh_ident);
+						PROTO_ITEM_SET_HIDDEN(hidden_item);
+						item = proto_tree_add_uint(radius_tree,
+							hf_radius_rsp_dup, tvb, 0, 0, radius_call->rsp_num);
+						PROTO_ITEM_SET_GENERATED(item);
+					}
+				}
+			}
+			/* Now store the response code (after comparison above) */
+			radius_call->rspcode = rh.rh_code;
+			rad_info->rspcode = rh.rh_code;
 			break;
 		default:
 			break;
 	}
 
-	if (radius_call)
-	{
-		rad_info->req_time.secs = radius_call->req_time.secs;
-		rad_info->req_time.nsecs = radius_call->req_time.nsecs;
+	if (radius_call) {
+		rad_info->req_time = radius_call->req_time;
 	}
 
-	if (avplength > 0)
-	{
+	if (avplength > 0) {
 		/* list the attribute value pairs */
 		avptree = proto_tree_add_subtree(radius_tree, tvb, HDR_LENGTH,
 			avplength, ett_radius_avp, NULL, "Attribute Value Pairs");
@@ -1918,23 +2138,25 @@ dissect_radius(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data _
 }
 
 
-static void register_attrs(gpointer k _U_, gpointer v, gpointer p) {
-	radius_attr_info_t* a = (radius_attr_info_t *)v;
+static void
+register_attrs(gpointer k _U_, gpointer v, gpointer p)
+{
+	radius_attr_info_t *a = (radius_attr_info_t *)v;
 	int i;
-	gint* ett = &(a->ett);
-	gchar* abbrev = wmem_strdup_printf(wmem_epan_scope(), "radius.%s", a->name);
+	gint *ett = &(a->ett);
+	gchar *abbrev = wmem_strdup_printf(wmem_epan_scope(), "radius.%s", a->name);
 	hf_register_info hfri[] = {
-		{ NULL, { NULL,NULL, FT_NONE,  BASE_NONE, NULL, 0x0, NULL, HFILL }},
-		{ NULL, { NULL,NULL, FT_UINT8, BASE_DEC, NULL, 0x0, NULL, HFILL }},
-		{ NULL, { NULL,NULL, FT_NONE,  BASE_NONE, NULL, 0x0, NULL, HFILL }},
-		{ NULL, { NULL,NULL, FT_NONE,  BASE_NONE, NULL, 0x0, NULL, HFILL }}
+		{ NULL, { NULL, NULL, FT_NONE,  BASE_NONE, NULL, 0x0, NULL, HFILL }},
+		{ NULL, { NULL, NULL, FT_UINT8, BASE_DEC, NULL, 0x0, NULL, HFILL }},
+		{ NULL, { NULL, NULL, FT_NONE,  BASE_NONE, NULL, 0x0, NULL, HFILL }},
+		{ NULL, { NULL, NULL, FT_NONE,  BASE_NONE, NULL, 0x0, NULL, HFILL }}
 	};
 	guint len_hf = 2;
-	hfett_t* ri = (hfett_t *)p;
+	hfett_t *ri = (hfett_t *)p;
 
 	for(i=0; abbrev[i]; i++) {
-		if(abbrev[i] == '-') abbrev[i] = '_';
-		if(abbrev[i] == '/') abbrev[i] = '_';
+		if (abbrev[i] == '-') abbrev[i] = '_';
+		if (abbrev[i] == '/') abbrev[i] = '_';
 	}
 
 	hfri[0].p_id = &(a->hf);
@@ -1962,7 +2184,7 @@ static void register_attrs(gpointer k _U_, gpointer v, gpointer p) {
 		}
 
 		len_hf++;
-	}else if (a->type == radius_signed) {
+	} else if (a->type == radius_signed) {
 		hfri[0].hfinfo.type = FT_INT32;
 		hfri[0].hfinfo.display = BASE_DEC;
 
@@ -2047,48 +2269,51 @@ static void register_attrs(gpointer k _U_, gpointer v, gpointer p) {
 		len_hf++;
 	}
 
-	wmem_array_append(ri->hf,hfri,len_hf);
-	wmem_array_append_one(ri->ett,ett);
+	wmem_array_append(ri->hf, hfri, len_hf);
+	wmem_array_append_one(ri->ett, ett);
 
 	if (a->tlvs_by_id) {
-		g_hash_table_foreach(a->tlvs_by_id,register_attrs,ri);
+		g_hash_table_foreach(a->tlvs_by_id, register_attrs, ri);
 	}
 }
 
-static void register_vendors(gpointer k _U_, gpointer v, gpointer p) {
-	radius_vendor_info_t* vnd = (radius_vendor_info_t *)v;
-	hfett_t* ri = (hfett_t *)p;
+static void
+register_vendors(gpointer k _U_, gpointer v, gpointer p)
+{
+	radius_vendor_info_t *vnd = (radius_vendor_info_t *)v;
+	hfett_t *ri = (hfett_t *)p;
 	value_string vnd_vs;
-	gint* ett_p = &(vnd->ett);
+	gint *ett_p = &(vnd->ett);
 
 	vnd_vs.value = vnd->code;
 	vnd_vs.strptr = vnd->name;
 
-	wmem_array_append_one(ri->vend_vs,vnd_vs);
-	wmem_array_append_one(ri->ett,ett_p);
+	wmem_array_append_one(ri->vend_vs, vnd_vs);
+	wmem_array_append_one(ri->ett, ett_p);
 
-	g_hash_table_foreach(vnd->attrs_by_id,register_attrs,ri);
-
+	g_hash_table_foreach(vnd->attrs_by_id, register_attrs, ri);
 }
 
-extern void radius_register_avp_dissector(guint32 vendor_id, guint32 attribute_id, radius_avp_dissector_t radius_avp_dissector) {
-	radius_vendor_info_t* vendor;
-	radius_attr_info_t* dictionary_entry;
-	GHashTable* by_id;
+extern void
+radius_register_avp_dissector(guint32 vendor_id, guint32 attribute_id, radius_avp_dissector_t radius_avp_dissector)
+{
+	radius_vendor_info_t *vendor;
+	radius_attr_info_t *dictionary_entry;
+	GHashTable *by_id;
 
 	DISSECTOR_ASSERT(radius_avp_dissector != NULL);
 
 	if (vendor_id) {
-		vendor = (radius_vendor_info_t *)g_hash_table_lookup(dict->vendors_by_id,GUINT_TO_POINTER(vendor_id));
+		vendor = (radius_vendor_info_t *)g_hash_table_lookup(dict->vendors_by_id, GUINT_TO_POINTER(vendor_id));
 
-		if ( ! vendor ) {
+		if (!vendor) {
 			vendor = (radius_vendor_info_t *)g_malloc(sizeof(radius_vendor_info_t));
 
 			vendor->name = g_strdup_printf("%s-%u",
 						       val_to_str_ext_const(vendor_id, &sminmpec_values_ext, "Unknown"),
 						       vendor_id);
 			vendor->code = vendor_id;
-			vendor->attrs_by_id = g_hash_table_new(g_direct_hash,g_direct_equal);
+			vendor->attrs_by_id = g_hash_table_new(g_direct_hash, g_direct_equal);
 			vendor->ett = no_vendor.ett;
 
 			/* XXX: Default "standard" values: Should be parameters ?  */
@@ -2096,21 +2321,21 @@ extern void radius_register_avp_dissector(guint32 vendor_id, guint32 attribute_i
 			vendor->length_octets = 1;
 			vendor->has_flags     = FALSE;
 
-			g_hash_table_insert(dict->vendors_by_id,GUINT_TO_POINTER(vendor->code),vendor);
-			g_hash_table_insert(dict->vendors_by_name,(gpointer)(vendor->name),vendor);
+			g_hash_table_insert(dict->vendors_by_id, GUINT_TO_POINTER(vendor->code), vendor);
+			g_hash_table_insert(dict->vendors_by_name, (gpointer)(vendor->name), vendor);
 		}
 
-		dictionary_entry = (radius_attr_info_t *)g_hash_table_lookup(vendor->attrs_by_id,GUINT_TO_POINTER(attribute_id));
+		dictionary_entry = (radius_attr_info_t *)g_hash_table_lookup(vendor->attrs_by_id, GUINT_TO_POINTER(attribute_id));
 		by_id = vendor->attrs_by_id;
 	} else {
-		dictionary_entry = (radius_attr_info_t *)g_hash_table_lookup(dict->attrs_by_id,GUINT_TO_POINTER(attribute_id));
+		dictionary_entry = (radius_attr_info_t *)g_hash_table_lookup(dict->attrs_by_id, GUINT_TO_POINTER(attribute_id));
 		by_id = dict->attrs_by_id;
 	}
 
 	if (!dictionary_entry) {
 		dictionary_entry = (radius_attr_info_t *)g_malloc(sizeof(radius_attr_info_t));
 
-		dictionary_entry->name = g_strdup_printf("Unknown-Attribute-%u",attribute_id);
+		dictionary_entry->name = g_strdup_printf("Unknown-Attribute-%u", attribute_id);
 		dictionary_entry->code = attribute_id;
 		dictionary_entry->encrypt = 0;
 		dictionary_entry->type = NULL;
@@ -2122,7 +2347,7 @@ extern void radius_register_avp_dissector(guint32 vendor_id, guint32 attribute_i
 		dictionary_entry->ett = no_dictionary_entry.ett;
 		dictionary_entry->tlvs_by_id = NULL;
 
-		g_hash_table_insert(by_id,GUINT_TO_POINTER(dictionary_entry->code),dictionary_entry);
+		g_hash_table_insert(by_id, GUINT_TO_POINTER(dictionary_entry->code), dictionary_entry);
 	}
 
 	dictionary_entry->dissector = radius_avp_dissector;
@@ -2143,191 +2368,261 @@ radius_init_protocol(void)
 			prefs_set_preference_obsolete(alternate_port);
 	}
 
-	radius_calls = g_hash_table_new(radius_call_hash, radius_call_equal);
+	radius_calls = wmem_map_new(wmem_file_scope(), radius_call_hash, radius_call_equal);
 }
 
-static void
-radius_cleanup_protocol(void)
-{
-	g_hash_table_destroy(radius_calls);
-}
-
-static void register_radius_fields(const char* unused _U_) {
-	 hf_register_info base_hf[] = {
-		 { &hf_radius_req,
-		 { "Request", "radius.req", FT_BOOLEAN, BASE_NONE, NULL, 0x0,
-			 "TRUE if RADIUS request", HFILL }},
-		 { &hf_radius_rsp,
-		 { "Response", "radius.rsp", FT_BOOLEAN, BASE_NONE, NULL, 0x0,
-			 "TRUE if RADIUS response", HFILL }},
-		 { &hf_radius_req_frame,
-		 { "Request Frame", "radius.reqframe", FT_FRAMENUM, BASE_NONE, NULL, 0,
-			 NULL, HFILL }},
-		 { &hf_radius_rsp_frame,
-		 { "Response Frame", "radius.rspframe", FT_FRAMENUM, BASE_NONE, NULL, 0,
-			 NULL, HFILL }},
-		 { &hf_radius_time,
-		 { "Time from request", "radius.time", FT_RELATIVE_TIME, BASE_NONE, NULL, 0,
-			 "Timedelta between Request and Response", HFILL }},
-		 { &hf_radius_code,
-		 { "Code","radius.code", FT_UINT8, BASE_DEC|BASE_EXT_STRING, &radius_pkt_type_codes_ext, 0x0,
-			 NULL, HFILL }},
-		 { &hf_radius_id,
-		 { "Identifier",	"radius.id", FT_UINT8, BASE_DEC, NULL, 0x0,
-			 NULL, HFILL }},
-		 { &hf_radius_authenticator,
-		 { "Authenticator",	"radius.authenticator", FT_BYTES, BASE_NONE, NULL, 0x0,
-			 NULL, HFILL }},
-		 { &hf_radius_authenticator_valid,
-		 { "Valid Authenticator", "radius.authenticator.valid", FT_BOOLEAN, BASE_NONE, NULL, 0x0,
+static void register_radius_fields(const char *unused _U_) {
+	hf_register_info base_hf[] = {
+		{ &hf_radius_req,
+		{ "Request", "radius.req", FT_BOOLEAN, BASE_NONE, NULL, 0x0,
+			"TRUE if RADIUS request", HFILL }},
+		{ &hf_radius_rsp,
+		{ "Response", "radius.rsp", FT_BOOLEAN, BASE_NONE, NULL, 0x0,
+			"TRUE if RADIUS response", HFILL }},
+		{ &hf_radius_req_frame,
+		{ "Request Frame", "radius.reqframe", FT_FRAMENUM, BASE_NONE, FRAMENUM_TYPE(FT_FRAMENUM_REQUEST), 0,
+			NULL, HFILL }},
+		{ &hf_radius_rsp_frame,
+		{ "Response Frame", "radius.rspframe", FT_FRAMENUM, BASE_NONE, FRAMENUM_TYPE(FT_FRAMENUM_RESPONSE), 0,
+			NULL, HFILL }},
+		{ &hf_radius_time,
+		{ "Time from request", "radius.time", FT_RELATIVE_TIME, BASE_NONE, NULL, 0,
+			"Timedelta between Request and Response", HFILL }},
+		{ &hf_radius_code,
+		{ "Code", "radius.code", FT_UINT8, BASE_DEC|BASE_EXT_STRING, &radius_pkt_type_codes_ext, 0x0,
+			NULL, HFILL }},
+		{ &hf_radius_id,
+		{ "Identifier",	"radius.id", FT_UINT8, BASE_DEC, NULL, 0x0,
+			NULL, HFILL }},
+		{ &hf_radius_authenticator,
+		{ "Authenticator",	"radius.authenticator", FT_BYTES, BASE_NONE, NULL, 0x0,
+			NULL, HFILL }},
+		{ &hf_radius_authenticator_valid,
+		{ "Valid Authenticator", "radius.authenticator.valid", FT_BOOLEAN, BASE_NONE, NULL, 0x0,
 			"TRUE if Authenticator is valid", HFILL }},
-		 { &hf_radius_authenticator_invalid,
-		 { "Invalid Authenticator", "radius.authenticator.invalid", FT_BOOLEAN, BASE_NONE, NULL, 0x0,
+		{ &hf_radius_authenticator_invalid,
+		{ "Invalid Authenticator", "radius.authenticator.invalid", FT_BOOLEAN, BASE_NONE, NULL, 0x0,
 			"TRUE if Authenticator is invalid", HFILL }},
-		 { &hf_radius_length,
-		 { "Length","radius.length", FT_UINT16, BASE_DEC, NULL, 0x0,
-			 NULL, HFILL }},
-		 { &(no_dictionary_entry.hf),
-		 { "Unknown-Attribute","radius.Unknown_Attribute", FT_BYTES, BASE_NONE, NULL, 0x0,
-			 NULL, HFILL }},
-		 { &(no_dictionary_entry.hf_len),
-		 { "Unknown-Attribute Length","radius.Unknown_Attribute.length", FT_UINT8, BASE_DEC, NULL, 0x0,
-			 NULL, HFILL }},
-		 { &hf_radius_chap_password,
-		 { "CHAP-Password","radius.CHAP_Password", FT_BYTES, BASE_NONE, NULL, 0x0,
-			 NULL, HFILL }},
-		 { &hf_radius_chap_ident,
-		 { "CHAP Ident","radius.CHAP_Ident", FT_UINT8, BASE_HEX, NULL, 0x0,
-			 NULL, HFILL }},
-		 { &hf_radius_chap_string,
-		 { "CHAP String","radius.CHAP_String", FT_BYTES, BASE_NONE, NULL, 0x0,
-			 NULL, HFILL }},
-		 { &hf_radius_framed_ip_address,
-		 { "Framed-IP-Address","radius.Framed-IP-Address", FT_IPv4, BASE_NONE, NULL, 0x0,
-			 NULL, HFILL }},
-		 { &hf_radius_login_ip_host,
-		 { "Login-IP-Host","radius.Login-IP-Host", FT_IPv4, BASE_NONE, NULL, 0x0,
-			 NULL, HFILL }},
-		 { &hf_radius_framed_ipx_network,
-		 { "Framed-IPX-Network","radius.Framed-IPX-Network", FT_IPXNET, BASE_NONE, NULL, 0x0,
-			 NULL, HFILL }},
-		 { &hf_radius_cosine_vpi,
-		 { "Cosine-VPI","radius.Cosine-Vpi", FT_UINT16, BASE_DEC, NULL, 0x0,
-			 NULL, HFILL }},
-		 { &hf_radius_cosine_vci,
-		 { "Cosine-VCI","radius.Cosine-Vci", FT_UINT16, BASE_DEC, NULL, 0x0,
-			 NULL, HFILL }},
-		 { &hf_radius_dup,
-		 { "Duplicate Message", "radius.dup", FT_UINT32, BASE_DEC, NULL, 0x0,
-			 NULL, HFILL }},
-		 { &hf_radius_req_dup,
-		 { "Duplicate Request", "radius.req.dup", FT_UINT32, BASE_DEC, NULL, 0x0,
-			 NULL, HFILL }},
-		 { &hf_radius_rsp_dup,
-		 { "Duplicate Response", "radius.rsp.dup", FT_UINT32, BASE_DEC, NULL, 0x0,
-			 NULL, HFILL }},
-		 { &hf_radius_ascend_data_filter,
-		 { "Ascend Data Filter", "radius.ascenddatafilter", FT_BYTES, BASE_NONE, NULL, 0x0,
-			 NULL, HFILL }},
-		 { &hf_radius_vsa_fragment,
-		 { "VSA fragment", "radius.vsa_fragment", FT_BYTES, BASE_NONE, NULL, 0x0,
-			 NULL, HFILL }},
-		 { &hf_radius_eap_fragment,
-		 { "EAP fragment", "radius.eap_fragment", FT_BYTES, BASE_NONE, NULL, 0x0,
-			 NULL, HFILL }},
-		 { &hf_radius_avp,
-		 { "AVP", "radius.avp", FT_BYTES, BASE_NONE, NULL, 0x0,
-			 NULL, HFILL }},
-		 { &hf_radius_3gpp_ms_tmime_zone,
-		 { "Timezone", "radius.3gpp_ms_tmime_zone", FT_BYTES, BASE_NONE, NULL, 0x0,
-			 NULL, HFILL }},
-	 };
+		{ &hf_radius_length,
+		{ "Length", "radius.length", FT_UINT16, BASE_DEC, NULL, 0x0,
+			NULL, HFILL }},
+		{ &(no_dictionary_entry.hf),
+		{ "Unknown-Attribute", "radius.Unknown_Attribute", FT_BYTES, BASE_NONE, NULL, 0x0,
+			NULL, HFILL }},
+		{ &(no_dictionary_entry.hf_len),
+		{ "Unknown-Attribute Length", "radius.Unknown_Attribute.length", FT_UINT8, BASE_DEC, NULL, 0x0,
+			NULL, HFILL }},
+		{ &hf_radius_chap_password,
+		{ "CHAP-Password", "radius.CHAP_Password", FT_BYTES, BASE_NONE, NULL, 0x0,
+			NULL, HFILL }},
+		{ &hf_radius_chap_ident,
+		{ "CHAP Ident", "radius.CHAP_Ident", FT_UINT8, BASE_HEX, NULL, 0x0,
+			NULL, HFILL }},
+		{ &hf_radius_chap_string,
+		{ "CHAP String", "radius.CHAP_String", FT_BYTES, BASE_NONE, NULL, 0x0,
+			NULL, HFILL }},
+		{ &hf_radius_framed_ip_address,
+		{ "Framed-IP-Address", "radius.Framed-IP-Address", FT_IPv4, BASE_NONE, NULL, 0x0,
+			NULL, HFILL }},
+		{ &hf_radius_login_ip_host,
+		{ "Login-IP-Host", "radius.Login-IP-Host", FT_IPv4, BASE_NONE, NULL, 0x0,
+			NULL, HFILL }},
+		{ &hf_radius_framed_ipx_network,
+		{ "Framed-IPX-Network", "radius.Framed-IPX-Network", FT_IPXNET, BASE_NONE, NULL, 0x0,
+			NULL, HFILL }},
+		{ &hf_radius_cosine_vpi,
+		{ "Cosine-VPI", "radius.Cosine-Vpi", FT_UINT16, BASE_DEC, NULL, 0x0,
+			NULL, HFILL }},
+		{ &hf_radius_cosine_vci,
+		{ "Cosine-VCI", "radius.Cosine-Vci", FT_UINT16, BASE_DEC, NULL, 0x0,
+			NULL, HFILL }},
+		{ &hf_radius_dup,
+		{ "Duplicate Message ID", "radius.dup", FT_UINT32, BASE_DEC, NULL, 0x0,
+			NULL, HFILL }},
+		{ &hf_radius_req_dup,
+		{ "Duplicate Request Frame Number", "radius.req.dup", FT_FRAMENUM, BASE_NONE, NULL, 0x0,
+			NULL, HFILL }},
+		{ &hf_radius_rsp_dup,
+		{ "Duplicate Response Frame Number", "radius.rsp.dup", FT_FRAMENUM, BASE_NONE, NULL, 0x0,
+			NULL, HFILL }},
+		{ &hf_radius_ascend_data_filter,
+		{ "Ascend Data Filter", "radius.ascenddatafilter", FT_BYTES, BASE_NONE, NULL, 0x0,
+			NULL, HFILL }},
+		{ &hf_radius_ascend_data_filter_type,
+		{ "Type", "radius.ascenddatafilter.type", FT_UINT8, BASE_DEC, VALS(ascenddf_filtertype), 0x0,
+			NULL, HFILL }},
+		{ &hf_radius_ascend_data_filter_filteror,
+		{ "Filter or forward", "radius.ascenddatafilter.filteror", FT_UINT8, BASE_DEC, VALS(ascenddf_filteror), 0x0,
+			NULL, HFILL }},
+		{ &hf_radius_ascend_data_filter_inout,
+		{ "Indirection", "radius.ascenddatafilter.inout", FT_UINT8, BASE_DEC, VALS(ascenddf_inout), 0x0,
+			NULL, HFILL }},
+		{ &hf_radius_ascend_data_filter_spare,
+		{ "Spare", "radius.ascenddatafilter.spare", FT_UINT8, BASE_DEC, NULL, 0x0,
+			NULL, HFILL }},
+		{ &hf_radius_ascend_data_filter_src_ipv4,
+		{ "Source IPv4 address", "radius.ascenddatafilter.src_ipv4", FT_IPv4, BASE_NONE, NULL, 0x0,
+			NULL, HFILL }},
+		{ &hf_radius_ascend_data_filter_dst_ipv4,
+		{ "Destination IPv4 address", "radius.ascenddatafilter.dst_ipv4", FT_IPv4, BASE_NONE, NULL, 0x0,
+			NULL, HFILL }},
+		{ &hf_radius_ascend_data_filter_src_ipv6,
+		{ "Source IPv6 address", "radius.ascenddatafilter.src_ipv6", FT_IPv6, BASE_NONE, NULL, 0x0,
+			NULL, HFILL }},
+		{ &hf_radius_ascend_data_filter_dst_ipv6,
+		{ "Destination IPv6 address", "radius.ascenddatafilter.dst_ipv6", FT_IPv6, BASE_NONE, NULL, 0x0,
+			NULL, HFILL }},
+		{ &hf_radius_ascend_data_filter_src_ip_prefix,
+		{ "Source IP prefix", "radius.ascenddatafilter.src_prefix_ip", FT_UINT8, BASE_DEC, NULL, 0x0,
+			NULL, HFILL }},
+		{ &hf_radius_ascend_data_filter_dst_ip_prefix,
+		{ "Destination IP prefix", "radius.ascenddatafilter.dst_prefix_ip", FT_UINT8, BASE_DEC, NULL, 0x0,
+			NULL, HFILL }},
+		{ &hf_radius_ascend_data_filter_protocol,
+		{ "Protocol", "radius.ascenddatafilter.protocol", FT_UINT8, BASE_DEC, VALS(ascenddf_proto), 0x0,
+			NULL, HFILL }},
+		{ &hf_radius_ascend_data_filter_established,
+		{ "Established", "radius.ascenddatafilter.established", FT_UINT8, BASE_DEC, NULL, 0x0,
+			NULL, HFILL }},
+		{ &hf_radius_ascend_data_filter_src_port,
+		{ "Source Port", "radius.ascenddatafilter.src_port", FT_UINT16, BASE_DEC, NULL, 0x0,
+			NULL, HFILL }},
+		{ &hf_radius_ascend_data_filter_dst_port,
+		{ "Destination Port", "radius.ascenddatafilter.dst_port", FT_UINT16, BASE_DEC, NULL, 0x0,
+			NULL, HFILL }},
+		{ &hf_radius_ascend_data_filter_src_port_qualifier,
+		{ "Source Port Qualifier", "radius.ascenddatafilter.src_port_qualifier", FT_UINT8, BASE_DEC, VALS(ascenddf_portq), 0x0,
+			NULL, HFILL }},
+		{ &hf_radius_ascend_data_filter_dst_port_qualifier,
+		{ "Destination Port Qualifier", "radius.ascenddatafilter.dst_port_qualifier", FT_UINT8, BASE_DEC, VALS(ascenddf_portq), 0x0,
+			NULL, HFILL }},
+		{ &hf_radius_ascend_data_filter_reserved,
+		{ "Reserved", "radius.ascenddatafilter.reserved", FT_UINT16, BASE_HEX, NULL, 0x0,
+			NULL, HFILL }},
+		{ &hf_radius_vsa_fragment,
+		{ "VSA fragment", "radius.vsa_fragment", FT_BYTES, BASE_NONE, NULL, 0x0,
+			NULL, HFILL }},
+		{ &hf_radius_eap_fragment,
+		{ "EAP fragment", "radius.eap_fragment", FT_BYTES, BASE_NONE, NULL, 0x0,
+			NULL, HFILL }},
+		{ &hf_radius_avp,
+		{ "AVP", "radius.avp", FT_BYTES, BASE_NONE, NULL, 0x0,
+			NULL, HFILL }},
+		{ &hf_radius_avp_length,
+		{ "AVP Length", "radius.avp.length", FT_UINT8, BASE_DEC, NULL, 0x0,
+			NULL, HFILL }},
+		{ &hf_radius_avp_type,
+		{ "AVP Type", "radius.avp.type", FT_UINT8, BASE_DEC, NULL, 0x0,
+			NULL, HFILL }},
+		{ &hf_radius_egress_vlanid_tag,
+		{ "Tag", "radius.egress_vlanid_tag", FT_UINT32, BASE_HEX, VALS(egress_vlan_tag_vals), 0xFF000000,
+			NULL, HFILL }},
+		{ &hf_radius_egress_vlanid_pad,
+		{ "Pad", "radius.egress_vlanid_pad", FT_UINT32, BASE_HEX, NULL, 0x00FFF000,
+			NULL, HFILL }},
+		{ &hf_radius_egress_vlanid,
+		{ "Vlan ID", "radius.egress_vlanid", FT_UINT32, BASE_DEC, NULL, 0x00000FFF,
+			NULL, HFILL }},
+		{ &hf_radius_egress_vlan_name_tag,
+		{ "Tag", "radius.egress_vlan_name_tag", FT_UINT8, BASE_HEX, VALS(egress_vlan_tag_vals), 0x0,
+			NULL, HFILL }},
+		{ &hf_radius_egress_vlan_name,
+		{ "Vlan Name", "radius.egress_vlan_name", FT_STRING, BASE_NONE, NULL, 0x0,
+			NULL, HFILL }},
+		{ &hf_radius_3gpp_ms_tmime_zone,
+		{ "Timezone", "radius.3gpp_ms_tmime_zone", FT_BYTES, BASE_NONE, NULL, 0x0,
+			NULL, HFILL }},
+	};
 
-	 gint *base_ett[] = {
-		 &ett_radius,
-		 &ett_radius_avp,
-		 &ett_radius_authenticator,
-		 &ett_eap,
-		 &ett_chap,
-		 &(no_dictionary_entry.ett),
-		 &(no_vendor.ett),
-	 };
+	gint *base_ett[] = {
+		&ett_radius,
+		&ett_radius_avp,
+		&ett_radius_authenticator,
+		&ett_radius_ascend,
+		&ett_eap,
+		&ett_chap,
+		&(no_dictionary_entry.ett),
+		&(no_vendor.ett),
+	};
 
-	 static ei_register_info ei[] = {
-     {
+	static ei_register_info ei[] = {
+	{
 		 &ei_radius_invalid_length, { "radius.invalid_length", PI_MALFORMED, PI_ERROR, "Invalid length", EXPFILL }},
-	 };
+	};
 
-	 expert_module_t* expert_radius;
-	 hfett_t ri;
-	 char* dir = NULL;
-	 gchar* dict_err_str = NULL;
+	expert_module_t *expert_radius;
+	hfett_t ri;
+	char *dir = NULL;
+	gchar *dict_err_str = NULL;
 
-	 ri.hf = wmem_array_new(wmem_epan_scope(), sizeof(hf_register_info));
-	 ri.ett = wmem_array_new(wmem_epan_scope(), sizeof(gint *));
-	 ri.vend_vs = wmem_array_new(wmem_epan_scope(), sizeof(value_string));
+	ri.hf = wmem_array_new(wmem_epan_scope(), sizeof(hf_register_info));
+	ri.ett = wmem_array_new(wmem_epan_scope(), sizeof(gint *));
+	ri.vend_vs = wmem_array_new(wmem_epan_scope(), sizeof(value_string));
 
-	 wmem_array_append(ri.hf, base_hf, array_length(base_hf));
-	 wmem_array_append(ri.ett, base_ett, array_length(base_ett));
+	wmem_array_append(ri.hf, base_hf, array_length(base_hf));
+	wmem_array_append(ri.ett, base_ett, array_length(base_ett));
 
-	 dir = get_persconffile_path("radius", FALSE);
+	dir = get_persconffile_path("radius", FALSE);
 
-	 if (test_for_directory(dir) != EISDIR) {
-		 /* Although dir isn't a directory it may still use memory */
-		 g_free(dir);
+	if (test_for_directory(dir) != EISDIR) {
+		/* Although dir isn't a directory it may still use memory */
+		g_free(dir);
 
-		 dir = get_datafile_path("radius");
+		dir = get_datafile_path("radius");
 
-		 if (test_for_directory(dir) != EISDIR) {
-			 g_free(dir);
-			 dir = NULL;
-		 }
-	 }
+		if (test_for_directory(dir) != EISDIR) {
+			g_free(dir);
+			dir = NULL;
+		}
+	}
 
 	if (dir) {
-		radius_load_dictionary(dict,dir,"dictionary",&dict_err_str);
+		radius_load_dictionary(dict, dir, "dictionary", &dict_err_str);
 
 		if (dict_err_str) {
-			report_failure("radius: %s",dict_err_str);
+			report_failure("radius: %s", dict_err_str);
 			g_free(dict_err_str);
 		}
 
-		g_hash_table_foreach(dict->attrs_by_id,register_attrs,&ri);
-		g_hash_table_foreach(dict->vendors_by_id,register_vendors,&ri);
+		g_hash_table_foreach(dict->attrs_by_id, register_attrs, &ri);
+		g_hash_table_foreach(dict->vendors_by_id, register_vendors, &ri);
 	}
 
 	g_free(dir);
 
-	proto_register_field_array(proto_radius,(hf_register_info*)wmem_array_get_raw(ri.hf),wmem_array_get_count(ri.hf));
-	proto_register_subtree_array((gint**)wmem_array_get_raw(ri.ett), wmem_array_get_count(ri.ett));
+	proto_register_field_array(proto_radius, (hf_register_info *)wmem_array_get_raw(ri.hf), wmem_array_get_count(ri.hf));
+	proto_register_subtree_array((gint **)wmem_array_get_raw(ri.ett), wmem_array_get_count(ri.ett));
 	expert_radius = expert_register_protocol(proto_radius);
 	expert_register_field_array(expert_radius, ei, array_length(ei));
 
-	no_vendor.attrs_by_id = g_hash_table_new(g_direct_hash,g_direct_equal);
+	no_vendor.attrs_by_id = g_hash_table_new(g_direct_hash, g_direct_equal);
 
 	/*
 	 * Handle attributes that have a special format.
 	 */
-	radius_register_avp_dissector(0,3,dissect_chap_password);
-	radius_register_avp_dissector(0,8,dissect_framed_ip_address);
-	radius_register_avp_dissector(0,14,dissect_login_ip_host);
-	radius_register_avp_dissector(0,23,dissect_framed_ipx_network);
-	radius_register_avp_dissector(VENDOR_COSINE,5,dissect_cosine_vpvc);
+	radius_register_avp_dissector(0, 3, dissect_chap_password);
+	radius_register_avp_dissector(0, 8, dissect_framed_ip_address);
+	radius_register_avp_dissector(0, 14, dissect_login_ip_host);
+	radius_register_avp_dissector(0, 23, dissect_framed_ipx_network);
+	radius_register_avp_dissector(0, 56, dissect_rfc4675_egress_vlanid);
+	radius_register_avp_dissector(0, 58, dissect_rfc4675_egress_vlan_name);
+
+	radius_register_avp_dissector(VENDOR_COSINE, 5, dissect_cosine_vpvc);
 	/*
 	 * XXX - should we just call dissect_ascend_data_filter()
 	 * in radius_abinary()?
 	 *
 	 * Note that there is no attribute 242 in dictionary.redback.
 	 */
-	radius_register_avp_dissector(VENDOR_ASCEND,242,dissect_ascend_data_filter);
-	radius_register_avp_dissector(VENDOR_REDBACK,242,dissect_ascend_data_filter);
-	radius_register_avp_dissector(0,242,dissect_ascend_data_filter);
+	radius_register_avp_dissector(VENDOR_ASCEND, 242, dissect_ascend_data_filter);
+	radius_register_avp_dissector(VENDOR_REDBACK, 242, dissect_ascend_data_filter);
+	radius_register_avp_dissector(0, 242, dissect_ascend_data_filter);
 
 	/*
 	 * XXX - we should special-case Cisco attribute 252; see the comment in
 	 * dictionary.cisco.
 	 */
-	radius_register_avp_dissector(VENDOR_THE3GPP,23,dissect_radius_3gpp_ms_tmime_zone);
+	radius_register_avp_dissector(VENDOR_THE3GPP, 23, dissect_radius_3gpp_ms_tmime_zone);
 }
 
 
@@ -2336,37 +2631,36 @@ proto_register_radius(void)
 {
 	module_t *radius_module;
 
-	proto_radius = proto_register_protocol("Radius Protocol", "RADIUS", "radius");
-	new_register_dissector("radius", dissect_radius, proto_radius);
+	proto_radius = proto_register_protocol("RADIUS Protocol", "RADIUS", "radius");
+	register_dissector("radius", dissect_radius, proto_radius);
 	register_init_routine(&radius_init_protocol);
-	register_cleanup_routine(&radius_cleanup_protocol);
 	radius_module = prefs_register_protocol(proto_radius, proto_reg_handoff_radius);
-	prefs_register_string_preference(radius_module,"shared_secret","Shared Secret",
+	prefs_register_string_preference(radius_module, "shared_secret", "Shared Secret",
 					 "Shared secret used to decode User Passwords and validate Response Authenticators",
 					 &shared_secret);
-	prefs_register_bool_preference(radius_module,"validate_authenticator","Validate Reponse Authenticator",
-                                   "Whether to check or not if Response Authenticator is correct. You need to define shared secret for this to work.",
-                                   &validate_authenticator);
-	prefs_register_bool_preference(radius_module,"show_length","Show AVP Lengths",
+	prefs_register_bool_preference(radius_module, "validate_authenticator", "Validate Reponse Authenticator",
+				       "Whether to check or not if Response Authenticator is correct. You need to define shared secret for this to work.",
+				       &validate_authenticator);
+	prefs_register_bool_preference(radius_module, "show_length", "Show AVP Lengths",
 				       "Whether to add or not to the tree the AVP's payload length",
 				       &show_length);
-	prefs_register_uint_preference(radius_module, "alternate_port","Alternate Port",
+	prefs_register_uint_preference(radius_module, "alternate_port", "Alternate Port",
 				       "An alternate UDP port to decode as RADIUS", 10, &alt_port_pref);
 
 	range_convert_str(&global_ports_range, DEFAULT_RADIUS_PORT_RANGE, MAX_UDP_PORT);
-	prefs_register_range_preference(radius_module, "ports","RADIUS ports",
+	prefs_register_range_preference(radius_module, "ports", "RADIUS ports",
 				       "A list of UDP ports to decode as RADIUS", &global_ports_range, MAX_UDP_PORT);
-	prefs_register_uint_preference(radius_module, "request_ttl", "Request TimeToLive",
-				       "Time to live for a radius request used for matching it with a response", 10, &request_ttl);
+	prefs_register_obsolete_preference(radius_module, "request_ttl");
+
 	radius_tap = register_tap("radius");
-	proto_register_prefix("radius",register_radius_fields);
+	proto_register_prefix("radius", register_radius_fields);
 
 	dict = (radius_dictionary_t *)g_malloc(sizeof(radius_dictionary_t));
-	dict->attrs_by_id     = g_hash_table_new(g_direct_hash,g_direct_equal);
-	dict->attrs_by_name   = g_hash_table_new(g_str_hash,g_str_equal);
-	dict->vendors_by_id   = g_hash_table_new(g_direct_hash,g_direct_equal);
-	dict->vendors_by_name = g_hash_table_new(g_str_hash,g_str_equal);
-	dict->tlvs_by_name    = g_hash_table_new(g_str_hash,g_str_equal);
+	dict->attrs_by_id     = g_hash_table_new(g_direct_hash, g_direct_equal);
+	dict->attrs_by_name   = g_hash_table_new(g_str_hash, g_str_equal);
+	dict->vendors_by_id   = g_hash_table_new(g_direct_hash, g_direct_equal);
+	dict->vendors_by_name = g_hash_table_new(g_str_hash, g_str_equal);
+	dict->tlvs_by_name    = g_hash_table_new(g_str_hash, g_str_equal);
 
 	register_rtd_table(proto_radius, NULL, RADIUS_CAT_NUM_TIMESTATS, 1, radius_message_code, radiusstat_packet, NULL);
 }
@@ -2380,7 +2674,7 @@ proto_reg_handoff_radius(void)
 
 	if (!initialized) {
 		radius_handle = find_dissector("radius");
-		eap_handle = find_dissector("eap");
+		eap_handle = find_dissector_add_dependency("eap", proto_radius);
 
 		initialized = TRUE;
 	} else {
@@ -2391,7 +2685,7 @@ proto_reg_handoff_radius(void)
 	if (alt_port_pref != 0) {
 		/* Append it to the range of ports but only if necessary */
 		if (!value_is_in_range(global_ports_range, alt_port_pref)) {
-			global_ports_range = (range_t*)g_realloc(global_ports_range,
+			global_ports_range = (range_t *)g_realloc(global_ports_range,
 					/* see epan/range.c:range_copy function */
 					sizeof (range_t) - sizeof (range_admin_t) + (global_ports_range->nranges + 1) * sizeof (range_admin_t));
 			global_ports_range->ranges[global_ports_range->nranges].low = alt_port_pref;

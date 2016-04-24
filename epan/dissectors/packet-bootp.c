@@ -43,6 +43,7 @@
  * RFC 3825: Dynamic Host Configuration Protocol Option for Coordinate-based Location Configuration Information
  * RFC 3925: Vendor-Identifying Vendor Options for Dynamic Host Configuration Protocol version 4 (DHCPv4)
  * RFC 3942: Reclassifying DHCPv4 Options
+ * RFC 4174: The IPv4 Dynamic Host Configuration Protocol (DHCP) Option for the Internet Storage Name Service
  * RFC 4243: Vendor-Specific Information Suboption for the Dynamic Host Configuration Protocol (DHCP) Relay Agent Option
  * RFC 4361: Node-specific Client Identifiers for Dynamic Host Configuration Protocol Version Four (DHCPv4)
  * RFC 4388: Dynamic Host Configuration Protocol (DHCP) Leasequery
@@ -121,6 +122,7 @@
 #include <epan/expert.h>
 #include <epan/uat.h>
 #include <epan/oui.h>
+#include <wsutil/str_util.h>
 void proto_register_bootp(void);
 void proto_reg_handoff_bootp(void);
 
@@ -386,6 +388,42 @@ static int hf_bootp_option82_vrf_name_vpn_id_index = -1;
 									/* 82:151 suboptions end */
 static int hf_bootp_option82_server_id_override_cisco = -1;		/* 82:152 */
 
+static int hf_bootp_option_isns_functions = -1;
+static int hf_bootp_option_isns_functions_enabled = -1;
+static int hf_bootp_option_isns_functions_dd_authorization = -1;
+static int hf_bootp_option_isns_functions_sec_policy_distibution = -1;
+static int hf_bootp_option_isns_functions_reserved = -1;
+
+static int hf_bootp_option_isns_discovery_domain_access = -1;
+static int hf_bootp_option_isns_discovery_domain_access_enabled = -1;
+static int hf_bootp_option_isns_discovery_domain_access_control_node = -1;
+static int hf_bootp_option_isns_discovery_domain_access_iscsi_target = -1;
+static int hf_bootp_option_isns_discovery_domain_access_iscsi_inititator = -1;
+static int hf_bootp_option_isns_discovery_domain_access_ifcp_target_port = -1;
+static int hf_bootp_option_isns_discovery_domain_access_ifcp_initiator_port = -1;
+static int hf_bootp_option_isns_discovery_domain_access_reserved = -1;
+
+static int hf_bootp_option_isns_administrative_flags = -1;
+static int hf_bootp_option_isns_administrative_flags_enabled = -1;
+static int hf_bootp_option_isns_administrative_flags_heartbeat = -1;
+static int hf_bootp_option_isns_administrative_flags_management_scns = -1;
+static int hf_bootp_option_isns_administrative_flags_default_dd = -1;
+static int hf_bootp_option_isns_administrative_flags_reserved = -1;
+
+static int hf_bootp_option_isns_server_security_bitmap = -1;
+static int hf_bootp_option_isns_server_security_bitmap_enabled = -1;
+static int hf_bootp_option_isns_server_security_bitmap_ike_ipsec_enabled = -1;
+static int hf_bootp_option_isns_server_security_bitmap_main_mode = -1;
+static int hf_bootp_option_isns_server_security_bitmap_aggressive_mode = -1;
+static int hf_bootp_option_isns_server_security_bitmap_pfs = -1;
+static int hf_bootp_option_isns_server_security_bitmap_transport_mode = -1;
+static int hf_bootp_option_isns_server_security_bitmap_tunnel_mode = -1;
+static int hf_bootp_option_isns_server_security_bitmap_reserved = -1;
+
+static int hf_bootp_option_isns_heartbeat_originator_addr = -1;
+static int hf_bootp_option_isns_primary_server_addr = -1;
+static int hf_bootp_option_isns_secondary_server_addr_list = -1;
+
 static int hf_bootp_option_novell_dss_string = -1;			/* 85 */
 static int hf_bootp_option_novell_dss_ip = -1;				/* 85 */
 static int hf_bootp_option_novell_ds_tree_name = -1;			/* 86 */
@@ -468,6 +506,25 @@ static int hf_bootp_option_6RD_ipv4_mask_len = -1;			/* 212 */
 static int hf_bootp_option_6RD_prefix_len = -1;				/* 212 */
 static int hf_bootp_option_6RD_prefix = -1;				/* 212 */
 static int hf_bootp_option_6RD_border_relay_ip = -1;			/* 212 */
+static int hf_bootp_option242_avaya = -1;				/* 242 */
+static int hf_bootp_option242_avaya_tlssrvr = -1;			/* 242 */
+static int hf_bootp_option242_avaya_httpsrvr = -1;			/* 242 */
+static int hf_bootp_option242_avaya_httpdir = -1;			/* 242 */
+static int hf_bootp_option242_avaya_static = -1;			/* 242 */
+static int hf_bootp_option242_avaya_mcipadd = -1;			/* 242 */
+static int hf_bootp_option242_avaya_dot1x = -1;				/* 242 */
+static int hf_bootp_option242_avaya_icmpdu = -1;			/* 242 */
+static int hf_bootp_option242_avaya_icmpred = -1;			/* 242 */
+static int hf_bootp_option242_avaya_l2q = -1;				/* 242 */
+static int hf_bootp_option242_avaya_l2qvlan = -1;			/* 242 */
+static int hf_bootp_option242_avaya_loglocal = -1;			/* 242 */
+static int hf_bootp_option242_avaya_phy1stat = -1;			/* 242 */
+static int hf_bootp_option242_avaya_phy2stat = -1;			/* 242 */
+static int hf_bootp_option242_avaya_procpswd = -1;			/* 242 */
+static int hf_bootp_option242_avaya_procstat = -1;			/* 242 */
+static int hf_bootp_option242_avaya_snmpadd = -1;			/* 242 */
+static int hf_bootp_option242_avaya_snmpstring = -1;			/* 242 */
+static int hf_bootp_option242_avaya_vlantest = -1;			/* 242 */
 static int hf_bootp_option_private_proxy_autodiscovery = -1;		/* 252 */
 static int hf_bootp_option_end = -1;					/* 255 */
 static int hf_bootp_option_end_overload = -1;				/* 255 (with overload)*/
@@ -494,10 +551,16 @@ static gint ett_bootp_option82_suboption9 = -1;
 static gint ett_bootp_option125_suboption = -1;
 static gint ett_bootp_option125_tr111_suboption = -1;
 static gint ett_bootp_option125_cl_suboption = -1;
+static gint ett_bootp_option242_suboption = -1;
 static gint ett_bootp_fqdn = -1;
 static gint ett_bootp_fqdn_flags = -1;
 static gint ett_bootp_filename_option = -1;
 static gint ett_bootp_server_hostname = -1;
+static gint ett_bootp_isns_functions = -1;
+static gint ett_bootp_isns_discovery_domain_access = -1;
+static gint ett_bootp_isns_administrative_flags = -1;
+static gint ett_bootp_isns_server_security_bitmap = -1;
+static gint ett_bootp_isns_secondary_server_addr = -1;
 
 static expert_field ei_bootp_bad_length = EI_INIT;
 static expert_field ei_bootp_bad_bitfield = EI_INIT;
@@ -522,6 +585,7 @@ static expert_field ei_bootp_end_option_missing = EI_INIT;
 static expert_field ei_bootp_client_address_not_given = EI_INIT;
 static expert_field ei_bootp_server_name_overloaded_by_dhcp = EI_INIT;
 static expert_field ei_bootp_boot_filename_overloaded_by_dhcp = EI_INIT;
+static expert_field ei_bootp_option_isns_ignored_bitfield = EI_INIT;
 
 static dissector_handle_t bootp_handle;
 
@@ -623,6 +687,9 @@ enum {
 	RFC_3361_ENC_FQDN,
 	RFC_3361_ENC_IPADDR
 };
+
+static void dissect_vendor_avaya_param(proto_tree *tree, packet_info *pinfo, proto_item *vti,
+		tvbuff_t *tvb, int optoff, wmem_strbuf_t *avaya_param_buf);
 
 /* converts fixpoint presentation into decimal presentation
    also converts values which are out of range to allow decoding of received data */
@@ -731,6 +798,14 @@ static const value_string duidtype_vals[] =
 
 static gboolean novell_string = FALSE;
 
+static guint bootp_uuid_endian = ENC_LITTLE_ENDIAN;
+
+static const enum_val_t bootp_uuid_endian_vals[] = {
+	{ "Little Endian", "Little Endian",	ENC_LITTLE_ENDIAN},
+	{ "Big Endian",	 "Big Endian", ENC_BIG_ENDIAN },
+	{ NULL, NULL, 0 }
+};
+
 #define UDP_PORT_BOOTPS	 67
 #define UDP_PORT_BOOTPC	 68
 
@@ -743,6 +818,38 @@ static gboolean novell_string = FALSE;
 #define F_FQDN_E	0x04
 #define F_FQDN_N	0x08
 #define F_FQDN_MBZ	0xf0
+
+#define ISNS_BITFIELD_NZ_MUST_BE_IGNORED(mask, ena_flag)		\
+	((mask) && !((mask) & (ena_flag)))
+
+/* iSNS bit fields */
+#define F_ISNS_FUNCTIONS_ENABLED	0x0001
+#define F_ISNS_FUNCTIONS_DD_AUTH	0x0002
+#define F_ISNS_FUNCTIONS_SEC_POLICY	0x0004
+#define F_ISNS_FUNCTIONS_RESERVED	0xFFF8
+
+#define F_ISNS_DD_ACCESS_ENABLED		0x0001
+#define F_ISNS_DD_ACCESS_CTRL_NODE		0x0002
+#define F_ISNS_DD_ACCESS_ISCSI_TARGET		0x0004
+#define F_ISNS_DD_ACCESS_ISCSI_INITIATOR	0x0008
+#define F_ISNS_DD_ACCESS_IFCP_TARGET_PORT	0x0010
+#define F_ISNS_DD_ACCESS_IFCP_INITIATOR_PORT	0x0020
+#define F_ISNS_DD_ACCESS_RESERVED		0xFFC0
+
+#define F_ISNS_ADMIN_FLAGS_ENABLED		0x0001
+#define F_ISNS_ADMIN_FLAGS_HEARTBEAT		0x0002
+#define F_ISNS_ADMIN_FLAGS_MANAGEMENT_SCNS	0x0004
+#define F_ISNS_ADMIN_FLAGS_DEFAULT_DD		0x0008
+#define F_ISNS_ADMIN_FLAGS_RESERVED		0xFFF0
+
+#define F_ISNS_SRV_SEC_BITMAP_ENABLED		0x0001
+#define F_ISNS_SRV_SEC_BITMAP_IKE_IPSEC		0x0002
+#define F_ISNS_SRV_SEC_BITMAP_MAIN_MODE		0x0004
+#define F_ISNS_SRV_SEC_BITMAP_AGGRESSIVE	0x0008
+#define F_ISNS_SRV_SEC_BITMAP_PFS		0x0010
+#define F_ISNS_SRV_SEC_BITMAP_TRASPORT_MODE	0x0020
+#define F_ISNS_SRV_SEC_BITMAP_TUNNEL_MODE	0x0040
+#define F_ISNS_SRV_SEC_BITMAP_RESERVED		0xFF80
 
 static const true_false_string tfs_fqdn_s = {
 	"Server",
@@ -762,6 +869,16 @@ static const true_false_string tfs_fqdn_e = {
 static const true_false_string tfs_fqdn_n = {
 	"No server updates",
 	"Some server updates"
+};
+
+static const true_false_string tfs_isns_function_dd_based_auth = {
+	"Automatically allowed access",
+	"Explicitly performed",
+};
+
+static const true_false_string tfs_isns_functions_sec_distrib = {
+	"Download from iSNS server",
+	"By other means",
 };
 
 enum field_type {
@@ -847,6 +964,8 @@ static int dissect_vendor_cl_suboption(packet_info *pinfo, proto_item *v_ti, pro
 					    tvbuff_t *tvb, int optoff, int optend);
 static int dissect_vendor_generic_suboption(packet_info *pinfo, proto_item *v_ti, proto_tree *v_tree,
 					    tvbuff_t *tvb, int optoff, int optend);
+static int dissect_isns(packet_info *pinfo, proto_item *v_ti, proto_tree *v_tree,
+			tvbuff_t *tvb, int optoff, int optlen);
 
 #define OPT53_DISCOVER "Discover"
 /* http://www.iana.org/assignments/bootp-dhcp-parameters */
@@ -959,6 +1078,72 @@ static const value_string sip_server_enc_vals[] = {
 	{1, "IPv4 Address" },
 	{0, NULL }
 };
+
+static const string_string option242_avaya_phystat_vals[] = {
+	{ "0", "Disabled" },
+	{ "1", "Auto" },
+	{ "2", "10Mbps half" },
+	{ "3", "10Mbps full" },
+	{ "4", "100Mbps half" },
+	{ "5", "100Mbps full" },
+	{ "6", "1000Mbps full" },
+	{ 0, NULL }
+};
+
+static const string_string option242_avaya_l2q_vals[] = {
+	{ "0", "Auto" },
+	{ "1", "Enabled" },
+	{ "2", "Disabled" },
+	{ 0, NULL }
+};
+
+static const string_string option242_avaya_dot1x_vals[] = {
+	{ "0", "With PAE pass-through" },
+	{ "1", "With PAE pass-through and proxy Logoff" },
+	{ "2", "Without PAE pass-through or proxy Logoff" },
+	{ 0, NULL }
+};
+
+static const string_string option242_avaya_icmpdu_vals[] = {
+	{ "0", "No ICMP Destination Unreachable messages" },
+	{ "1", "Send limited Port Unreachable messages" },
+	{ "2", "Send Protocol and Port Unreachable messages" },
+	{ 0, NULL }
+};
+
+static const string_string option242_avaya_icmpred_vals[] = {
+	{ "0", "Ignore ICMP Redirect messages" },
+	{ "1", "Process ICMP Redirect messages" },
+	{ 0, NULL }
+};
+
+static const string_string option242_avaya_loglocal_vals[] = {
+	{ "0", "Disabled" },
+	{ "1", "Emergencie" },
+	{ "2", "Alerts" },
+	{ "3", "Critical" },
+	{ "4", "Errors" },
+	{ "5", "Warnings" },
+	{ "6", "Notices" },
+	{ "7", "Information" },
+	{ "8", "Debug" },
+	{ 0, NULL }
+};
+
+static const string_string option242_avaya_procstat_vals[] = {
+	{ "0", "All administrative options" },
+	{ "1", "Only view administrative options" },
+	{ 0, NULL }
+};
+
+static const string_string option242_avaya_static_vals[] = {
+	{ "0", "Static programming never overrides call server (DHCP) or call server administered data" },
+	{ "1", "Static programming overrides only file server administered data" },
+	{ "2", "Static programming overrides only call server administered data" },
+	{ "3", "Static programming overrides both file server- and call server-administered data" },
+	{ 0, NULL }
+};
+
 /* bootp options administration */
 #define BOOTP_OPT_NUM	256
 
@@ -1049,7 +1234,7 @@ static struct opt_info default_bootp_opt[BOOTP_OPT_NUM] = {
 /*  80 */ { "Rapid commit",				opaque, NULL },
 /*  81 */ { "Client Fully Qualified Domain Name",	special, NULL},
 /*  82 */ { "Agent Information Option",			special, NULL},
-/*  83 */ { "iSNS [TODO:RFC4174]",			opaque, NULL },
+/*  83 */ { "iSNS",					opaque, NULL },
 /*  84 */ { "Removed/Unassigned",			opaque, NULL },
 /*  85 */ { "Novell Directory Services Servers",	special, NULL},
 /*  86 */ { "Novell Directory Services Tree Name",	string, &hf_bootp_option_novell_ds_tree_name },
@@ -1208,7 +1393,7 @@ static struct opt_info default_bootp_opt[BOOTP_OPT_NUM] = {
 /* 239 */ { "Private",					opaque, NULL },
 /* 240 */ { "Private",					opaque, NULL },
 /* 241 */ { "Private",					opaque, NULL },
-/* 242 */ { "Private",					opaque, NULL },
+/* 242 */ { "Private/Avaya IP Telephone",		special, NULL },
 /* 243 */ { "Private",					opaque, NULL },
 /* 244 */ { "Private",					opaque, NULL },
 /* 245 */ { "Private",					opaque, NULL },
@@ -1888,8 +2073,8 @@ bootp_option(tvbuff_t *tvb, packet_info *pinfo, proto_tree *bp_tree, proto_item 
 					tvb_arphrdaddr_to_str(tvb, optoff+1, 6, byte));
 		} else if (optlen == 17 && byte == 0) {
 			/* Identifier is a UUID */
-			proto_tree_add_item(v_tree, hf_bootp_client_identifier_uuid,
-					    tvb, optoff + 1, 16, ENC_LITTLE_ENDIAN);
+			proto_tree_add_item(v_tree, hf_bootp_client_identifier_uuid, tvb, optoff + 1, 16, bootp_uuid_endian);
+
 		/* From RFC 4361 paragraph 6.1 DHCPv4 Client Behavior:
 			To send an RFC 3315-style binding identifier in a DHCPv4 'client
 			identifier' option, the type of the 'client identifier' option is set
@@ -2017,8 +2202,7 @@ bootp_option(tvbuff_t *tvb, packet_info *pinfo, proto_tree *bp_tree, proto_item 
 					tvb_arphrdaddr_to_str(tvb, optoff+1, 6, byte));
 		} else if (optlen == 17 && byte == 0) {
 			/* Identifier is a UUID */
-			proto_tree_add_item(v_tree, hf_bootp_client_identifier_uuid,
-					    tvb, optoff + 1, 16, ENC_LITTLE_ENDIAN);
+			proto_tree_add_item(v_tree, hf_bootp_client_identifier_uuid, tvb, optoff + 1, 16, bootp_uuid_endian);
 		} else {
 			/* otherwise, it's opaque data */
 		}
@@ -2107,6 +2291,10 @@ bootp_option(tvbuff_t *tvb, packet_info *pinfo, proto_tree *bp_tree, proto_item 
 		optend = optoff + optlen;
 		while (optoff < optend)
 			optoff = bootp_dhcp_decode_agent_info(pinfo, vti, v_tree, tvb, optoff, optend);
+		break;
+
+	case 83:	/* iSNS Option (RFC 4174) */
+		optoff = dissect_isns(pinfo, vti, v_tree, tvb, optoff, optlen);
 		break;
 
 	case 85:	/* Novell Servers (RFC 2241) */
@@ -2681,6 +2869,47 @@ bootp_option(tvbuff_t *tvb, packet_info *pinfo, proto_tree *bp_tree, proto_item 
 		break;
 	}
 
+	case 242: {	/* Avaya IP Telephone */
+		proto_tree *o242avaya_v_tree;
+		proto_item *avaya_ti;
+		gchar *avaya_option = NULL;
+		gchar *field = NULL;
+		wmem_strbuf_t *avaya_param_buf = NULL;
+
+		/* minimum length is 5 bytes */
+		if (optlen < 5) {
+			expert_add_info_format(pinfo, vti, &ei_bootp_bad_length, "Avaya IP Telephone option length isn't >= 5");
+			optoff += optlen;
+			break;
+		}
+		avaya_option = (gchar*)tvb_get_string_enc(wmem_packet_scope(), tvb, optoff, optlen, ENC_ASCII);
+		avaya_ti = proto_tree_add_string(v_tree, hf_bootp_option242_avaya, tvb, optoff, optlen, avaya_option);
+		o242avaya_v_tree = proto_item_add_subtree(avaya_ti, ett_bootp_option242_suboption);
+		avaya_param_buf = wmem_strbuf_new(wmem_packet_scope(), "");
+		for ( field = strtok(avaya_option, ","); field; field = strtok(NULL, ",") ) {
+			if (!strchr(field, '=')) {
+				if (wmem_strbuf_get_len(avaya_param_buf) == 0) {
+					expert_add_info_format(pinfo, vti, &hf_bootp_subopt_unknown_type, "ERROR, Unknown parameter %s", field);
+					optoff += (int)strlen(field);
+					break;
+				}
+				wmem_strbuf_append_printf(avaya_param_buf,",%s", field);
+			}
+			else {
+				if (wmem_strbuf_get_len(avaya_param_buf) > 0) {
+					dissect_vendor_avaya_param(o242avaya_v_tree, pinfo, vti, tvb, optoff, avaya_param_buf);
+					optoff += (int)wmem_strbuf_get_len(avaya_param_buf) + 1;
+					wmem_strbuf_truncate(avaya_param_buf, 0);
+				}
+				wmem_strbuf_append(avaya_param_buf, field);
+			}
+		}
+		if (wmem_strbuf_get_len(avaya_param_buf) > 0) {
+			dissect_vendor_avaya_param(o242avaya_v_tree, pinfo, vti, tvb, optoff, avaya_param_buf);
+		}
+		break;
+	}
+
 	default:	/* not special */
 		/* The PacketCable CCC option number can vary.	If this is a CCC option,
 		   handle it as a special.
@@ -3035,6 +3264,75 @@ dissect_vendor_pxeclient_suboption(packet_info *pinfo, proto_item *v_ti, proto_t
 	return optoff;
 }
 
+static void
+dissect_vendor_avaya_param(proto_tree *tree, packet_info *pinfo, proto_item *vti,
+		tvbuff_t *tvb, int optoff, wmem_strbuf_t *avaya_param_buf)
+{
+	const gchar *field;
+	int len;
+
+	field = wmem_strbuf_get_str(avaya_param_buf);
+	len = (int)wmem_strbuf_get_len(avaya_param_buf);
+
+	if((strncmp(field, "TLSSRVR=", 8) == 0) && ( len > 8 )) {
+		proto_tree_add_string(tree, hf_bootp_option242_avaya_tlssrvr, tvb, optoff, len, field + 8);
+	}
+	else if((strncmp(field, "HTTPSRVR=", 9) == 0) && ( len > 9)) {
+		proto_tree_add_string(tree, hf_bootp_option242_avaya_httpsrvr, tvb, optoff, len, field + 9);
+	}
+	else if((strncmp(field, "HTTPDIR=", 8) == 0) && ( len > 8)) {
+		proto_tree_add_string(tree, hf_bootp_option242_avaya_httpdir, tvb, optoff, len, field + 8);
+	}
+	else if((strncmp(field, "STATIC=", 7) == 0) && ( len > 7)) {
+		proto_tree_add_string_format_value(tree, hf_bootp_option242_avaya_static, tvb, optoff, len, field + 7, "%s (%s)", field + 7, str_to_str(field + 7, option242_avaya_static_vals, "Unknown (%s)"));
+	}
+	else if((strncmp(field, "MCIPADD=", 8) == 0) && ( len > 8)) {
+		proto_tree_add_string(tree, hf_bootp_option242_avaya_mcipadd, tvb, optoff, len, field + 8);
+	}
+	else if((strncmp(field, "DOT1X=", 6) == 0) && ( len > 6)) {
+		proto_tree_add_string_format_value(tree, hf_bootp_option242_avaya_dot1x, tvb, optoff, len, field + 6, "%s (%s)", field + 6, str_to_str(field + 6, option242_avaya_dot1x_vals, "Unknown (%s)"));
+	}
+	else if((strncmp(field, "ICMPDU=", 7) == 0) && ( len > 7)) {
+		proto_tree_add_string_format_value(tree, hf_bootp_option242_avaya_icmpdu, tvb, optoff, len, field + 7, "%s (%s)", field + 7, str_to_str(field + 7, option242_avaya_icmpdu_vals, "Unknown (%s)"));
+	}
+	else if((strncmp(field, "ICMPRED=", 8) == 0) && ( len > 8)) {
+		proto_tree_add_string_format_value(tree, hf_bootp_option242_avaya_icmpred, tvb, optoff, len, field + 8, "%s (%s)", field + 8, str_to_str(field + 8, option242_avaya_icmpred_vals, "Unknown (%s)"));
+	}
+	else if((strncmp(field, "L2Q=", 4) == 0) && ( len > 4)) {
+		proto_tree_add_string_format_value(tree, hf_bootp_option242_avaya_l2q, tvb, optoff, len, field + 4, "%s (%s)", field + 4, str_to_str(field + 4, option242_avaya_l2q_vals, "Unknown (%s)"));
+	}
+	else if((strncmp(field, "L2QVLAN=", 8) == 0) && ( len > 8)) {
+		proto_tree_add_int(tree, hf_bootp_option242_avaya_l2qvlan, tvb, optoff, len, atoi(field +8));
+	}
+	else if((strncmp(field, "LOGLOCAL=", 9) == 0) && ( len > 9)) {
+		proto_tree_add_string_format_value(tree, hf_bootp_option242_avaya_loglocal, tvb, optoff, len, field + 9, "%s (%s)", field + 9, str_to_str(field + 9, option242_avaya_loglocal_vals, "Unknown (%s)"));
+	}
+	else if((strncmp(field, "PHY1STAT=", 9) == 0) && ( len > 9)) {
+		proto_tree_add_string_format_value(tree, hf_bootp_option242_avaya_phy1stat, tvb, optoff, len, field + 9, "%s (%s)", field + 9, str_to_str(field + 9, option242_avaya_phystat_vals, "Unknown (%s)"));
+	}
+	else if((strncmp(field, "PHY2STAT=", 9) == 0) && ( len > 9)) {
+		proto_tree_add_string_format_value(tree, hf_bootp_option242_avaya_phy2stat, tvb, optoff, len, field + 9, "%s (%s)", field + 9, str_to_str(field + 9, option242_avaya_phystat_vals, "Unknown (%s)"));
+	}
+	else if((strncmp(field, "PROCPSWD=", 9) == 0) && ( len > 9)) {
+		proto_tree_add_string(tree, hf_bootp_option242_avaya_procpswd, tvb, optoff, len, field + 9);
+	}
+	else if((strncmp(field, "PROCSTAT=", 9) == 0) && ( len > 9)) {
+		proto_tree_add_string_format_value(tree, hf_bootp_option242_avaya_procstat, tvb, optoff, len, field + 9, "%s (%s)", field + 9, str_to_str(field + 9, option242_avaya_procstat_vals, "Unknown (%s)"));
+	}
+	else if((strncmp(field, "SNMPADD=", 8) == 0) && ( len > 8)) {
+		proto_tree_add_string(tree, hf_bootp_option242_avaya_snmpadd, tvb, optoff, len, field + 8);
+	}
+	else if((strncmp(field, "SNMPSTRING=", 11) == 0) && ( len > 11)) {
+		proto_tree_add_string(tree, hf_bootp_option242_avaya_snmpstring, tvb, optoff, len, field + 11);
+	}
+	else if((strncmp(field, "VLANTEST=", 9) == 0) && ( len > 9)) {
+		proto_tree_add_int(tree, hf_bootp_option242_avaya_vlantest, tvb, optoff, len, atoi(field + 9));
+	}
+	else {
+		expert_add_info_format(pinfo, vti, &hf_bootp_subopt_unknown_type, "ERROR, Unknown Avaya IP Telephone parameter %s", field);
+	}
+}
+
 /* RFC3825Decoder: http://www.enum.at/rfc3825encoder.529.0.html */
 static void
 rfc3825_lci_to_fixpoint(const unsigned char lci[16], struct rfc3825_location_fixpoint_t *fixpoint)
@@ -3158,6 +3456,123 @@ rfc3825_fixpoint_to_decimal(struct rfc3825_location_fixpoint_t *fixpoint, struct
 	decimal->datum_type = fixpoint->datum_type;
 
 	return RFC3825_NOERROR;
+}
+
+static int dissect_isns(packet_info *pinfo, proto_item *v_ti, proto_tree *v_tree,
+			tvbuff_t *tvb, int optoff, int optlen)
+{
+	static const int *isns_functions_hf_flags[] = {
+		&hf_bootp_option_isns_functions_enabled,
+		&hf_bootp_option_isns_functions_dd_authorization,
+		&hf_bootp_option_isns_functions_sec_policy_distibution,
+		&hf_bootp_option_isns_functions_reserved,
+		NULL
+	};
+
+	static const int *isns_dda_hf_flags[] = {
+		&hf_bootp_option_isns_discovery_domain_access_enabled,
+		&hf_bootp_option_isns_discovery_domain_access_control_node,
+		&hf_bootp_option_isns_discovery_domain_access_iscsi_target,
+		&hf_bootp_option_isns_discovery_domain_access_iscsi_inititator,
+		&hf_bootp_option_isns_discovery_domain_access_ifcp_target_port,
+		&hf_bootp_option_isns_discovery_domain_access_ifcp_initiator_port,
+		&hf_bootp_option_isns_discovery_domain_access_reserved,
+		NULL
+	};
+
+	static const int *isns_administrative_flags[] = {
+		&hf_bootp_option_isns_administrative_flags_enabled,
+		&hf_bootp_option_isns_administrative_flags_heartbeat,
+		&hf_bootp_option_isns_administrative_flags_management_scns,
+		&hf_bootp_option_isns_administrative_flags_default_dd,
+		&hf_bootp_option_isns_administrative_flags_reserved,
+		NULL
+	};
+
+	static const int *isns_server_security_flags[] = {
+		&hf_bootp_option_isns_server_security_bitmap_enabled,
+		&hf_bootp_option_isns_server_security_bitmap_ike_ipsec_enabled,
+		&hf_bootp_option_isns_server_security_bitmap_main_mode,
+		&hf_bootp_option_isns_server_security_bitmap_aggressive_mode,
+		&hf_bootp_option_isns_server_security_bitmap_pfs,
+		&hf_bootp_option_isns_server_security_bitmap_transport_mode,
+		&hf_bootp_option_isns_server_security_bitmap_tunnel_mode,
+		&hf_bootp_option_isns_server_security_bitmap_reserved,
+		NULL
+	};
+
+	guint16 function_flags, dd_access_flags, administrative_flags;
+	guint32 server_security_flags;
+	proto_tree *tree;
+	proto_item *item;
+	int optend, heartbeat_set = 0;
+
+	if (optlen < 14) {
+		expert_add_info_format(pinfo, v_ti, &ei_bootp_bad_length, "length must be >= 14");
+		return optoff;
+	}
+	optend = optoff + optlen;
+
+	item = proto_tree_add_bitmask(v_tree, tvb, optoff, hf_bootp_option_isns_functions,
+				      ett_bootp_isns_functions, isns_functions_hf_flags, ENC_BIG_ENDIAN);
+	function_flags = tvb_get_ntohs(tvb, optoff);
+	/* RFC 4174, section "2.1. iSNS Functions Field" specifies that if
+	 * the field "Function Fields Enabled" is set to 0, then "the contents
+	 * of all other iSNS Function fields MUST be ignored. We will display
+	 * the fields but add an informational expert info. This goes for all
+	 * the bitmasks: iSNS Functions, DD Access, Administrative Flags, iSNS
+	 * Server Security Bitmap */
+	if (ISNS_BITFIELD_NZ_MUST_BE_IGNORED(function_flags, F_ISNS_FUNCTIONS_ENABLED))
+		expert_add_info(pinfo, item, &ei_bootp_option_isns_ignored_bitfield);
+
+	optoff += 2;
+	item = proto_tree_add_bitmask(v_tree, tvb, optoff, hf_bootp_option_isns_discovery_domain_access,
+				      ett_bootp_isns_discovery_domain_access, isns_dda_hf_flags, ENC_BIG_ENDIAN);
+	dd_access_flags = tvb_get_ntohs(tvb, optoff);
+	if (ISNS_BITFIELD_NZ_MUST_BE_IGNORED(dd_access_flags, F_ISNS_DD_ACCESS_ENABLED))
+		expert_add_info(pinfo, item, &ei_bootp_option_isns_ignored_bitfield);
+
+	optoff += 2;
+	administrative_flags = tvb_get_ntohs(tvb, optoff);
+	if (administrative_flags & F_ISNS_ADMIN_FLAGS_ENABLED) {
+		if ((administrative_flags & F_ISNS_ADMIN_FLAGS_HEARTBEAT)) {
+			if (optlen < 18) {
+				expert_add_info_format(pinfo, v_ti, &ei_bootp_bad_length, "length must be >= 18");
+				return optoff;
+			}
+			heartbeat_set = 1;
+		}
+	}
+	item = proto_tree_add_bitmask(v_tree, tvb, optoff, hf_bootp_option_isns_administrative_flags,
+				      ett_bootp_isns_administrative_flags, isns_administrative_flags, ENC_BIG_ENDIAN);
+	if (ISNS_BITFIELD_NZ_MUST_BE_IGNORED(administrative_flags, F_ISNS_ADMIN_FLAGS_ENABLED))
+		expert_add_info(pinfo, item, &ei_bootp_option_isns_ignored_bitfield);
+
+	optoff += 2;
+	item = proto_tree_add_bitmask(v_tree, tvb, optoff, hf_bootp_option_isns_server_security_bitmap,
+				      ett_bootp_isns_server_security_bitmap, isns_server_security_flags, ENC_BIG_ENDIAN);
+	server_security_flags = tvb_get_ntohl(tvb, optoff);
+	if (ISNS_BITFIELD_NZ_MUST_BE_IGNORED(server_security_flags, F_ISNS_SRV_SEC_BITMAP_ENABLED))
+		expert_add_info(pinfo, item, &ei_bootp_option_isns_ignored_bitfield);
+
+	optoff += 4;
+	if (heartbeat_set) {
+		proto_tree_add_item(v_tree, hf_bootp_option_isns_heartbeat_originator_addr,
+				    tvb, optoff, 4, ENC_BIG_ENDIAN);
+		optoff += 4;
+	}
+
+	proto_tree_add_item(v_tree, hf_bootp_option_isns_primary_server_addr,
+			    tvb, optoff, 4, ENC_BIG_ENDIAN);
+
+	optoff += 4;
+	if (optoff < optend) {
+		tree = proto_tree_add_subtree(v_tree, tvb, optoff, 0, ett_bootp_isns_secondary_server_addr,
+						&item, "Secondary iSNS Servers");
+		optoff += bootp_handle_basic_types(pinfo, tree, item, tvb, ipv4_list, optoff, optend - optoff,
+						   &hf_bootp_option_isns_secondary_server_addr_list, NULL);
+	}
+	return optoff;
 }
 
 static const value_string option43_cl_suboption_vals[] = {
@@ -5144,8 +5559,8 @@ static const value_string op_vals[] = {
 	{ 0,		NULL }
 };
 
-static void
-dissect_bootp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
+static int
+dissect_bootp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data _U_)
 {
 	proto_tree   *bp_tree;
 	proto_item   *bp_ti, *ti;
@@ -5232,7 +5647,7 @@ dissect_bootp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
 		if (offset_delta <= 0) {
 			proto_tree_add_expert(bp_tree, pinfo, &ei_bootp_option_parse_err,
 					tvb, tmpvoff, eoff);
-			return;
+			return tmpvoff;
 		}
 		tmpvoff += offset_delta;
 	}
@@ -5373,7 +5788,7 @@ dissect_bootp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
 		if (offset_delta <= 0) {
 			proto_tree_add_expert(bp_tree, pinfo, &ei_bootp_option_parse_err,
 					tvb, voff, eoff);
-			return;
+			return voff;
 		}
 		voff += offset_delta;
 	}
@@ -5387,6 +5802,8 @@ dissect_bootp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
 		 */
 		proto_tree_add_item(bp_tree, hf_bootp_option_padding, tvb, voff, eoff - voff, ENC_NA);
 	}
+
+	return tvb_captured_length(tvb);
 }
 
 static void
@@ -5415,10 +5832,10 @@ typedef enum
 
 static stat_tap_table_item bootp_stat_fields[] = {{TABLE_ITEM_STRING, TAP_ALIGN_LEFT, "DHCP Message Type", "%-25s"}, {TABLE_ITEM_UINT, TAP_ALIGN_RIGHT, "Packets", "%d"}};
 
-static void bootp_stat_init(new_stat_tap_ui* new_stat, new_stat_tap_gui_init_cb gui_callback, void* gui_data)
+static void bootp_stat_init(stat_tap_table_ui* new_stat, new_stat_tap_gui_init_cb gui_callback, void* gui_data)
 {
 	int num_fields = sizeof(bootp_stat_fields)/sizeof(stat_tap_table_item);
-	new_stat_tap_table* table = new_stat_tap_init_table("DHCP Statistics", num_fields, 0, NULL, gui_callback, gui_data);
+	stat_tap_table* table = new_stat_tap_init_table("DHCP Statistics", num_fields, 0, NULL, gui_callback, gui_data);
 	int i = 0;
 	stat_tap_table_item_type items[sizeof(bootp_stat_fields)/sizeof(stat_tap_table_item)];
 
@@ -5442,7 +5859,7 @@ bootp_stat_packet(void *tapdata, packet_info *pinfo _U_, epan_dissect_t *edt _U_
 {
 	new_stat_data_t* stat_data = (new_stat_data_t*)tapdata;
 	const char* value = (const char*)data;
-	new_stat_tap_table* table;
+	stat_tap_table* table;
 	stat_tap_table_item_type* msg_data;
 	guint i = 0;
 	gint idx;
@@ -5451,7 +5868,7 @@ bootp_stat_packet(void *tapdata, packet_info *pinfo _U_, epan_dissect_t *edt _U_
 	if (idx < 0)
 		return FALSE;
 
-	table = g_array_index(stat_data->new_stat_tap_data->tables, new_stat_tap_table*, i);
+	table = g_array_index(stat_data->stat_tap_data->tables, stat_tap_table*, i);
 	msg_data = new_stat_tap_get_field_data(table, idx, PACKET_COLUMN);
 	msg_data->value.uint_value++;
 	new_stat_tap_set_field_data(table, idx, PACKET_COLUMN, msg_data);
@@ -5460,7 +5877,7 @@ bootp_stat_packet(void *tapdata, packet_info *pinfo _U_, epan_dissect_t *edt _U_
 }
 
 static void
-bootp_stat_reset(new_stat_tap_table* table)
+bootp_stat_reset(stat_tap_table* table)
 {
 	guint element;
 	stat_tap_table_item_type* item_data;
@@ -5988,7 +6405,7 @@ proto_register_bootp(void)
 		    NULL, HFILL }},
 
 		{ &hf_bootp_client_identifier_enterprise_num,
-		  { "Enterprise-number", "bootp.client_id.iaid",
+		  { "Enterprise-number", "bootp.client_id.enterprise_num",
 		    FT_UINT32, BASE_DEC|BASE_EXT_STRING, &sminmpec_values_ext, 0x0,
 		    NULL, HFILL }},
 
@@ -6059,7 +6476,7 @@ proto_register_bootp(void)
 
 		{ &hf_bootp_option_subnet_mask,
 		  { "Subnet Mask", "bootp.option.subnet_mask",
-		    FT_IPv4, BASE_NONE, NULL, 0x00,
+		    FT_IPv4, BASE_NETMASK, NULL, 0x00,
 		    "Option 1: Subnet Mask", HFILL }},
 
 		{ &hf_bootp_option_time_offset,
@@ -6159,7 +6576,7 @@ proto_register_bootp(void)
 
 		{ &hf_bootp_option_policy_filter_subnet_mask,
 		  { "Subnet Mask", "bootp.option.policy_filter.subnet_mask",
-		    FT_IPv4, BASE_NONE, NULL, 0x00,
+		    FT_IPv4, BASE_NETMASK, NULL, 0x00,
 		    "Option 21: Subnet Mask", HFILL }},
 
 		{ &hf_bootp_option_non_local_source_routing,
@@ -6999,6 +7416,162 @@ proto_register_bootp(void)
 		    "Option 82:152 Server ID Override (Cisco proprietary)", HFILL }},
 
 
+		{ &hf_bootp_option_isns_functions,
+		  { "iSNS Functions", "bootp.option.isns.functions",
+		    FT_UINT16, BASE_HEX, NULL, 0x00,
+		    "iSNS: the functions supported by the iSNS servers", HFILL }},
+
+		{ &hf_bootp_option_isns_functions_enabled,
+		  { "Function Fields Enabled", "bootp.option.isns.functions.enabled",
+		    FT_BOOLEAN, 16, TFS(&tfs_yes_no), F_ISNS_FUNCTIONS_ENABLED,
+		    "If set to zero, then the contents of all other iSNS Function fields MUST be ignored", HFILL }},
+
+		{ &hf_bootp_option_isns_functions_dd_authorization,
+		  { "Discovery Domain based Authorization", "bootp.option.isns.functions.dd_base_authorization",
+		    FT_BOOLEAN, 16, TFS(&tfs_isns_function_dd_based_auth), F_ISNS_FUNCTIONS_DD_AUTH,
+		    "If set to zero, then access authorization must be explicitly performed by each device", HFILL }},
+
+		{ &hf_bootp_option_isns_functions_sec_policy_distibution,
+		  { "Security Policy Distribution", "bootp.option.isns.functions.sec_policy_distribution",
+		    FT_BOOLEAN, 16, TFS(&tfs_isns_functions_sec_distrib), F_ISNS_FUNCTIONS_SEC_POLICY,
+		    NULL, HFILL }},
+
+		{ &hf_bootp_option_isns_functions_reserved,
+		  { "Reserved flags", "bootp.option.isns.functions.reserved",
+		    FT_UINT16, BASE_HEX, NULL, F_ISNS_FUNCTIONS_RESERVED,
+		    NULL, HFILL }},
+
+		{ &hf_bootp_option_isns_discovery_domain_access,
+		  { "Discovery Domain Access flags", "bootp.option.isns.discovery_domain_access",
+		    FT_UINT16, BASE_HEX, NULL, 0x00,
+		    "iSNS: the types of iSNS clients that are allowed to modify Discovery Domains", HFILL }},
+
+		{ &hf_bootp_option_isns_discovery_domain_access_enabled,
+		  { "Discovery Domain Enabled", "bootp.option.isns.discovery_domain_access.enabled",
+		    FT_BOOLEAN, 16, TFS(&tfs_yes_no), F_ISNS_DD_ACCESS_ENABLED,
+		    "If set to zero, then the contents of the remainder of this field MUST be ignored", HFILL }},
+
+		{ &hf_bootp_option_isns_discovery_domain_access_control_node,
+		  { "Control Node", "bootp.option.isns.discovery_domain_access_control.node",
+		    FT_BOOLEAN, 16, TFS(&tfs_yes_no), F_ISNS_DD_ACCESS_CTRL_NODE,
+		    NULL, HFILL }},
+
+		{ &hf_bootp_option_isns_discovery_domain_access_iscsi_target,
+		  { "iSCSI Target", "bootp.option.isns.discovery_domain_access.iscsi_target",
+		    FT_BOOLEAN, 16, TFS(&tfs_yes_no), F_ISNS_DD_ACCESS_ISCSI_TARGET,
+		    NULL, HFILL }},
+
+		{ &hf_bootp_option_isns_discovery_domain_access_iscsi_inititator,
+		  { "iSCSI Initiator", "bootp.option.isns.discovery_domain_access.iscsi_initiator",
+		    FT_BOOLEAN, 16, TFS(&tfs_yes_no), F_ISNS_DD_ACCESS_ISCSI_INITIATOR,
+		    NULL, HFILL }},
+
+		{ &hf_bootp_option_isns_discovery_domain_access_ifcp_target_port,
+		  { "iFCP Target Port", "bootp.option.isns.discovery_domain_access.ifcp_target_port",
+		    FT_BOOLEAN, 16, TFS(&tfs_yes_no), F_ISNS_DD_ACCESS_IFCP_TARGET_PORT,
+		    NULL, HFILL }},
+
+		{ &hf_bootp_option_isns_discovery_domain_access_ifcp_initiator_port,
+		  { "iFCP Initiator Port", "bootp.option.isns.discovery_domain_access.initiator_target_port",
+		    FT_BOOLEAN, 16, TFS(&tfs_yes_no), F_ISNS_DD_ACCESS_IFCP_INITIATOR_PORT,
+		    NULL, HFILL }},
+
+		{ &hf_bootp_option_isns_discovery_domain_access_reserved,
+		  { "Reserved Flags", "bootp.option.isns.discovery_domain_access.reserved",
+		    FT_UINT16, BASE_HEX, NULL, F_ISNS_DD_ACCESS_RESERVED,
+		    NULL, HFILL }},
+
+		{ &hf_bootp_option_isns_administrative_flags,
+		  { "Administrative Flags", "bootp.option.isns.administrative_flags",
+		    FT_UINT16, BASE_HEX, NULL, 0x00,
+		    "iSNS: administrative settings for the iSNS servers discovered through the DHCP query", HFILL }},
+
+		{ &hf_bootp_option_isns_administrative_flags_enabled,
+		  { "Administrative Flags Enabled", "bootp.option.isns.administrative_flags.enabled",
+		    FT_BOOLEAN, 16, TFS(&tfs_yes_no), F_ISNS_ADMIN_FLAGS_ENABLED,
+		    NULL, HFILL }},
+
+		{ &hf_bootp_option_isns_administrative_flags_heartbeat,
+		  { "Heartbeat", "bootp.option.isns.administrative_flags.heartbeat",
+		    FT_BOOLEAN, 16, TFS(&tfs_yes_no), F_ISNS_ADMIN_FLAGS_HEARTBEAT,
+		    NULL, HFILL }},
+
+		{ &hf_bootp_option_isns_administrative_flags_management_scns,
+		  { "Management SCNs", "bootp.option.isns.administrative_flags.management_scns",
+		    FT_BOOLEAN, 16, TFS(&tfs_yes_no), F_ISNS_ADMIN_FLAGS_MANAGEMENT_SCNS,
+		    NULL, HFILL }},
+
+		{ &hf_bootp_option_isns_administrative_flags_default_dd,
+		  { "Default Discovery Domain", "bootp.option.isns.administrative_flags.default_discovery_domain",
+		    FT_BOOLEAN, 16, TFS(&tfs_yes_no), F_ISNS_ADMIN_FLAGS_DEFAULT_DD,
+		    NULL, HFILL }},
+
+		{ &hf_bootp_option_isns_administrative_flags_reserved,
+		  { "Reserved Flags", "bootp.option.isns.administrative_flags.reserved",
+		    FT_UINT16, BASE_HEX, NULL, F_ISNS_ADMIN_FLAGS_RESERVED,
+		    NULL, HFILL }},
+
+		{ &hf_bootp_option_isns_server_security_bitmap,
+		  { "iSNS Server Security Bitmap", "bootp.option.isns.server_security_bitmap",
+		    FT_UINT32, BASE_HEX, NULL, 0x00,
+		    "iSNS: server security settings", HFILL }},
+
+		{ &hf_bootp_option_isns_server_security_bitmap_enabled,
+		  { "Server Security Bitmap Enabled", "bootp.option.isns.server_security_bitmap.enabled",
+		    FT_BOOLEAN, 16, TFS(&tfs_yes_no), F_ISNS_SRV_SEC_BITMAP_ENABLED,
+		    NULL, HFILL }},
+
+		{ &hf_bootp_option_isns_server_security_bitmap_ike_ipsec_enabled,
+		  { "IKE/IPSec", "bootp.option.isns.server_security_bitmap.ike_ipsec_enabled",
+		    FT_BOOLEAN, 16, TFS(&tfs_enabled_disabled), F_ISNS_SRV_SEC_BITMAP_IKE_IPSEC,
+		    NULL, HFILL }},
+
+		{ &hf_bootp_option_isns_server_security_bitmap_main_mode,
+		  { "Main Mode", "bootp.option.isns.server_security_bitmap.main_mode",
+		    FT_BOOLEAN, 16, TFS(&tfs_enabled_disabled), F_ISNS_SRV_SEC_BITMAP_MAIN_MODE,
+		    NULL, HFILL }},
+
+		{ &hf_bootp_option_isns_server_security_bitmap_aggressive_mode,
+		  { "Aggresive Mode", "bootp.option.isns.server_security_bitmap.aggressive_mode",
+		    FT_BOOLEAN, 16, TFS(&tfs_enabled_disabled), F_ISNS_SRV_SEC_BITMAP_AGGRESSIVE,
+		    NULL, HFILL }},
+
+		{ &hf_bootp_option_isns_server_security_bitmap_pfs,
+		  { "PFS", "bootp.option.isns.server_security_bitmap.pfs",
+		    FT_BOOLEAN, 16, TFS(&tfs_enabled_disabled), F_ISNS_SRV_SEC_BITMAP_PFS,
+		    NULL, HFILL }},
+
+		{ &hf_bootp_option_isns_server_security_bitmap_transport_mode,
+		  { "Transport Mode", "bootp.option.isns.server_security_bitmap.transport_mode",
+		    FT_BOOLEAN, 16, TFS(&tfs_preferred_no_preference), F_ISNS_SRV_SEC_BITMAP_TRASPORT_MODE,
+		    NULL, HFILL }},
+
+		{ &hf_bootp_option_isns_server_security_bitmap_tunnel_mode,
+		  { "Tunnel Mode", "bootp.option.isns.server_security_bitmap.tunnel_mode",
+		    FT_BOOLEAN, 16, TFS(&tfs_preferred_no_preference), F_ISNS_SRV_SEC_BITMAP_TUNNEL_MODE,
+		    NULL, HFILL }},
+
+		{ &hf_bootp_option_isns_server_security_bitmap_reserved,
+		  { "Reserved Flags", "bootp.option.isns.server_security_bitmap.reserved",
+		    FT_UINT16, BASE_HEX, NULL, F_ISNS_SRV_SEC_BITMAP_RESERVED,
+		    NULL, HFILL }},
+
+		{ &hf_bootp_option_isns_primary_server_addr,
+		  { "Primary Server Address", "bootp.option.isns.primary_server_addr",
+		    FT_IPv4, BASE_NONE, NULL, 0x00,
+		    "iSNS: IP address of the primary server", HFILL }},
+
+		{ &hf_bootp_option_isns_heartbeat_originator_addr,
+		  { "Heartbeat Originator Address", "bootp.option.isns.heartbeat_originator_addr",
+		    FT_IPv4, BASE_NONE, NULL, 0x00,
+		    "iSNS: IP address from which the iSNS heartbeat originates", HFILL }},
+
+		{ &hf_bootp_option_isns_secondary_server_addr_list,
+		  { "Secondary Server Address", "bootp.option.isns.secondary_server_addr",
+		    FT_IPv4, BASE_NONE, NULL, 0x00,
+		    "iSNS: a list of IP addresses of the secondary iSNS servers", HFILL }},
+
+
 		{ &hf_bootp_option_novell_dss_string,
 		  { "Novell Directory Services Servers String", "bootp.option.novell_dss.string",
 		    FT_STRINGZ, BASE_NONE, NULL, 0x0,
@@ -7473,6 +8046,101 @@ proto_register_bootp(void)
 		  { "Invalidate All PacketCable Call Management Servers", "bootp.ccc.ietf.sec_tkt.all_pc_call_management",
 		    FT_BOOLEAN, 16, TFS(&tfs_yes_no), 0x02,
 		    NULL, HFILL }},
+
+		{ &hf_bootp_option242_avaya,
+		  { "Private/Avaya IP Telephone",  "bootp.option.vendor.avaya",
+		    FT_STRINGZ, BASE_NONE, NULL, 0x0,
+		    "Option 242: Private/Avaya IP Telephone", HFILL }},
+
+		{ &hf_bootp_option242_avaya_tlssrvr,
+		  { "TLSSRVR",  "bootp.option.vendor.avaya.tlssrvr",
+		    FT_STRINGZ, BASE_NONE, NULL, 0x0,
+		    "Option 242: TLSSRVR (HTTPS server(s) to download configuration)", HFILL }},
+
+		{ &hf_bootp_option242_avaya_httpsrvr,
+		  { "HTTPSRVR",  "bootp.option.vendor.avaya.httpsrvr",
+		    FT_STRINGZ, BASE_NONE, NULL, 0x0,
+		    "Option 242: HTTPSRVR (HTTP server(s) to download configuration)", HFILL }},
+
+		{ &hf_bootp_option242_avaya_httpdir,
+		  { "HTTPDIR",  "bootp.option.vendor.avaya.httpdir",
+		    FT_STRINGZ, BASE_NONE, NULL, 0x0,
+		    "Option 242: HTTPDIR (Path to configuration files)", HFILL }},
+
+		{ &hf_bootp_option242_avaya_static,
+		  { "STATIC",  "bootp.option.vendor.avaya.static",
+		    FT_STRINGZ, BASE_NONE, NULL, 0x0,
+		    "Option 242: STATIC (Static programming override flag)", HFILL }},
+
+		{ &hf_bootp_option242_avaya_mcipadd,
+		  { "MCIPADD",  "bootp.option.vendor.avaya.mcipadd",
+		    FT_STRINGZ, BASE_NONE, NULL, 0x0,
+		    "Option 242: MCIPADD (List of CM server(s))", HFILL }},
+
+		{ &hf_bootp_option242_avaya_dot1x,
+		  { "DOT1X",  "bootp.option.vendor.avaya.dot1x",
+		    FT_STRINGZ, BASE_NONE, NULL, 0x0,
+		    "Option 242: DOT1X (802.1X Supplicant operation mode)", HFILL }},
+
+		{ &hf_bootp_option242_avaya_icmpdu,
+		  { "ICMPDU",  "bootp.option.vendor.avaya.icmpdu",
+		    FT_STRINGZ, BASE_NONE, NULL, 0x0,
+		    "Option 242: ICMPDU (ICMP Destination Unreachable processing)", HFILL }},
+
+		{ &hf_bootp_option242_avaya_icmpred,
+		  { "ICMPRED",  "bootp.option.vendor.avaya.icmpred",
+		    FT_STRINGZ, BASE_NONE, NULL, 0x0,
+		    "Option 242: ICMPRED (ICMP Redirect handling)", HFILL }},
+
+		{ &hf_bootp_option242_avaya_l2q,
+		  { "L2Q",  "bootp.option.vendor.avaya.l2q",
+		    FT_STRINGZ, BASE_NONE, NULL, 0x0,
+		    "Option 242: L2Q (Controls 802.1Q tagging)", HFILL }},
+
+		{ &hf_bootp_option242_avaya_l2qvlan,
+		  { "L2QVLAN",  "bootp.option.vendor.avaya.l2qvlan",
+		    FT_INT32, BASE_DEC, NULL, 0x0,
+		    "Option 242: L2QVLAN (VLAN ID)", HFILL }},
+
+		{ &hf_bootp_option242_avaya_loglocal,
+		  { "LOGLOCAL",  "bootp.option.vendor.avaya.loglocal",
+		    FT_STRINGZ, BASE_NONE, NULL, 0x0,
+		    "Option 242: LOGLOCAL (Log level)", HFILL }},
+
+		{ &hf_bootp_option242_avaya_phy1stat,
+		  { "PHY1STAT",  "bootp.option.vendor.avaya.phy1stat",
+		    FT_STRINGZ, BASE_NONE, NULL, 0x0,
+		    "Option 242: PHY1STAT (Interface configuration)", HFILL }},
+
+		{ &hf_bootp_option242_avaya_phy2stat,
+		  { "PHY2STAT",  "bootp.option.vendor.avaya.phy2stat",
+		    FT_STRINGZ, BASE_NONE, NULL, 0x0,
+		    "Option 242: PHY2STAT (Interface configuration)", HFILL }},
+
+		{ &hf_bootp_option242_avaya_procpswd,
+		  { "PROCPSWD",  "bootp.option.vendor.avaya.procpswd",
+		    FT_STRINGZ, BASE_NONE, NULL, 0x0,
+		    "Option 242: PROCPSWD (Security string used to access local procedures)", HFILL }},
+
+		{ &hf_bootp_option242_avaya_procstat,
+		  { "PROCSTAT",  "bootp.option.vendor.avaya.procstat",
+		    FT_STRINGZ, BASE_NONE, NULL, 0x0,
+		    "Option 242: PROCSTAT (Local (dialpad) Administrative access)", HFILL }},
+
+		{ &hf_bootp_option242_avaya_snmpadd,
+		  { "SNMPADD",  "bootp.option.vendor.avaya.snmpadd",
+		    FT_STRINGZ, BASE_NONE, NULL, 0x0,
+		    "Option 242: SNMPADD (Allowable source IP Address(es) for SNMP queries)", HFILL }},
+
+		{ &hf_bootp_option242_avaya_snmpstring,
+		  { "SNMPSTRING",  "bootp.option.vendor.avaya.snmpstring",
+		    FT_STRINGZ, BASE_NONE, NULL, 0x0,
+		    "Option 242: SNMPSTRING (SNMP community string)", HFILL }},
+
+		{ &hf_bootp_option242_avaya_vlantest,
+		  { "VLANTEST",  "bootp.option.vendor.avaya.vlantest",
+		    FT_INT32, BASE_DEC, NULL, 0x0,
+		    "Option 242: VLANTEST (Timeout in seconds)", HFILL }},
 	};
 
 	static uat_field_t bootp_uat_flds[] = {
@@ -7494,10 +8162,16 @@ proto_register_bootp(void)
 		&ett_bootp_option125_suboption,
 		&ett_bootp_option125_tr111_suboption,
 		&ett_bootp_option125_cl_suboption,
+		&ett_bootp_option242_suboption,
 		&ett_bootp_fqdn,
 		&ett_bootp_filename_option,
 		&ett_bootp_server_hostname,
 		&ett_bootp_fqdn_flags,
+		&ett_bootp_isns_functions,
+		&ett_bootp_isns_discovery_domain_access,
+		&ett_bootp_isns_administrative_flags,
+		&ett_bootp_isns_server_security_bitmap,
+		&ett_bootp_isns_secondary_server_addr,
 	};
 
 	static ei_register_info ei[] = {
@@ -7524,13 +8198,14 @@ proto_register_bootp(void)
 		{ &ei_bootp_client_address_not_given, { "bootp.client_address_not_given", PI_PROTOCOL, PI_NOTE, "Client address not given", EXPFILL }},
 		{ &ei_bootp_server_name_overloaded_by_dhcp, { "bootp.server_name_overloaded_by_dhcp", PI_PROTOCOL, PI_NOTE, "Server name option overloaded by DHCP", EXPFILL }},
 		{ &ei_bootp_boot_filename_overloaded_by_dhcp, { "bootp.boot_filename_overloaded_by_dhcp", PI_PROTOCOL, PI_NOTE, "Boot file name option overloaded by DHCP", EXPFILL }},
+		{ &ei_bootp_option_isns_ignored_bitfield, { "bootp.option.isns.ignored_bitfield", PI_PROTOCOL, PI_NOTE, "Enabled field is not set - non-zero bitmask ignored", EXPFILL }},
 	};
 
 	static tap_param bootp_stat_params[] = {
 		{ PARAM_FILTER, "filter", "Filter", NULL, TRUE }
 	};
 
-	static new_stat_tap_ui bootp_stat_table = {
+	static stat_tap_table_ui bootp_stat_table = {
 		REGISTER_STAT_GROUP_UNSORTED,
 		"DHCP (BOOTP) Statistics",
 		"bootp",
@@ -7583,6 +8258,13 @@ proto_register_bootp(void)
 				       10,
 				       &pkt_ccc_option);
 
+	prefs_register_enum_preference(bootp_module, "uuid.endian",
+				       "Endianness of UUID",
+				       "Endianness applied to UUID fields",
+				       &bootp_uuid_endian,
+				       bootp_uuid_endian_vals,
+				       FALSE);
+
 	prefs_register_obsolete_preference(bootp_module, "displayasstring");
 
 	bootp_uat = uat_new("Custom BootP/DHCP Options (Excl. suboptions)",
@@ -7605,7 +8287,7 @@ proto_register_bootp(void)
 				      "Custom BootP/DHCP Options (Excl. suboptions)",
 				      bootp_uat);
 
-	register_new_stat_tap_ui(&bootp_stat_table);
+	register_stat_tap_table_ui(&bootp_stat_table);
 }
 
 void

@@ -40,9 +40,6 @@ void proto_reg_handoff_turnchannel(void);
 /* heuristic subdissectors */
 static heur_dissector_list_t heur_subdissector_list;
 
-/* data dissector handle */
-static dissector_handle_t data_handle;
-
 /* Initialize the protocol and registered fields */
 static int proto_turnchannel = -1;
 
@@ -112,7 +109,7 @@ dissect_turnchannel_message(tvbuff_t *tvb, packet_info *pinfo,
 
 	  if (!dissector_try_heuristic(heur_subdissector_list,
 				       next_tvb, pinfo, tree, &hdtbl_entry, NULL)) {
-	    call_dissector(data_handle,next_tvb, pinfo, tree);
+	    call_data_dissector(next_tvb, pinfo, tree);
 	  }
 	}
 
@@ -185,11 +182,11 @@ proto_register_turnchannel(void)
 	proto_turnchannel = proto_register_protocol("TURN Channel",
 	    "TURNCHANNEL", "turnchannel");
 
-	new_register_dissector("turnchannel", dissect_turnchannel_message,
+	register_dissector("turnchannel", dissect_turnchannel_message,
 			   proto_turnchannel);
 
 /* subdissectors */
-	heur_subdissector_list = register_heur_dissector_list("turnchannel");
+	heur_subdissector_list = register_heur_dissector_list("turnchannel", proto_turnchannel);
 
 /* Required function calls to register the header fields and subtrees used */
 	proto_register_field_array(proto_turnchannel, hf, array_length(hf));
@@ -204,7 +201,7 @@ proto_reg_handoff_turnchannel(void)
 	dissector_handle_t turnchannel_tcp_handle;
 	dissector_handle_t turnchannel_udp_handle;
 
-	turnchannel_tcp_handle = new_create_dissector_handle(dissect_turnchannel_tcp, proto_turnchannel);
+	turnchannel_tcp_handle = create_dissector_handle(dissect_turnchannel_tcp, proto_turnchannel);
 	turnchannel_udp_handle = find_dissector("turnchannel");
 
 	/* Register for "Decode As" in case STUN negotiation isn't captured */
@@ -214,8 +211,6 @@ proto_reg_handoff_turnchannel(void)
 	/* TURN negotiation is handled through STUN2 dissector (packet-stun.c),
 	   so only it should be able to determine if a packet is a TURN packet */
 	heur_dissector_add("stun", dissect_turnchannel_heur, "TURN Channel over STUN", "turnchannel_stun", proto_turnchannel, HEURISTIC_ENABLE);
-
-	data_handle = find_dissector("data");
 }
 
 /*

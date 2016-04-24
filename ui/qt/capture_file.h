@@ -31,6 +31,8 @@
 typedef struct _capture_file capture_file;
 typedef struct _capture_session capture_session;
 
+struct _packet_info;
+
 class CaptureFile : public QObject
 {
     Q_OBJECT
@@ -68,6 +70,12 @@ public:
      */
     const QString fileName();
 
+    /** Return the current packet information.
+     *
+     * @return A pointer to the current packet_info struct or NULL.
+     */
+    struct _packet_info *packetInfo();
+
     /** Reload the capture file
      */
     void reload();
@@ -93,6 +101,7 @@ signals:
     void captureFileSaveFinished() const;
     void captureFileSaveFailed() const;
     void captureFileSaveStopped() const;
+    void captureFileFlushTapsData() const;
 
     void captureCapturePrepared(capture_session *cap_session);
     void captureCaptureUpdateStarted(capture_session *cap_session);

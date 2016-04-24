@@ -28,10 +28,10 @@
 
 
 
-#include <wsutil/ws_version_info.h>
+#include <ws_version_info.h>
 
-#include "../file.h"
-#include "../summary.h"
+#include "../../file.h"
+#include "../../summary.h"
 
 #ifdef HAVE_LIBPCAP
 #include "ui/capture.h"

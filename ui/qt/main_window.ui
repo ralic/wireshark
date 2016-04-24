@@ -65,6 +65,13 @@
         </spacer>
        </item>
        <item>
+        <widget class="QLabel" name="goToPacketLabel">
+         <property name="text">
+          <string>Packet:</string>
+         </property>
+        </widget>
+       </item>
+       <item>
         <widget class="QLineEdit" name="goToLineEdit">
          <property name="inputMask">
           <string>900000000</string>
@@ -72,16 +79,31 @@
         </widget>
        </item>
        <item>
-        <widget class="QToolButton" name="goToGo">
+        <widget class="QPushButton" name="goToGo">
          <property name="text">
           <string>Go to packet</string>
+         </property>
+         <property name="default">
+          <bool>true</bool>
+         </property>
+         <property name="maximumSize">
+          <size>
+           <width>16777215</width>
+           <height>27</height>
+          </size>
          </property>
         </widget>
        </item>
        <item>
-        <widget class="QToolButton" name="goToCancel">
+        <widget class="QPushButton" name="goToCancel">
          <property name="text">
           <string>Cancel</string>
+         </property>
+         <property name="maximumSize">
+          <size>
+           <width>16777215</width>
+           <height>27</height>
+          </size>
          </property>
         </widget>
        </item>
@@ -99,6 +121,9 @@
     </item>
     <item>
      <widget class="PreferenceEditorFrame" name="preferenceEditorFrame"/>
+    </item>
+    <item>
+     <widget class="FilterExpressionFrame" name="filterExpressionFrame"/>
     </item>
     <item>
      <widget class="QStackedWidget" name="mainStack">
@@ -235,6 +260,8 @@
     <addaction name="actionGoPreviousPacket"/>
     <addaction name="actionGoFirstPacket"/>
     <addaction name="actionGoLastPacket"/>
+    <addaction name="actionGoNextConversationPacket"/>
+    <addaction name="actionGoPreviousConversationPacket"/>
     <addaction name="separator"/>
     <addaction name="actionGoAutoScroll"/>
    </widget>
@@ -301,7 +328,15 @@
      <addaction name="actionViewColorizeConversation10"/>
      <addaction name="separator"/>
      <addaction name="actionViewColorizeResetColorization"/>
-     <addaction name="actionViewColorizeNewConversationRule"/>
+     <addaction name="actionViewColorizeNewColoringRule"/>
+    </widget>
+    <widget class="QMenu" name="menuInternals">
+     <property name="title">
+      <string>Internals</string>
+     </property>
+     <addaction name="actionViewInternalsConversationHashTables"/>
+     <addaction name="actionViewInternalsDissectorTables"/>
+     <addaction name="actionViewInternalsSupportedProtocols"/>
     </widget>
     <addaction name="actionViewMainToolbar"/>
     <addaction name="actionViewFilterToolbar"/>
@@ -327,7 +362,10 @@
     <addaction name="separator"/>
     <addaction name="actionViewResizeColumns"/>
     <addaction name="separator"/>
+    <addaction name="menuInternals"/>
+    <addaction name="separator"/>
     <addaction name="actionViewShowPacketInNewWindow"/>
+    <addaction name="actionViewReload_as_File_Format_or_Capture"/>
     <addaction name="actionViewReload"/>
    </widget>
    <widget class="QMenu" name="menuAnalyze">
@@ -370,6 +408,7 @@
      <addaction name="actionAnalyzeFollowTCPStream"/>
      <addaction name="actionAnalyzeFollowUDPStream"/>
      <addaction name="actionAnalyzeFollowSSLStream"/>
+     <addaction name="actionAnalyzeFollowHTTPStream"/>
     </widget>
     <widget class="QMenu" name="menuConversationFilter">
      <property name="title">
@@ -530,6 +569,12 @@
      </property>
      <addaction name="actionTelephonyGSMPlaceholder"/>
     </widget>
+    <widget class="QMenu" name="menuLTE">
+     <property name="title">
+      <string>LTE</string>
+     </property>
+     <addaction name="actionTelephonyLTEPlaceholder"/>
+    </widget>
     <widget class="QMenu" name="menuMTP3">
      <property name="title">
       <string>MTP3</string>
@@ -539,14 +584,15 @@
     <addaction name="actionTelephonyVoipCalls"/>
     <addaction name="menuANSI"/>
     <addaction name="menuGSM"/>
+    <addaction name="actionTelephonyIax2StreamAnalysis"/>
     <addaction name="actionTelephonyISUPMessages"/>
+    <addaction name="menuLTE"/>
     <addaction name="menuMTP3"/>
     <addaction name="menuRTP"/>
     <addaction name="menuRTSP"/>
     <addaction name="menuTelephonySCTP"/>
     <addaction name="actionTelephonySMPPOperations"/>
     <addaction name="actionTelephonyUCPMessages"/>
-    <addaction name="actionTelephonySipFlows"/>
    </widget>
    <widget class="QMenu" name="menuEdit">
     <property name="title">
@@ -595,15 +641,15 @@
     <property name="title">
      <string>&amp;Wireless</string>
     </property>
-    <addaction name="actionATT_Server_Attributes"/>
-    <addaction name="actionDevices"/>
-    <addaction name="actionHCI_Summary"/>
+    <addaction name="actionBluetoothATT_Server_Attributes"/>
+    <addaction name="actionBluetoothDevices"/>
+    <addaction name="actionBluetoothHCI_Summary"/>
     <addaction name="separator"/>
     <addaction name="actionWirelessWlanStatistics"/>
    </widget>
    <widget class="QMenu" name="menuTools">
     <property name="title">
-     <string>Tools</string>
+     <string>&amp;Tools</string>
     </property>
     <addaction name="actionToolsPlaceholder"/>
    </widget>
@@ -680,6 +726,12 @@
    <property name="movable">
     <bool>false</bool>
    </property>
+   <property name="iconSize">
+    <size>
+     <width>14</width>
+     <height>14</height>
+    </size>
+   </property>
    <attribute name="toolBarArea">
     <enum>TopToolBarArea</enum>
    </attribute>
@@ -687,6 +739,8 @@
     <bool>true</bool>
    </attribute>
    <addaction name="actionDisplayFilterExpression"/>
+   <addaction name="separator"/>
+   <addaction name="actionNewDisplayFilterExpression"/>
   </widget>
   <widget class="QToolBar" name="wirelessToolBar">
    <property name="windowTitle">
@@ -710,7 +764,7 @@
     <string>Open a capture file</string>
    </property>
    <property name="shortcut">
-    <string>Ctrl+O</string>
+    <string notr="true">Ctrl+O</string>
    </property>
    <property name="iconVisibleInMenu">
     <bool>false</bool>
@@ -724,7 +778,7 @@
     <string>Quit Wireshark</string>
    </property>
    <property name="shortcut">
-    <string>Ctrl+Q</string>
+    <string notr="true">Ctrl+Q</string>
    </property>
    <property name="menuRole">
     <enum>QAction::QuitRole</enum>
@@ -741,7 +795,7 @@
     <string>Start capturing packets</string>
    </property>
    <property name="shortcut">
-    <string>Ctrl+E</string>
+    <string notr="true">Ctrl+E</string>
    </property>
   </action>
   <action name="actionCaptureStop">
@@ -752,7 +806,7 @@
     <string>Stop capturing packets</string>
    </property>
    <property name="shortcut">
-    <string>Ctrl+E</string>
+    <string notr="true">Ctrl+E</string>
    </property>
   </action>
   <action name="actionFileClose">
@@ -763,7 +817,7 @@
     <string>Close this capture file</string>
    </property>
    <property name="shortcut">
-    <string>Ctrl+W</string>
+    <string notr="true">Ctrl+W</string>
    </property>
    <property name="iconVisibleInMenu">
     <bool>false</bool>
@@ -781,8 +835,11 @@
    <property name="text">
     <string>&amp;Contents</string>
    </property>
+   <property name="toolTip">
+    <string>Help contents</string>
+   </property>
    <property name="shortcut">
-    <string>F1</string>
+    <string notr="true">F1</string>
    </property>
    <property name="iconVisibleInMenu">
     <bool>true</bool>
@@ -892,7 +949,7 @@
     <string>Go to the next packet</string>
    </property>
    <property name="shortcut">
-    <string>Ctrl+Down</string>
+    <string notr="true">Ctrl+Down</string>
    </property>
   </action>
   <action name="actionGoPreviousPacket">
@@ -903,7 +960,29 @@
     <string>Go to the previous packet</string>
    </property>
    <property name="shortcut">
-    <string>Ctrl+Up</string>
+    <string notr="true">Ctrl+Up</string>
+   </property>
+  </action>
+  <action name="actionGoNextConversationPacket">
+   <property name="text">
+    <string>Next Packet in Conversation</string>
+   </property>
+   <property name="toolTip">
+    <string>Go to the next packet in this conversation</string>
+   </property>
+   <property name="shortcut">
+    <string notr="true">Ctrl+.</string>
+   </property>
+  </action>
+  <action name="actionGoPreviousConversationPacket">
+   <property name="text">
+    <string>Previous Packet in Conversation</string>
+   </property>
+   <property name="toolTip">
+    <string>Go to the previous packet in this conversation</string>
+   </property>
+   <property name="shortcut">
+    <string notr="true">Ctrl+,</string>
    </property>
   </action>
   <action name="actionGoFirstPacket">
@@ -914,7 +993,7 @@
     <string>Go to the first packet</string>
    </property>
    <property name="shortcut">
-    <string>Ctrl+Home</string>
+    <string notr="true">Ctrl+Home</string>
    </property>
   </action>
   <action name="actionGoLastPacket">
@@ -925,7 +1004,7 @@
     <string>Go to the last packet</string>
    </property>
    <property name="shortcut">
-    <string>Ctrl+End</string>
+    <string notr="true">Ctrl+End</string>
    </property>
   </action>
   <action name="actionViewExpandSubtrees">
@@ -939,7 +1018,7 @@
     <string>Expand the current packet detail</string>
    </property>
    <property name="shortcut">
-    <string>Shift+Right</string>
+    <string notr="true">Shift+Right</string>
    </property>
   </action>
   <action name="actionViewExpandAll">
@@ -950,7 +1029,7 @@
     <string>Expand packet details</string>
    </property>
    <property name="shortcut">
-    <string>Ctrl+Right</string>
+    <string notr="true">Ctrl+Right</string>
    </property>
   </action>
   <action name="actionViewCollapseAll">
@@ -961,7 +1040,7 @@
     <string>Collapse all packet details</string>
    </property>
    <property name="shortcut">
-    <string>Ctrl+Left</string>
+    <string notr="true">Ctrl+Left</string>
    </property>
   </action>
   <action name="actionGoGoToPacket">
@@ -975,7 +1054,7 @@
     <string>Go to specified packet</string>
    </property>
    <property name="shortcut">
-    <string>Ctrl+G</string>
+    <string notr="true">Ctrl+G</string>
    </property>
   </action>
   <action name="actionFileMerge">
@@ -1002,7 +1081,7 @@
     <string>Save this capture file</string>
    </property>
    <property name="shortcut">
-    <string>Ctrl+S</string>
+    <string notr="true">Ctrl+S</string>
    </property>
    <property name="iconVisibleInMenu">
     <bool>false</bool>
@@ -1016,7 +1095,7 @@
     <string>Save as a different file</string>
    </property>
    <property name="shortcut">
-    <string>Ctrl+Shift+S</string>
+    <string notr="true">Ctrl+Shift+S</string>
    </property>
   </action>
   <action name="actionFileExportPackets">
@@ -1032,7 +1111,7 @@
     <string>Export Packet &amp;Bytes…</string>
    </property>
    <property name="shortcut">
-    <string>Ctrl+H</string>
+    <string notr="true">Ctrl+H</string>
    </property>
   </action>
   <action name="actionFileExportSSLSessionKeys">
@@ -1045,7 +1124,7 @@
     <string>&amp;Print…</string>
    </property>
    <property name="shortcut">
-    <string>Ctrl+P</string>
+    <string notr="true">Ctrl+P</string>
    </property>
   </action>
   <action name="actionFileSetListFiles">
@@ -1071,10 +1150,18 @@
     <string>Reload this file</string>
    </property>
    <property name="shortcut">
-    <string>Ctrl+R</string>
+    <string notr="true">Ctrl+R</string>
    </property>
    <property name="iconVisibleInMenu">
     <bool>true</bool>
+   </property>
+  </action>
+  <action name="actionViewReload_as_File_Format_or_Capture">
+   <property name="text">
+    <string>Reload as File Format/Capture</string>
+   </property>
+   <property name="shortcut">
+    <string notr="true">Ctrl+Shift+F</string>
    </property>
   </action>
   <action name="actionCaptureOptions">
@@ -1088,7 +1175,7 @@
     <string>Capture options</string>
    </property>
    <property name="shortcut">
-    <string>Ctrl+K</string>
+    <string notr="true">Ctrl+K</string>
    </property>
    <property name="menuRole">
     <enum>QAction::NoRole</enum>
@@ -1109,6 +1196,9 @@
    <property name="toolTip">
     <string>Refresh interfaces</string>
    </property>
+   <property name="shortcut">
+    <string notr="true">F5</string>
+   </property>
   </action>
   <action name="actionCaptureRestart">
    <property name="text">
@@ -1118,7 +1208,7 @@
     <string>Restart current capture</string>
    </property>
    <property name="shortcut">
-    <string>Ctrl+R</string>
+    <string notr="true">Ctrl+R</string>
    </property>
   </action>
   <action name="actionFileExportAsPlainText">
@@ -1165,8 +1255,11 @@
    <property name="text">
     <string>Description</string>
    </property>
+   <property name="toolTip">
+    <string>Copy this item's description</string>
+   </property>
    <property name="shortcut">
-    <string>Ctrl+Shift+D</string>
+    <string notr="true">Ctrl+Shift+D</string>
    </property>
   </action>
   <action name="actionCopyAllVisibleItems">
@@ -1183,24 +1276,33 @@
    <property name="text">
     <string>Field Name</string>
    </property>
+   <property name="toolTip">
+    <string>Copy this item's field name</string>
+   </property>
    <property name="shortcut">
-    <string>Ctrl+Shift+F</string>
+    <string notr="true">Ctrl+Shift+F</string>
    </property>
   </action>
   <action name="actionEditCopyValue">
    <property name="text">
     <string>Value</string>
    </property>
+   <property name="toolTip">
+    <string>Copy this item's value</string>
+   </property>
    <property name="shortcut">
-    <string>Ctrl+Shift+V</string>
+    <string notr="true">Ctrl+Shift+V</string>
    </property>
   </action>
   <action name="actionEditCopyAsFilter">
    <property name="text">
     <string>As Filter</string>
    </property>
+   <property name="toolTip">
+    <string>Copy this item as a display filter</string>
+   </property>
    <property name="shortcut">
-    <string>Ctrl+Shift+C</string>
+    <string notr="true">Ctrl+Shift+C</string>
    </property>
   </action>
   <action name="actionAnalyzeAAFSelected">
@@ -1322,7 +1424,7 @@
     <string>Find a packet</string>
    </property>
    <property name="shortcut">
-    <string>Ctrl+F</string>
+    <string notr="true">Ctrl+F</string>
    </property>
   </action>
   <action name="actionEditFindNext">
@@ -1333,7 +1435,7 @@
     <string>Find the next packet</string>
    </property>
    <property name="shortcut">
-    <string>Ctrl+N</string>
+    <string notr="true">Ctrl+N</string>
    </property>
   </action>
   <action name="actionEditFindPrevious">
@@ -1344,7 +1446,7 @@
     <string>Find the previous packet</string>
    </property>
    <property name="shortcut">
-    <string>Ctrl+B</string>
+    <string notr="true">Ctrl+B</string>
    </property>
   </action>
   <action name="actionEditMarkPacket">
@@ -1355,7 +1457,7 @@
     <string>Mark or unmark this packet</string>
    </property>
    <property name="shortcut">
-    <string>Ctrl+M</string>
+    <string notr="true">Ctrl+M</string>
    </property>
   </action>
   <action name="actionEditMarkAllDisplayed">
@@ -1366,7 +1468,7 @@
     <string>Mark all displayed packets</string>
    </property>
    <property name="shortcut">
-    <string>Ctrl+Shift+M</string>
+    <string notr="true">Ctrl+Shift+M</string>
    </property>
   </action>
   <action name="actionEditUnmarkAllDisplayed">
@@ -1377,7 +1479,7 @@
     <string>Unmark all displayed packets</string>
    </property>
    <property name="shortcut">
-    <string>Meta+Alt+M</string>
+    <string notr="true">Ctrl+Alt+M</string>
    </property>
   </action>
   <action name="actionEditNextMark">
@@ -1388,7 +1490,7 @@
     <string>Go to the next marked packet</string>
    </property>
    <property name="shortcut">
-    <string>Meta+Shift+N</string>
+    <string notr="true">Ctrl+Shift+N</string>
    </property>
   </action>
   <action name="actionEditPreviousMark">
@@ -1399,7 +1501,7 @@
     <string>Go to the previous marked packet</string>
    </property>
    <property name="shortcut">
-    <string>Meta+Shift+B</string>
+    <string notr="true">Ctrl+Shift+B</string>
    </property>
   </action>
   <action name="actionEditIgnorePacket">
@@ -1410,7 +1512,7 @@
     <string>Ignore or unignore this packet</string>
    </property>
    <property name="shortcut">
-    <string>Ctrl+D</string>
+    <string notr="true">Ctrl+D</string>
    </property>
   </action>
   <action name="actionEditIgnoreAllDisplayed">
@@ -1421,7 +1523,7 @@
     <string>Ignore all displayed packets</string>
    </property>
    <property name="shortcut">
-    <string>Ctrl+Shift+D</string>
+    <string notr="true">Ctrl+Shift+D</string>
    </property>
   </action>
   <action name="actionEditUnignoreAllDisplayed">
@@ -1432,7 +1534,7 @@
     <string>Unignore all displayed packets</string>
    </property>
    <property name="shortcut">
-    <string>Ctrl+Alt+D</string>
+    <string notr="true">Ctrl+Alt+D</string>
    </property>
   </action>
   <action name="actionEditSetTimeReference">
@@ -1443,7 +1545,7 @@
     <string>Set or unset a time reference for this packet</string>
    </property>
    <property name="shortcut">
-    <string>Ctrl+T</string>
+    <string notr="true">Ctrl+T</string>
    </property>
   </action>
   <action name="actionEditUnsetAllTimeReferences">
@@ -1454,7 +1556,7 @@
     <string>Remove all time references</string>
    </property>
    <property name="shortcut">
-    <string>Ctrl+Alt+T</string>
+    <string notr="true">Ctrl+Alt+T</string>
    </property>
   </action>
   <action name="actionEditNextTimeReference">
@@ -1465,7 +1567,7 @@
     <string>Go to the next time reference</string>
    </property>
    <property name="shortcut">
-    <string>Ctrl+Alt+N</string>
+    <string notr="true">Ctrl+Alt+N</string>
    </property>
   </action>
   <action name="actionEditPreviousTimeReference">
@@ -1476,7 +1578,7 @@
     <string>Go to the previous time reference</string>
    </property>
    <property name="shortcut">
-    <string>Ctrl+Alt+B</string>
+    <string notr="true">Ctrl+Alt+B</string>
    </property>
   </action>
   <action name="actionEditTimeShift">
@@ -1487,7 +1589,7 @@
     <string>Shift or change packet timestamps</string>
    </property>
    <property name="shortcut">
-    <string>Ctrl+Shift+T</string>
+    <string notr="true">Ctrl+Shift+T</string>
    </property>
   </action>
   <action name="actionEditPacketComment">
@@ -1512,7 +1614,7 @@
     <string>Manage your configuration profiles</string>
    </property>
    <property name="shortcut">
-    <string>Ctrl+Shift+A</string>
+    <string notr="true">Ctrl+Shift+A</string>
    </property>
    <property name="menuRole">
     <enum>QAction::NoRole</enum>
@@ -1526,7 +1628,7 @@
     <string>Manage Wireshark's preferences</string>
    </property>
    <property name="shortcut">
-    <string>Ctrl+Shift+P</string>
+    <string notr="true">Ctrl+Shift+P</string>
    </property>
    <property name="menuRole">
     <enum>QAction::PreferencesRole</enum>
@@ -1618,6 +1720,14 @@
    </property>
    <property name="text">
     <string>SSL Stream</string>
+   </property>
+  </action>
+  <action name="actionAnalyzeFollowHTTPStream">
+   <property name="enabled">
+    <bool>false</bool>
+   </property>
+   <property name="text">
+    <string>HTTP Stream</string>
    </property>
   </action>
   <action name="actionStatisticsTcpStreamTcptrace">
@@ -1814,7 +1924,7 @@
     <string>Reload Lua plugins</string>
    </property>
    <property name="shortcut">
-    <string>Ctrl+Shift+L</string>
+    <string notr="true">Ctrl+Shift+L</string>
    </property>
   </action>
   <action name="action29West">
@@ -1986,23 +2096,29 @@
     <string>Enlarge the main window text</string>
    </property>
    <property name="shortcut">
-    <string>Ctrl++</string>
+    <string notr="true">Ctrl++</string>
    </property>
   </action>
   <action name="actionViewZoomOut">
    <property name="text">
     <string>Zoom Out</string>
    </property>
+   <property name="toolTip">
+    <string>Shrink the main window text</string>
+   </property>
    <property name="shortcut">
-    <string>Ctrl+-</string>
+    <string notr="true">Ctrl+-</string>
    </property>
   </action>
   <action name="actionViewNormalSize">
    <property name="text">
     <string>Normal Size</string>
    </property>
+   <property name="toolTip">
+    <string>Return the main window text to its normal size</string>
+   </property>
    <property name="shortcut">
-    <string>Ctrl+0</string>
+    <string notr="true">Ctrl+0</string>
    </property>
   </action>
   <action name="actionViewResizeColumns">
@@ -2013,7 +2129,7 @@
     <string>Resize packet list columns to fit contents</string>
    </property>
    <property name="shortcut">
-    <string>Ctrl+Shift+R</string>
+    <string notr="true">Ctrl+Shift+R</string>
    </property>
   </action>
   <action name="actionViewTimeDisplayFormatDateYMDandTimeOfDay">
@@ -2027,7 +2143,7 @@
     <string>Show packet times as the date and time of day.</string>
    </property>
    <property name="shortcut">
-    <string>Meta+Alt+1</string>
+    <string notr="true">Ctrl+Alt+1</string>
    </property>
   </action>
   <action name="actionViewTimeDisplayFormatDateYDOYandTimeOfDay">
@@ -2052,7 +2168,7 @@
     <string>Show packet times as the date and time of day.</string>
    </property>
    <property name="shortcut">
-    <string>Meta+Alt+2</string>
+    <string notr="true">Ctrl+Alt+2</string>
    </property>
   </action>
   <action name="actionViewTimeDisplayFormatSecondsSinceEpoch">
@@ -2066,7 +2182,7 @@
     <string>Show packet times as the seconds since the UNIX / POSIX epoch (1970-01-01).</string>
    </property>
    <property name="shortcut">
-    <string>Meta+Alt+3</string>
+    <string notr="true">Ctrl+Alt+3</string>
    </property>
   </action>
   <action name="actionViewTimeDisplayFormatSecondsSinceBeginningOfCapture">
@@ -2080,7 +2196,7 @@
     <string>Show packet times as the date and time of day.</string>
    </property>
    <property name="shortcut">
-    <string>Meta+Alt+4</string>
+    <string notr="true">Ctrl+Alt+4</string>
    </property>
   </action>
   <action name="actionViewTimeDisplayFormatSecondsSincePreviousCapturedPacket">
@@ -2094,7 +2210,7 @@
     <string>Show packet times as the seconds since the previous captured packet.</string>
    </property>
    <property name="shortcut">
-    <string>Meta+Alt+5</string>
+    <string notr="true">Ctrl+Alt+5</string>
    </property>
   </action>
   <action name="actionViewTimeDisplayFormatSecondsSincePreviousDisplayedPacket">
@@ -2108,7 +2224,7 @@
     <string>Show packet times as the seconds since the previous displayed packet.</string>
    </property>
    <property name="shortcut">
-    <string>Meta+Alt+6</string>
+    <string notr="true">Ctrl+Alt+6</string>
    </property>
   </action>
   <action name="actionViewTimeDisplayFormatUTCDateYMDandTimeOfDay">
@@ -2122,7 +2238,7 @@
     <string>Show packet times as the UTC date and time of day.</string>
    </property>
    <property name="shortcut">
-    <string>Meta+Alt+7</string>
+    <string notr="true">Ctrl+Alt+7</string>
    </property>
   </action>
   <action name="actionViewTimeDisplayFormatUTCDateYDOYandTimeOfDay">
@@ -2147,7 +2263,7 @@
     <string>Show packet times as the UTC time of day.</string>
    </property>
    <property name="shortcut">
-    <string>Meta+Alt+8</string>
+    <string notr="true">Ctrl+Alt+8</string>
    </property>
   </action>
   <action name="actionViewTimeDisplayFormatPrecisionAutomatic">
@@ -2320,6 +2436,30 @@
     <string>Show or hide the packet bytes</string>
    </property>
   </action>
+  <action name="actionViewInternalsConversationHashTables">
+   <property name="text">
+    <string>Conversation Hash Tables</string>
+   </property>
+   <property name="toolTip">
+    <string>Show each conversation hash table</string>
+   </property>
+  </action>
+  <action name="actionViewInternalsDissectorTables">
+   <property name="text">
+    <string>Dissector Tables</string>
+   </property>
+   <property name="toolTip">
+    <string>Show each dissector table and its entries</string>
+   </property>
+  </action>
+  <action name="actionViewInternalsSupportedProtocols">
+   <property name="text">
+    <string>Supported Protocols</string>
+   </property>
+   <property name="toolTip">
+    <string>Show the currently supported protocols and display filter fields</string>
+   </property>
+  </action>
   <action name="actionContextCopyBytesHexTextDump">
    <property name="text">
     <string>Bytes as Hex + ASCII Dump</string>
@@ -2368,6 +2508,30 @@
     <string>GSM MAP summary statistics</string>
    </property>
   </action>
+  <action name="actionTelephonyLteMacStatistics">
+   <property name="text">
+    <string>MAC Statistics</string>
+   </property>
+   <property name="toolTip">
+    <string>LTE MAC statistics</string>
+   </property>
+  </action>
+  <action name="actionTelephonyLteRlcStatistics">
+   <property name="text">
+    <string>RLC Statistics</string>
+   </property>
+   <property name="toolTip">
+    <string>LTE RLC statistics</string>
+   </property>
+  </action>
+  <action name="actionTelephonyLteRlcGraph">
+   <property name="text">
+    <string>RLC Graph</string>
+   </property>
+   <property name="toolTip">
+    <string>LTE RLC graph</string>
+   </property>
+  </action>
   <action name="actionTelephonyMtp3Summary">
    <property name="text">
     <string>MTP3 Summary</string>
@@ -2405,19 +2569,19 @@
     <string>Edit the packet list coloring rules.</string>
    </property>
   </action>
-  <action name="actionATT_Server_Attributes">
+  <action name="actionBluetoothATT_Server_Attributes">
    <property name="text">
     <string>Bluetooth ATT Server Attributes</string>
    </property>
   </action>
-  <action name="actionDevices">
+  <action name="actionBluetoothDevices">
    <property name="text">
-    <string>Devices</string>
+    <string>Bluetooth Devices</string>
    </property>
   </action>
-  <action name="actionHCI_Summary">
+  <action name="actionBluetoothHCI_Summary">
    <property name="text">
-    <string>HCI Summary</string>
+    <string>Bluetooth HCI Summary</string>
    </property>
   </action>
   <action name="actionViewShowPacketInNewWindow">
@@ -2510,6 +2674,14 @@
     <string>No GSM statistics registered</string>
    </property>
   </action>
+  <action name="actionTelephonyLTEPlaceholder">
+   <property name="enabled">
+    <bool>false</bool>
+   </property>
+   <property name="text">
+    <string>No LTE statistics registered</string>
+   </property>
+  </action>
   <action name="actionTelephonyMTP3Placeholder">
    <property name="enabled">
     <bool>false</bool>
@@ -2533,6 +2705,9 @@
    <property name="toolTip">
     <string>Mark the current conversation with its own color.</string>
    </property>
+   <property name="shortcut">
+    <string notr="true">Ctrl+1</string>
+   </property>
   </action>
   <action name="actionViewColorizeConversation2">
    <property name="text">
@@ -2540,6 +2715,9 @@
    </property>
    <property name="toolTip">
     <string>Mark the current conversation with its own color.</string>
+   </property>
+   <property name="shortcut">
+    <string notr="true">Ctrl+2</string>
    </property>
   </action>
   <action name="actionViewColorizeConversation3">
@@ -2549,6 +2727,9 @@
    <property name="toolTip">
     <string>Mark the current conversation with its own color.</string>
    </property>
+   <property name="shortcut">
+    <string notr="true">Ctrl+3</string>
+   </property>
   </action>
   <action name="actionViewColorizeConversation4">
    <property name="text">
@@ -2556,6 +2737,9 @@
    </property>
    <property name="toolTip">
     <string>Mark the current conversation with its own color.</string>
+   </property>
+   <property name="shortcut">
+    <string notr="true">Ctrl+4</string>
    </property>
   </action>
   <action name="actionViewColorizeConversation5">
@@ -2565,6 +2749,9 @@
    <property name="toolTip">
     <string>Mark the current conversation with its own color.</string>
    </property>
+   <property name="shortcut">
+    <string notr="true">Ctrl+5</string>
+   </property>
   </action>
   <action name="actionViewColorizeConversation6">
    <property name="text">
@@ -2572,6 +2759,9 @@
    </property>
    <property name="toolTip">
     <string>Mark the current conversation with its own color.</string>
+   </property>
+   <property name="shortcut">
+    <string notr="true">Ctrl+6</string>
    </property>
   </action>
   <action name="actionViewColorizeConversation7">
@@ -2581,6 +2771,9 @@
    <property name="toolTip">
     <string>Mark the current conversation with its own color.</string>
    </property>
+   <property name="shortcut">
+    <string notr="true">Ctrl+7</string>
+   </property>
   </action>
   <action name="actionViewColorizeConversation8">
    <property name="text">
@@ -2589,6 +2782,9 @@
    <property name="toolTip">
     <string>Mark the current conversation with its own color.</string>
    </property>
+   <property name="shortcut">
+    <string notr="true">Ctrl+8</string>
+   </property>
   </action>
   <action name="actionViewColorizeConversation9">
    <property name="text">
@@ -2596,6 +2792,9 @@
    </property>
    <property name="toolTip">
     <string>Mark the current conversation with its own color.</string>
+   </property>
+   <property name="shortcut">
+    <string notr="true">Ctrl+9</string>
    </property>
   </action>
   <action name="actionViewColorizeConversation10">
@@ -2606,12 +2805,12 @@
     <string>Mark the current conversation with its own color.</string>
    </property>
   </action>
-  <action name="actionViewColorizeNewConversationRule">
+  <action name="actionViewColorizeNewColoringRule">
    <property name="text">
-    <string>New Conversation Rule…</string>
+    <string>New Coloring Rule…</string>
    </property>
    <property name="toolTip">
-    <string>Create a new coloring rule based on this conversation.</string>
+    <string>Create a new coloring rule based on this field.</string>
    </property>
   </action>
   <action name="actionViewColorizeResetColorization">
@@ -2622,15 +2821,23 @@
     <string>Reset colorized conversations.</string>
    </property>
    <property name="shortcut">
-    <string>Ctrl+Space</string>
+    <string notr="true">Ctrl+Space</string>
    </property>
   </action>
   <action name="actionTelephonyRTPStreamAnalysis">
    <property name="text">
-    <string>Analyze RTP Stream</string>
+    <string>Stream Analysis</string>
    </property>
    <property name="toolTip">
     <string>RTP Stream Analysis</string>
+   </property>
+  </action>
+  <action name="actionTelephonyIax2StreamAnalysis">
+   <property name="text">
+    <string>IAX2 Stream Analysis</string>
+   </property>
+   <property name="toolTip">
+    <string>IAX2 Stream Analysis</string>
    </property>
   </action>
   <action name="actionViewEditResolvedName">
@@ -2649,7 +2856,12 @@
     <string>Enable and disable specific protocols</string>
    </property>
    <property name="shortcut">
-    <string>Ctrl+Shift+E</string>
+    <string notr="true">Ctrl+Shift+E</string>
+   </property>
+  </action>
+  <action name="actionContextShowPacketBytes">
+   <property name="text">
+    <string>Show Packet Bytes…</string>
    </property>
   </action>
   <action name="actionContextWikiProtocolPage">
@@ -2690,6 +2902,21 @@
    </property>
    <property name="toolTip">
     <string>Show IEEE 802.11 wireless LAN statistics.</string>
+   </property>
+  </action>
+  <action name="actionNewDisplayFilterExpression">
+   <property name="icon">
+    <iconset resource="../../image/toolbar.qrc">
+     <normaloff>:/stock/plus-8.png</normaloff>:/stock/plus-8.png</iconset>
+   </property>
+   <property name="text">
+    <string>Add a filter button</string>
+   </property>
+   <property name="iconText">
+    <string>Expression…</string>
+   </property>
+   <property name="toolTip">
+    <string>Add a display filter button.</string>
    </property>
   </action>
  </widget>
@@ -2733,6 +2960,12 @@
    <class>AddressEditorFrame</class>
    <extends>QFrame</extends>
    <header>address_editor_frame.h</header>
+   <container>1</container>
+  </customwidget>
+  <customwidget>
+   <class>FilterExpressionFrame</class>
+   <extends>QFrame</extends>
+   <header>filter_expression_frame.h</header>
    <container>1</container>
   </customwidget>
  </customwidgets>

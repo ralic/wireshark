@@ -83,7 +83,6 @@ static expert_field ei_geneve_ver_unknown = EI_INIT;
 static expert_field ei_geneve_opt_len_invalid = EI_INIT;
 
 static dissector_table_t ethertype_dissector_table;
-static dissector_handle_t data_handle;
 
 static void
 print_flags(guint8 flags, proto_item *flag_item)
@@ -220,8 +219,8 @@ dissect_geneve_options(tvbuff_t *tvb, packet_info *pinfo,
     };
 }
 
-static void
-dissect_geneve(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
+static int
+dissect_geneve(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data _U_)
 {
     proto_item *ti, *flag_item, *rsvd_item;
     proto_tree *geneve_tree, *flag_tree;
@@ -311,7 +310,9 @@ dissect_geneve(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
 
     next_tvb = tvb_new_subset_remaining(tvb, offset);
     if (!dissector_try_uint(ethertype_dissector_table, proto_type, next_tvb, pinfo, tree))
-        call_dissector(data_handle, next_tvb, pinfo, tree);
+        call_data_dissector(next_tvb, pinfo, tree);
+
+    return tvb_captured_length(tvb);
 }
 
 /* Register Geneve with Wireshark */
@@ -449,7 +450,6 @@ proto_reg_handoff_geneve(void)
     dissector_add_for_decode_as("udp.port", geneve_handle);
 
     ethertype_dissector_table = find_dissector_table("ethertype");
-    data_handle = find_dissector("data");
 }
 
 /*

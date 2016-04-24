@@ -185,7 +185,7 @@ bytes_to_hexstr_punct(char *out, const guint8 *ad, guint32 len, char punct)
  * If punct is '\0', no punctuation is applied (and thus
  * the resulting string is (len-1) bytes shorter)
  */
-const gchar *
+gchar *
 bytestring_to_str(wmem_allocator_t *scope, const guint8 *ad, const guint32 len, const char punct)
 {
 	gchar *buf;
@@ -546,7 +546,7 @@ static const char mon_names[12][4] = {
 static const gchar *
 get_zonename(struct tm *tmp)
 {
-#if defined(HAVE_TM_ZONE)
+#if defined(HAVE_STRUCT_TM_TM_ZONE)
 	return tmp->tm_zone;
 #else
 	if ((tmp->tm_isdst != 0) && (tmp->tm_isdst != 1)) {
@@ -998,41 +998,6 @@ decode_bits_in_field(const guint bit_offset, const gint no_of_bits, const guint6
 		str_p++;
 	}
 	return str;
-}
-
-/* Generate, into "buf", a string showing the bits of a bitfield.
-   Return a pointer to the character after that string. */
-/*XXX this needs a buf_len check */
-char *
-other_decode_bitfield_value(char *buf, const guint64 val, const guint64 mask, const int width)
-{
-	int i;
-	guint64 bit;
-	char *p;
-
-	i = 0;
-	p = buf;
-	bit = G_GUINT64_CONSTANT(1) << (width - 1);
-	for (;;) {
-		if (mask & bit) {
-			/* This bit is part of the field.  Show its value. */
-			if (val & bit)
-				*p++ = '1';
-			else
-				*p++ = '0';
-		} else {
-			/* This bit is not part of the field. */
-			*p++ = '.';
-		}
-		bit >>= 1;
-		i++;
-		if (i >= width)
-			break;
-		if (i % 4 == 0)
-			*p++ = ' ';
-	}
-	*p = '\0';
-	return p;
 }
 
 /*

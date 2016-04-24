@@ -44,7 +44,7 @@ void proto_reg_handoff_pflog(void);
 void proto_register_old_pflog(void);
 void proto_reg_handoff_old_pflog(void);
 
-static dissector_handle_t  data_handle, ip_handle, ipv6_handle;
+static dissector_handle_t  ip_handle, ipv6_handle;
 
 /* header fields */
 static int proto_pflog = -1;
@@ -158,8 +158,8 @@ static const value_string pflog_dir_vals[] = {
   { 0,        NULL }
 };
 
-static void
-dissect_pflog(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
+static int
+dissect_pflog(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data _U_)
 {
   tvbuff_t *next_tvb;
   proto_tree *pflog_tree;
@@ -299,7 +299,7 @@ dissect_pflog(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
     break;
 
   default:
-    call_dissector(data_handle, next_tvb, pinfo, tree);
+    call_data_dissector(next_tvb, pinfo, tree);
     break;
   }
 
@@ -307,6 +307,7 @@ dissect_pflog(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
         val_to_str(action, pflog_action_vals, "unknown (%u)"),
         ifname,
         rulenr);
+  return tvb_captured_length(tvb);
 }
 
 void
@@ -356,22 +357,22 @@ proto_register_pflog(void)
       { "Padding", "pflog.pad", FT_BYTES, BASE_NONE, NULL, 0x0,
         "Must be Zero", HFILL }},
     { &hf_pflog_saddr_ipv4,
-      { "Source Address", "pflog.saddr", FT_IPv4, BASE_NONE, NULL, 0x0,
+      { "Source Address", "pflog.saddr.ipv4", FT_IPv4, BASE_NONE, NULL, 0x0,
         NULL, HFILL }},
     { &hf_pflog_daddr_ipv4,
-      { "Destination Address", "pflog.daddr", FT_IPv4, BASE_NONE, NULL, 0x0,
+      { "Destination Address", "pflog.daddr.ipv4", FT_IPv4, BASE_NONE, NULL, 0x0,
         NULL, HFILL }},
     { &hf_pflog_saddr_ipv6,
-      { "Source Address", "pflog.saddr", FT_IPv6, BASE_NONE, NULL, 0x0,
+      { "Source Address", "pflog.saddr.ipv6", FT_IPv6, BASE_NONE, NULL, 0x0,
         NULL, HFILL }},
     { &hf_pflog_daddr_ipv6,
-      { "Destination Address", "pflog.daddr", FT_IPv6, BASE_NONE, NULL, 0x0,
+      { "Destination Address", "pflog.daddr.ipv6", FT_IPv6, BASE_NONE, NULL, 0x0,
         NULL, HFILL }},
     { &hf_pflog_saddr,
-      { "Source Address", "pflog.saddr", FT_BYTES, BASE_NONE, NULL, 0x0,
+      { "Source Address", "pflog.saddr.bytes", FT_BYTES, BASE_NONE, NULL, 0x0,
         NULL, HFILL }},
     { &hf_pflog_daddr,
-      { "Destination Address", "pflog.daddr", FT_BYTES, BASE_NONE, NULL, 0x0,
+      { "Destination Address", "pflog.daddr.bytes", FT_BYTES, BASE_NONE, NULL, 0x0,
         NULL, HFILL }},
     { &hf_pflog_sport,
       { "Source Port", "pflog.sport", FT_UINT16, BASE_DEC, NULL, 0x0,
@@ -413,9 +414,8 @@ proto_reg_handoff_pflog(void)
 {
   dissector_handle_t pflog_handle;
 
-  ip_handle = find_dissector("ip");
-  ipv6_handle = find_dissector("ipv6");
-  data_handle = find_dissector("data");
+  ip_handle = find_dissector_add_dependency("ip", proto_pflog);
+  ipv6_handle = find_dissector_add_dependency("ipv6", proto_pflog);
 
   pflog_handle = create_dissector_handle(dissect_pflog, proto_pflog);
   dissector_add_uint("wtap_encap", WTAP_ENCAP_PFLOG, pflog_handle);
@@ -481,7 +481,7 @@ dissect_old_pflog(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *dat
     break;
 
   default:
-    offset += call_dissector(data_handle, next_tvb, pinfo, tree);
+    offset += call_data_dissector(next_tvb, pinfo, tree);
     break;
   }
 
@@ -532,9 +532,8 @@ proto_reg_handoff_old_pflog(void)
 
   ip_handle = find_dissector("ip");
   ipv6_handle = find_dissector("ipv6");
-  data_handle = find_dissector("data");
 
-  pflog_handle = new_create_dissector_handle(dissect_old_pflog, proto_old_pflog);
+  pflog_handle = create_dissector_handle(dissect_old_pflog, proto_old_pflog);
   dissector_add_uint("wtap_encap", WTAP_ENCAP_OLD_PFLOG, pflog_handle);
 }
 /*

@@ -112,6 +112,7 @@ different folders are used for these files.
 |_services_|Network services.|/etc/services, $HOME/.wireshark/services|%WIRESHARK%\services, %APPDATA%\Wireshark\services
 |_subnets_|IPv4 subnet name resolution.|/etc/subnets, $HOME/.wireshark/subnets|%WIRESHARK%\subnets, %APPDATA%\Wireshark\subnets
 |_ipxnets_|IPX name resolution.|/etc/ipxnets, $HOME/.wireshark/ipxnets|%WIRESHARK%\ipxnets, %APPDATA%\Wireshark\ipxnets
+|_vlans_|VLAN ID name resolution.|$HOME/.wireshark/vlans|%APPDATA%\Wireshark\vlans
 |_plugins_|Plugin directories.|/usr/share/wireshark/plugins, /usr/local/share/wireshark/plugins, $HOME/.wireshark/plugins|%WIRESHARK%\plugins\<version>,%APPDATA%\Wireshark\plugins
 |_temp_|Temporary files.|Environment: TMPDIR|Environment: TMPDIR or TEMP
 |===============
@@ -328,6 +329,22 @@ The settings from this file are read in at program start and never written by
 Wireshark.
 --
 
+_vlans_::
+Wireshark uses the files listed in <<AppFilesTabFolders>> to translate VLAN tag IDs into names.
++
+--
+Each line in this file consists of one VLAN tag ID and a describing name separated by whitespace or tab.
+
+An example is:
+----
+123     Server-LAN
+2049    HR-Client-LAN
+----
+
+The settings from this file are read in at program start and never written by
+Wireshark.
+--
+
 _plugins_ folder::
 Wireshark searches for plugins in the directories listed in
 <<AppFilesTabFolders>>. They are searched in the order listed.
@@ -533,7 +550,7 @@ variable. This variable will be set by the Windows installer.
 Windows 8, Windows 7, Windows Vista, and associated server editions::
 _C:\Users\<username>\AppData\Local\Temp_
 
-Windows XP, Windows 2000 footnoteref:[historical]::
+Windows XP, Windows Server 2003, Windows 2000 footnoteref:[historical]::
 _C:\Documents and Settings\<username>\Local Settings\Temp_
 
 Windows NT footnoteref:[historical]::

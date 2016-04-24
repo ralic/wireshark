@@ -36,7 +36,6 @@
 #include <epan/packet.h>
 
 void proto_register_felica(void);
-void proto_reg_handoff_felica(void);
 
 static int proto_felica = -1;
 
@@ -217,36 +216,28 @@ static const value_string felica_sys_codes[] = {
     {0x00, NULL}
 };
 
-static dissector_handle_t data_handle=NULL;
-
-/* Forward-declare the dissector functions */
-static void dissect_felica(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree);
-
 /* Subtree handles: set by register_subtree_array */
 static gint ett_felica = -1;
 
-static void dissect_felica(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
+static int dissect_felica(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data _U_)
 {
     proto_item *item;
-    proto_tree *felica_tree = NULL;
+    proto_tree *felica_tree;
     guint8      opcode;
     guint8      rwe_pos     = 0;
     tvbuff_t   *rwe_resp_data_tvb;
 
     col_set_str(pinfo->cinfo, COL_PROTOCOL, "FeliCa");
 
-    if (tree) {
-        /* Start with a top-level item to add everything else to */
-        item = proto_tree_add_item(tree, proto_felica, tvb, 0, -1, ENC_NA);
-        felica_tree = proto_item_add_subtree(item, ett_felica);
-    }
+    /* Start with a top-level item to add everything else to */
+    item = proto_tree_add_item(tree, proto_felica, tvb, 0, -1, ENC_NA);
+    felica_tree = proto_item_add_subtree(item, ett_felica);
+
     opcode = tvb_get_guint8(tvb, 0);
     col_set_str(pinfo->cinfo, COL_INFO,
       val_to_str_const(opcode, felica_opcodes, "Unknown"));
 
-    if (tree) {
-        proto_tree_add_item(felica_tree, hf_felica_opcode,  tvb, 0, 1, ENC_BIG_ENDIAN);
-    }
+    proto_tree_add_item(felica_tree, hf_felica_opcode,  tvb, 0, 1, ENC_BIG_ENDIAN);
 
     switch (opcode) {
 
@@ -319,7 +310,7 @@ static void dissect_felica(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
             proto_tree_add_item(felica_tree, hf_felica_nbr_of_blocks, tvb, 11, 1, ENC_BIG_ENDIAN);
         }
         rwe_resp_data_tvb = tvb_new_subset_remaining(tvb, 12);
-        call_dissector(data_handle, rwe_resp_data_tvb, pinfo, tree);
+        call_data_dissector(rwe_resp_data_tvb, pinfo, tree);
         break;
 
     case CMD_WRITE_WO_ENCRYPTION:
@@ -453,6 +444,7 @@ static void dissect_felica(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
     default:
         break;
     }
+    return tvb_captured_length(tvb);
 }
 
 void
@@ -554,12 +546,6 @@ proto_register_felica(void)
     register_dissector("felica", dissect_felica, proto_felica);
 }
 
-/* Handler registration */
-void
-proto_reg_handoff_felica(void)
-{
-    data_handle = find_dissector("data");
-}
 /*
 * Editor modelines - http://www.wireshark.org/tools/modelines.html
 *

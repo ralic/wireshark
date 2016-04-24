@@ -31,6 +31,9 @@
 /* Define to 1 if we want to enable plugins */
 #cmakedefine HAVE_PLUGINS 1
 
+/*  Define to 1 if we check hf conflict */
+#cmakedefine ENABLE_CHECK_FILTER 1
+
 /* Link plugins statically into Wireshark */
 #cmakedefine ENABLE_STATIC 1
 
@@ -64,17 +67,26 @@
 /* Define if GeoIP supports IPv6 (GeoIP 1.4.5 and later) */
 #cmakedefine HAVE_GEOIP_V6 1
 
+/* Define to 1 if you have the <ifaddrs.h> header file. */
+#cmakedefine HAVE_IFADDRS_H 1
+
+/* Define to 1 if you have the `getifaddrs' function. */
+#cmakedefine HAVE_GETIFADDRS 1
+
+/* Define if LIBSSH support is enabled */
+#cmakedefine HAVE_LIBSSH 1
+
+/* Define if LIBSSH has ssh_userauth_agent() function */
+#cmakedefine HAVE_SSH_USERAUTH_AGENT 1
+
 /* Define if you have the 'floorl' function. */
 #cmakedefine HAVE_FLOORL 1
 
+/* Define if you have the 'lrint' function. */
+#cmakedefine HAVE_LRINT 1
+
 /* Define to 1 if you have the `getaddrinfo' function. */
 #cmakedefine HAVE_GETADDRINFO 1
-
-/* Define to 1 if you have the `gethostbyname' function. */
-#cmakedefine HAVE_GETHOSTBYNAME 1
-
-/* Define to 1 if you have the `gethostbyname2' function. */
-#cmakedefine HAVE_GETHOSTBYNAME2 1
 
 /* Define to 1 if you have the getopt_long function. */
 #cmakedefine HAVE_GETOPT_LONG 1
@@ -88,20 +100,20 @@
 /* Define to 1 if you have the `getprotobynumber' function. */
 #cmakedefine HAVE_GETPROTOBYNUMBER 1
 
-/* Define to use GNU ADNS library */
-#cmakedefine HAVE_GNU_ADNS 1
-
 /* Define to 1 if you have the <grp.h> header file. */
 #cmakedefine HAVE_GRP_H 1
 
 /* Define to use heimdal kerberos */
 #cmakedefine HAVE_HEIMDAL_KERBEROS 1
 
-/* Define unless inet/aton.h needs to be included */
-#cmakedefine HAVE_INET_ATON_H 1
+/* Define to 1 if you have the `inet_aton' function. */
+#cmakedefine HAVE_INET_ATON 1
 
-/* Define if inet_ntop() prototype exists */
-#cmakedefine HAVE_INET_NTOP_PROTO 1
+/* Define to 1 if you have the `inet_ntop' function. */
+#cmakedefine HAVE_INET_NTOP 1
+
+/* Define to 1 if you have the `inet_pton' function. */
+#cmakedefine HAVE_INET_PTON 1
 
 /* Define to 1 if you have the `inflatePrime' function. */
 #cmakedefine HAVE_INFLATEPRIME 1
@@ -114,9 +126,6 @@
 
 /* Define to use kerberos */
 #cmakedefine HAVE_KERBEROS 1
-
-/* Define if krb5.h defines KEYTYPE_ARCFOUR_56 */
-#cmakedefine HAVE_KEYTYPE_ARCFOUR_56 1
 
 /* Define to use the libcap library */
 #cmakedefine HAVE_LIBCAP 1
@@ -148,8 +157,8 @@
 /* Define to 1 if you have the `smi' library (-lsmi). */
 #cmakedefine HAVE_LIBSMI 1
 
-/* Define to use libz library */
-#cmakedefine HAVE_LIBZ 1
+/* Define to use zlib library */
+#cmakedefine HAVE_ZLIB 1
 
 /* Define to 1 if you have the <linux/sockios.h> header file. */
 #cmakedefine HAVE_LINUX_SOCKIOS_H 1
@@ -195,6 +204,9 @@
 
 /* SPLIT_WIPHY_DUMP is supported */
 #cmakedefine HAVE_NL80211_SPLIT_WIPHY_DUMP 1
+
+/* VHT_CAPABILITY is supported */
+#cmakedefine HAVE_NL80211_VHT_CAPABILITY 1
 
 /* Define to 1 if you have the <Ntddndis.h> header file. */
 #cmakedefine HAVE_NTDDNDIS_H 1
@@ -277,7 +289,7 @@
 #cmakedefine HAVE_REMOTE 1
 
 /* Define if sa_len field exists in struct sockaddr */
-#cmakedefine HAVE_SA_LEN 1
+#cmakedefine HAVE_SOCKADDR_SA_LEN 1
 
 /* Define to 1 if you want to playing SBC by standalone BlueZ SBC library */
 #cmakedefine HAVE_SBC 1
@@ -301,7 +313,7 @@
 #cmakedefine HAVE_STRPTIME 1
 
 /* Define if st_flags field exists in struct stat */
-#cmakedefine HAVE_ST_FLAGS 1
+#cmakedefine HAVE_STAT_ST_FLAGS 1
 
 /* Define to 1 if you have the `sysconf' function. */
 #cmakedefine HAVE_SYSCONF 1
@@ -334,7 +346,7 @@
 #cmakedefine HAVE_SYS_WAIT_H 1
 
 /* Define if tm_zone field exists in struct tm */
-#cmakedefine HAVE_TM_ZONE 1
+#cmakedefine HAVE_STRUCT_TM_TM_ZONE 1
 
 /* Define if tzname array exists */
 #cmakedefine HAVE_TZNAME 1
@@ -347,12 +359,6 @@
 
 /* Define to 1 if you have the <winsock2.h> header file. */
 #cmakedefine HAVE_WINSOCK2_H 1
-
-/* HTML viewer, e.g. mozilla */
-#cmakedefine HTML_VIEWER "${HTML_VIEWER_EXECUTABLE}"
-
-/* Define if inet/v6defs.h needs to be included */
-#cmakedefine NEED_INET_V6DEFS_H 1
 
 /* Name of package */
 #cmakedefine PACKAGE
@@ -381,8 +387,8 @@
 /* Define if we are using version of of the Portaudio library API */
 #cmakedefine PORTAUDIO_API_1 1
 
-/* Define if we have QtMultimediaWidgets */
-#cmakedefine QT_MULTIMEDIAWIDGETS_LIB 1
+/* Define if we have QtMultimedia */
+#cmakedefine QT_MULTIMEDIA_LIB 1
 
 /* Define if we have QtMacExtras */
 #cmakedefine QT_MACEXTRAS_LIB 1
@@ -406,15 +412,6 @@
 #cmakedefine _LARGE_FILES
 #cmakedefine _FILE_OFFSET_BITS @_FILE_OFFSET_BITS@
 
-/* Define WS_MSVC_NORETURN appropriately for declarations of routines that
-   never return (just like Charlie on the MTA).
-
-   Note that MSVC++ expects __declspec(noreturn) to precede the function
-   name and GCC, as far as I know, expects __attribute__((noreturn)) to
-   follow the function name, so we need two different flavors of
-   noreturn tag.  */
-#define WS_MSVC_NORETURN @WS_MSVC_NORETURN@
-
 /* Define to 1 if `lex' declares `yytext' as a `char *' by default, not a
    `char[]'. */
 /* Note: not use in the code */
@@ -424,14 +421,8 @@
    However, we do need it for some headers that are shared between C and C++. */
 #define _U_ ${C_UNUSED}
 
-/* We don't bother checking for IPv6 support; the checks done in the
-   autoconf script are relics of a bygone age, where IPv6 support in
-   OSes was sometimes present by default, sometimes provided by
-   third-party add-ons, and sometimes completely absent, and where the
-   particular flavor of IPv6 support mattered to us.  We'll just wire it
-   on, unless and until that becomes an issue on platforms where people
-   use CMake. */
-#define INET6 1
+/* Hint to the compiler that a function never returns */
+#define WS_NORETURN @WS_NORETURN@
 
 #if defined(_WIN32)
 
@@ -471,6 +462,7 @@
 #  define UNICODE 1
 #  define _UNICODE 1
 
-#  define NEED_INET_V6DEFS_H 1
 #  define NEED_STRPTIME_H 1
 #endif
+
+#include <ws_diag_control.h>

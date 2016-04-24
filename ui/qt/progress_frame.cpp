@@ -27,20 +27,21 @@
 #include "ui/progress_dlg.h"
 
 #include <QDialogButtonBox>
+#include <QElapsedTimer>
 #include <QGraphicsOpacityEffect>
 #include <QBoxLayout>
 #include <QPropertyAnimation>
 
-#include "stock_icon.h"
+#include "stock_icon_tool_button.h"
 #include "wireshark_application.h"
 
 // To do:
-// - Use a different icon?
 // - Add an NSProgressIndicator to the dock icon on OS X.
 // - Start adding the progress bar to dialogs.
 // - Don't complain so loudly when the user stops a capture.
 
-progdlg_t *create_progress_dlg(const gpointer top_level_window, const gchar *, const gchar *,
+progdlg_t *
+create_progress_dlg(gpointer top_level_window, const gchar *, const gchar *,
                                gboolean terminate_is_stop, gboolean *stop_flag) {
     ProgressFrame *pf;
     QWidget *main_window;
@@ -64,7 +65,7 @@ progdlg_t *create_progress_dlg(const gpointer top_level_window, const gchar *, c
 }
 
 progdlg_t *
-delayed_create_progress_dlg(const gpointer top_level_window, const gchar *task_title, const gchar *item_title,
+delayed_create_progress_dlg(gpointer top_level_window, const gchar *task_title, const gchar *item_title,
                             gboolean terminate_is_stop, gboolean *stop_flag,
                             const GTimeVal *, gfloat progress)
 {
@@ -76,10 +77,13 @@ delayed_create_progress_dlg(const gpointer top_level_window, const gchar *task_t
 /*
  * Update the progress information of the progress bar box.
  */
+static const int app_update_freq_ = 100; // ms
 void
 update_progress_dlg(progdlg_t *dlg, gfloat percentage, const gchar *)
 {
     if (!dlg) return;
+    if (dlg->elapsed_timer->isValid() && !dlg->elapsed_timer->hasExpired(app_update_freq_)) return;
+    dlg->elapsed_timer->restart();
 
     dlg->progress_frame->setValue(percentage * 100);
 
@@ -87,6 +91,9 @@ update_progress_dlg(progdlg_t *dlg, gfloat percentage, const gchar *)
      * Flush out the update and process any input events.
      */
     WiresharkApplication::processEvents();
+
+    /* Redraw so the progress bar shows the update */
+    dlg->progress_frame->update();
 }
 
 /*
@@ -105,6 +112,8 @@ ProgressFrame::ProgressFrame(QWidget *parent) :
   , stop_flag_(NULL)
 #if !defined(Q_OS_MAC) || QT_VERSION > QT_VERSION_CHECK(5, 0, 0)
   , show_timer_(-1)
+  , effect_(NULL)
+  , animation_(NULL)
 #endif
 #ifdef QWINTASKBARPROGRESS_H
   , update_taskbar_(false)
@@ -114,6 +123,7 @@ ProgressFrame::ProgressFrame(QWidget *parent) :
     ui->setupUi(this);
 
     progress_dialog_.progress_frame = this;
+    progress_dialog_.elapsed_timer = new QElapsedTimer();
     progress_dialog_.top_level_window = window();
 
     ui->progressBar->setStyleSheet(QString(
@@ -126,26 +136,26 @@ ProgressFrame::ProgressFrame(QWidget *parent) :
             "  background: transparent;"
             "}"));
 
-    int one_em = fontMetrics().height();
-    ui->pushButton->setIconSize(QSize(one_em, one_em));
-    ui->pushButton->setStyleSheet(QString(
-            "QPushButton {"
-            "  image: url(:/dfilter/dfilter_erase_normal.png) center;"
+    ui->stopButton->setStockIcon("x-filter-clear");
+    ui->stopButton->setIconSize(QSize(14, 14));
+    ui->stopButton->setStyleSheet(
+            "QToolButton {"
+            "  border: none;"
+            "  background: transparent;" // Disables platform style on Windows.
+            "  padding: 0px;"
+            "  margin: 0px;"
             "  min-height: 0.8em;"
             "  max-height: 1em;"
             "  min-width: 0.8em;"
             "  max-width: 1em;"
-            "  border: 0px;"
-            "  padding: 0px;"
-            "  margin: 0px;"
-            "  background: transparent;"
             "}"
-            "QPushButton:hover {"
-            "  image: url(:/dfilter/dfilter_erase_active.png) center;"
-            "}"
-            "QPushButton:pressed {"
-            "  image: url(:/dfilter/dfilter_erase_selected.png) center;"
-            "}"));
+            );
+
+#if !defined(Q_OS_MAC) || QT_VERSION > QT_VERSION_CHECK(5, 0, 0)
+    effect_ = new QGraphicsOpacityEffect(this);
+    animation_ = new QPropertyAnimation(effect_, "opacity", this);
+#endif
+
     connect(this, SIGNAL(showRequested(bool,bool,gboolean*)),
             this, SLOT(show(bool,bool,gboolean*)));
     hide();
@@ -154,12 +164,14 @@ ProgressFrame::ProgressFrame(QWidget *parent) :
 ProgressFrame::~ProgressFrame()
 {
     delete ui;
+    delete progress_dialog_.elapsed_timer;
 }
 
 struct progdlg *ProgressFrame::showProgress(bool animate, bool terminate_is_stop, gboolean *stop_flag, int value)
 {
     setMaximumValue(100);
     ui->progressBar->setValue(value);
+    progress_dialog_.elapsed_timer->invalidate();
     emit showRequested(animate, terminate_is_stop, stop_flag);
     return &progress_dialog_;
 }
@@ -236,24 +248,24 @@ void ProgressFrame::timerEvent(QTimerEvent *event)
         killTimer(show_timer_);
         show_timer_ = -1;
 
-        QGraphicsOpacityEffect *effect = new QGraphicsOpacityEffect(this);
-        this->setGraphicsEffect(effect);
+        this->setGraphicsEffect(effect_);
 
-        QPropertyAnimation *animation = new QPropertyAnimation(effect, "opacity");
-
-        animation->setDuration(750);
-        animation->setStartValue(0.1);
-        animation->setEndValue(1.0);
-        animation->setEasingCurve(QEasingCurve::InOutQuad);
-        animation->start();
+        animation_->setDuration(750);
+        animation_->setStartValue(0.1);
+        animation_->setEndValue(1.0);
+        animation_->setEasingCurve(QEasingCurve::InOutQuad);
+        animation_->start();
 
         QFrame::show();
+    } else {
+        QFrame::timerEvent(event);
     }
 }
 #endif
 
 void ProgressFrame::hide()
 {
+    progress_dialog_.elapsed_timer->invalidate();
 #if !defined(Q_OS_MAC) || QT_VERSION > QT_VERSION_CHECK(5, 0, 0)
     show_timer_ = -1;
 #endif
@@ -267,21 +279,24 @@ void ProgressFrame::hide()
 #endif
 }
 
-void ProgressFrame::on_pushButton_clicked()
+void ProgressFrame::on_stopButton_clicked()
 {
     emit stopLoading();
 }
 
+#if !defined(Q_OS_MAC) || QT_VERSION > QT_VERSION_CHECK(5, 0, 0)
 const int show_delay_ = 500; // ms
+#endif
+
 void ProgressFrame::show(bool animate, bool terminate_is_stop, gboolean *stop_flag)
 {
     terminate_is_stop_ = terminate_is_stop;
     stop_flag_ = stop_flag;
 
     if (stop_flag) {
-        ui->pushButton->show();
+        ui->stopButton->show();
     } else {
-        ui->pushButton->hide();
+        ui->stopButton->hide();
     }
 
 #if !defined(Q_OS_MAC) || QT_VERSION > QT_VERSION_CHECK(5, 0, 0)

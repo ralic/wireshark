@@ -24,7 +24,7 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
-#include "config.h"
+#include <config.h>
 
 #include <gtk/gtk.h>
 #include <gdk/gdkkeysyms.h>
@@ -36,10 +36,6 @@
 #include <string.h>
 #include <locale.h>
 
-#ifdef HAVE_UNISTD_H
-#include <unistd.h>
-#endif
-
 #ifdef HAVE_GETOPT_H
 #include <getopt.h>
 #endif
@@ -48,8 +44,8 @@
 #include "wsutil/wsgetopt.h"
 #endif
 
-#ifdef HAVE_LIBZ
-#include <zlib.h>      /* to get the libz version number */
+#ifdef HAVE_EXTCAP
+#include <extcap.h>
 #endif
 
 #ifdef HAVE_LIBPORTAUDIO
@@ -63,9 +59,7 @@
 #include <wsutil/file_util.h>
 #include <wsutil/privileges.h>
 #include <wsutil/report_err.h>
-#include <wsutil/u3.h>
-#include <wsutil/ws_diag_control.h>
-#include <wsutil/ws_version_info.h>
+#include <ws_version_info.h>
 
 #include <wiretap/merge.h>
 
@@ -98,21 +92,20 @@
 #include <wsutil/plugins.h>
 
 /* general (not GTK specific) */
-#include "../file.h"
-#include "../frame_tvbuff.h"
-#include "../summary.h"
-#include "../color.h"
-#include "../color_filters.h"
-#include "../register.h"
-#include "../ringbuffer.h"
-#include "../log.h"
+#include "../../file.h"
+#include "../../frame_tvbuff.h"
+#include "../../summary.h"
+#include <epan/color_filters.h>
+#include "../../register.h"
+#include "../../ringbuffer.h"
+#include "../../log.h"
 
 #include "gtk_iface_monitor.h"
 
 #include "ui/alert_box.h"
 #include "ui/console.h"
 #include "ui/decode_as_utils.h"
-#include "ui/filters.h"
+#include "filter_files.h"
 #include "ui/main_statusbar.h"
 #include "ui/persfilepath_opt.h"
 #include "ui/preference_utils.h"
@@ -177,7 +170,6 @@
 #include "ui/gtk/packet_win.h"
 #include "ui/gtk/stock_icons.h"
 #include "ui/gtk/find_dlg.h"
-#include "ui/gtk/follow_tcp.h"
 #include "ui/gtk/font_utils.h"
 #include "ui/gtk/about_dlg.h"
 #include "ui/gtk/help_dlg.h"
@@ -197,13 +189,13 @@
 #include "ui/gtk/response_time_delay_table.h"
 #include "ui/gtk/simple_stattable.h"
 #include "simple_dialog.h"
+#ifdef HAVE_GDK_GRESOURCE
+#include "wireshark-gresources.h"
+#else
+#include "ui/gtk/pixbuf-csource.h"
+#endif
 
 #include "ui/gtk/old-gtk-compat.h"
-
-#ifdef HAVE_LIBPCAP
-#include "wsicon.h"
-#include "wsiconcap.h"
-#endif
 
 #ifdef HAVE_AIRPCAP
 #include <caputils/airpcap.h>
@@ -228,6 +220,7 @@
 #ifdef HAVE_LIBPCAP
 capture_options global_capture_opts;
 capture_session global_capture_session;
+info_data_t global_info_data;
 #endif
 
 capture_file cfile;
@@ -358,6 +351,7 @@ void
 colorize_selected_ptree_cb(GtkWidget *w _U_, gpointer data _U_, guint8 filt_nr)
 {
     char *filter = NULL;
+    gchar *err_msg = NULL;
 
     if (cfile.finfo_selected) {
         filter = proto_construct_match_selected_string(cfile.finfo_selected,
@@ -373,9 +367,16 @@ colorize_selected_ptree_cb(GtkWidget *w _U_, gpointer data _U_, guint8 filt_nr)
             color_display_with_filter(filter);
         } else {
             if (filt_nr==255) {
-                color_filters_reset_tmp();
+                if (!color_filters_reset_tmp(&err_msg)) {
+                    simple_dialog(ESD_TYPE_ERROR, ESD_BTN_OK, "%s", err_msg);
+                    g_free(err_msg);
+                }
             } else {
-                color_filters_set_tmp(filt_nr,filter, FALSE);
+                if (!color_filters_set_tmp(filt_nr,filter, FALSE, &err_msg)) {
+                    simple_dialog(ESD_TYPE_ERROR, ESD_BTN_OK, "%s", err_msg);
+                    g_free(err_msg);
+                }
+
             }
             packet_list_colorize_packets();
         }
@@ -426,41 +427,27 @@ selected_ptree_info_cb(GtkWidget *widget _U_, gpointer data _U_)
 
         proto_abbrev = proto_registrar_get_abbrev(field_id);
 
-        if (!proto_is_private(field_id)) {
-            /* ask the user if the wiki page really should be opened */
-            dialog = simple_dialog(ESD_TYPE_CONFIRMATION, ESD_BTNS_OK_CANCEL,
-                    "%sOpen Wireshark Wiki page of protocol \"%s\"?%s\n"
-                    "\n"
-                    "This will open the \"%s\" related Wireshark Wiki page in your Web browser.\n"
-                    "\n"
-                    "The Wireshark Wiki is a collaborative approach to provide information "
-                    "about Wireshark in several ways (not limited to protocol specifics).\n"
-                    "\n"
-                    "This Wiki is new, so the page of the selected protocol "
-                    "may not exist and/or may not contain valuable information.\n"
-                    "\n"
-                    "As everyone can edit the Wiki and add new content (or extend existing), "
-                    "you are encouraged to add information if you can.\n"
-                    "\n"
-                    "Hint 1: If you are new to wiki editing, try out editing the Sandbox first!\n"
-                    "\n"
-                    "Hint 2: If you want to add a new protocol page, you should use the ProtocolTemplate, "
-                    "which will save you a lot of editing and will give a consistent look over the pages.",
-                    simple_dialog_primary_start(), proto_abbrev, simple_dialog_primary_end(), proto_abbrev);
-            simple_dialog_set_cb(dialog, selected_ptree_info_answered_cb, (gpointer)proto_abbrev);
-        } else {
-            /* appologize to the user that the wiki page cannot be opened */
-            simple_dialog(ESD_TYPE_WARN, ESD_BTN_OK,
-                    "%sCan't open Wireshark Wiki page of protocol \"%s\"%s\n"
-                    "\n"
-                    "This would open the \"%s\" related Wireshark Wiki page in your Web browser.\n"
-                    "\n"
-                    "Since this is a private protocol, such information is not available in "
-                    "a public wiki. Therefore this wiki entry is blocked.\n"
-                    "\n"
-                    "Sorry for the inconvenience.\n",
-                    simple_dialog_primary_start(), proto_abbrev, simple_dialog_primary_end(), proto_abbrev);
-        }
+        /* ask the user if the wiki page really should be opened */
+        dialog = simple_dialog(ESD_TYPE_CONFIRMATION, ESD_BTNS_OK_CANCEL,
+                "%sOpen Wireshark Wiki page of protocol \"%s\"?%s\n"
+                "\n"
+                "This will open the \"%s\" related Wireshark Wiki page in your Web browser.\n"
+                "\n"
+                "The Wireshark Wiki is a collaborative approach to provide information "
+                "about Wireshark in several ways (not limited to protocol specifics).\n"
+                "\n"
+                "This Wiki is new, so the page of the selected protocol "
+                "may not exist and/or may not contain valuable information.\n"
+                "\n"
+                "As everyone can edit the Wiki and add new content (or extend existing), "
+                "you are encouraged to add information if you can.\n"
+                "\n"
+                "Hint 1: If you are new to wiki editing, try out editing the Sandbox first!\n"
+                "\n"
+                "Hint 2: If you want to add a new protocol page, you should use the ProtocolTemplate, "
+                "which will save you a lot of editing and will give a consistent look over the pages.",
+                simple_dialog_primary_start(), proto_abbrev, simple_dialog_primary_end(), proto_abbrev);
+        simple_dialog_set_cb(dialog, selected_ptree_info_answered_cb, (gpointer)proto_abbrev);
     }
 }
 
@@ -504,28 +491,14 @@ selected_ptree_ref_cb(GtkWidget *widget _U_, gpointer data _U_)
 
         proto_abbrev = proto_registrar_get_abbrev(field_id);
 
-        if (!proto_is_private(field_id)) {
-            /* ask the user if the wiki page really should be opened */
-            dialog = simple_dialog(ESD_TYPE_CONFIRMATION, ESD_BTNS_OK_CANCEL,
-                    "%sOpen Wireshark filter reference page of protocol \"%s\"?%s\n"
-                    "\n"
-                    "This will open the \"%s\" related Wireshark filter reference page in your Web browser.\n"
-                    "\n",
-                    simple_dialog_primary_start(), proto_abbrev, simple_dialog_primary_end(), proto_abbrev);
-            simple_dialog_set_cb(dialog, selected_ptree_ref_answered_cb, (gpointer)proto_abbrev);
-        } else {
-            /* appologize to the user that the wiki page cannot be opened */
-            simple_dialog(ESD_TYPE_WARN, ESD_BTN_OK,
-                    "%sCan't open Wireshark filter reference page of protocol \"%s\"%s\n"
-                    "\n"
-                    "This would open the \"%s\" related Wireshark filter reference page in your Web browser.\n"
-                    "\n"
-                    "Since this is a private protocol, such information is not available on "
-                    "a public website. Therefore this filter entry is blocked.\n"
-                    "\n"
-                    "Sorry for the inconvenience.\n",
-                    simple_dialog_primary_start(), proto_abbrev, simple_dialog_primary_end(), proto_abbrev);
-        }
+        /* ask the user if the wiki page really should be opened */
+        dialog = simple_dialog(ESD_TYPE_CONFIRMATION, ESD_BTNS_OK_CANCEL,
+                "%sOpen Wireshark filter reference page of protocol \"%s\"?%s\n"
+                "\n"
+                "This will open the \"%s\" related Wireshark filter reference page in your Web browser.\n"
+                "\n",
+                simple_dialog_primary_start(), proto_abbrev, simple_dialog_primary_end(), proto_abbrev);
+        simple_dialog_set_cb(dialog, selected_ptree_ref_answered_cb, (gpointer)proto_abbrev);
     }
 }
 
@@ -624,7 +597,7 @@ get_filter_from_packet_list_row_and_column(gpointer data)
                 strlen(cfile.cinfo.col_expr.col_expr_val[column]) != 0) {
                 /* leak a little; is there a safe wmem_ scope here? */
                 if (cfile.cinfo.columns[column].col_fmt == COL_CUSTOM) {
-                    header_field_info *hfi = proto_registrar_get_byname(cfile.cinfo.columns[column].col_custom_field);
+                    header_field_info *hfi = proto_registrar_get_byname(cfile.cinfo.columns[column].col_custom_fields);
                     if (hfi && hfi->parent == -1) {
                         /* Protocol only */
                         buf = g_strdup(cfile.cinfo.col_expr.col_expr[column]);
@@ -678,7 +651,7 @@ copy_selected_plist_cb(GtkWidget *w _U_, gpointer data _U_, COPY_SELECTED_E acti
     {
     case COPY_SELECTED_DESCRIPTION:
         if (cfile.finfo_selected->rep &&
-            strlen (cfile.finfo_selected->rep->representation) > 0) {
+            strlen(cfile.finfo_selected->rep->representation) > 0) {
             g_string_append(gtk_text_str, cfile.finfo_selected->rep->representation);
         }
         break;
@@ -874,7 +847,7 @@ tree_view_selection_changed_cb(GtkTreeSelection *sel, gpointer user_data _U_)
         } else {
             /*
              * Don't show anything if the field name is zero-length;
-             * the pseudo-field for "proto_tree_add_text()" is such
+             * the pseudo-field for text-only items is such
              * a field, and we don't want "Text (text)" showing up
              * on the status line if you've selected such a field.
              *
@@ -886,10 +859,9 @@ tree_view_selection_changed_cb(GtkTreeSelection *sel, gpointer user_data _U_)
              * but we'd have to add checks for null pointers in some
              * places if we did that.
              *
-             * Or perhaps protocol tree items added with
-             * "proto_tree_add_text()" should have -1 as the field index,
-             * with no pseudo-field being used, but that might also
-             * require special checks for -1 to be added.
+             * Or perhaps text-only items should have -1 as the field
+             * index, with no pseudo-field being used, but that might
+             * also require special checks for -1 to be added.
              */
             statusbar_push_field_msg("%s", "");
         }
@@ -956,10 +928,10 @@ void resolve_name_cb(GtkWidget *widget _U_, gpointer data _U_)
         TRUE,   /* mac_name */
         TRUE,   /* network_name */
         TRUE,   /* transport_name */
-        TRUE,   /* concurrent_dns */
         TRUE,   /* dns_pkt_addr_resolution */
         TRUE,   /* use_external_net_name_resolver */
-        FALSE   /* load_hosts_file_from_profile_only */
+        FALSE,  /* load_hosts_file_from_profile_only */
+        FALSE   /* vlan_name */
     };
 
     if (cfile.edt->tree) {
@@ -1239,7 +1211,7 @@ print_usage(gboolean for_help_option) {
     fprintf(output, "Processing:\n");
     fprintf(output, "  -R <read filter>         packet filter in Wireshark display filter syntax\n");
     fprintf(output, "  -n                       disable all name resolutions (def: all enabled)\n");
-    fprintf(output, "  -N <name resolve flags>  enable specific name resolution(s): \"mnNtCd\"\n");
+    fprintf(output, "  -N <name resolve flags>  enable specific name resolution(s): \"mnNtd\"\n");
     fprintf(output, "  --disable-protocol <proto_name>\n");
     fprintf(output, "                           disable dissection of proto_name\n");
     fprintf(output, "  --enable-heuristic <short_name>\n");
@@ -1383,7 +1355,7 @@ main_colorize_changed(gboolean packet_list_colorize)
     /* change colorization */
     if(packet_list_colorize != recent.packet_list_colorize) {
         recent.packet_list_colorize = packet_list_colorize;
-        color_filters_enable(packet_list_colorize);
+        packet_list_enable_color(packet_list_colorize);
         packet_list_colorize_packets();
     }
 }
@@ -1474,8 +1446,8 @@ main_cf_cb_file_read_finished(capture_file *cf)
         add_menu_recent_capture_file(cf->filename);
 
         /* Remember folder for next Open dialog and save it in recent */
-        dir_path = get_dirname(g_strdup(cf->filename));
-        set_last_open_dir(dir_path);
+        dir_path = g_strdup(cf->filename);
+        set_last_open_dir(get_dirname(dir_path));
         g_free(dir_path);
     }
 
@@ -1496,8 +1468,8 @@ main_cf_cb_file_rescan_finished(capture_file *cf)
         add_menu_recent_capture_file(cf->filename);
 
         /* Remember folder for next Open dialog and save it in recent */
-        dir_path = get_dirname(g_strdup(cf->filename));
-        set_last_open_dir(dir_path);
+        dir_path = g_strdup(cf->filename);
+        set_last_open_dir(get_dirname(dir_path));
         g_free(dir_path);
     }
 
@@ -1507,41 +1479,52 @@ main_cf_cb_file_rescan_finished(capture_file *cf)
 
 #ifdef HAVE_LIBPCAP
 static GList *icon_list_create(
+#ifdef HAVE_GDK_GRESOURCE
+    const gchar *icon16_path,
+    const gchar *icon32_path,
+    const gchar *icon48_path,
+    const gchar *icon64_path)
+#else
     const guint8 *icon16_pb,
     const guint8 *icon32_pb,
     const guint8 *icon48_pb,
     const guint8 *icon64_pb)
+#endif
 {
     GList *icon_list = NULL;
-    GdkPixbuf * pixbuf16;
-    GdkPixbuf * pixbuf32;
-    GdkPixbuf * pixbuf48;
-    GdkPixbuf * pixbuf64;
+    GdkPixbuf *pixbuf16 = NULL;
+    GdkPixbuf *pixbuf32 = NULL;
+    GdkPixbuf *pixbuf48 = NULL;
+    GdkPixbuf *pixbuf64 = NULL;
 
-
-    if(icon16_pb != NULL) {
+#ifdef HAVE_GDK_GRESOURCE
+    if (icon16_path != NULL)
+        pixbuf16 = ws_gdk_pixbuf_new_from_resource(icon16_path);
+    if (icon32_path != NULL)
+        pixbuf32 = ws_gdk_pixbuf_new_from_resource(icon32_path);
+    if (icon48_path != NULL)
+        pixbuf48 = ws_gdk_pixbuf_new_from_resource(icon48_path);
+    if (icon64_path != NULL)
+        pixbuf64 = ws_gdk_pixbuf_new_from_resource(icon64_path);
+#else
+    if (icon16_pb != NULL)
         pixbuf16 = gdk_pixbuf_new_from_inline(-1, icon16_pb, FALSE, NULL);
-        g_assert(pixbuf16);
-        icon_list = g_list_append(icon_list, pixbuf16);
-  }
-
-    if(icon32_pb != NULL) {
+    if (icon32_pb != NULL)
         pixbuf32 = gdk_pixbuf_new_from_inline(-1, icon32_pb, FALSE, NULL);
-        g_assert(pixbuf32);
-        icon_list = g_list_append(icon_list, pixbuf32);
-    }
-
-    if(icon48_pb != NULL) {
+    if (icon48_pb != NULL)
         pixbuf48 = gdk_pixbuf_new_from_inline(-1, icon48_pb, FALSE, NULL);
-        g_assert(pixbuf48);
-        icon_list = g_list_append(icon_list, pixbuf48);
-    }
-
-    if(icon64_pb != NULL) {
+    if (icon64_pb != NULL)
         pixbuf64 = gdk_pixbuf_new_from_inline(-1, icon64_pb, FALSE, NULL);
-        g_assert(pixbuf64);
+#endif
+
+    if (pixbuf16 != NULL)
+        icon_list = g_list_append(icon_list, pixbuf16);
+    if (pixbuf32 != NULL)
+        icon_list = g_list_append(icon_list, pixbuf32);
+    if (pixbuf48 != NULL)
+        icon_list = g_list_append(icon_list, pixbuf48);
+    if (pixbuf64 != NULL)
         icon_list = g_list_append(icon_list, pixbuf64);
-    }
 
     return icon_list;
 }
@@ -1554,7 +1537,17 @@ main_capture_cb_capture_prepared(capture_session *cap_session)
     set_titlebar_for_capture_in_progress((capture_file *)cap_session->cf);
 
     if(icon_list == NULL) {
-        icon_list = icon_list_create(wsiconcap_16_pb_data, wsiconcap_32_pb_data, wsiconcap_48_pb_data, wsiconcap_64_pb_data);
+#ifdef HAVE_GDK_GRESOURCE
+        icon_list = icon_list_create("/org/wireshark/image/wsiconcap16.png",
+                                        "/org/wireshark/image/wsiconcap32.png",
+                                        "/org/wireshark/image/wsiconcap48.png",
+                                        "/org/wireshark/image/wsiconcap64.png");
+#else
+        icon_list = icon_list_create(wsiconcap_16_pb_data,
+                                        wsiconcap_32_pb_data,
+                                        wsiconcap_48_pb_data,
+                                        wsiconcap_64_pb_data);
+#endif
     }
     gtk_window_set_icon_list(GTK_WINDOW(top_level), icon_list);
 
@@ -1614,7 +1607,17 @@ main_capture_cb_capture_update_finished(capture_session *cap_session)
     main_set_for_capture_file(TRUE);
 
     if(icon_list == NULL) {
-        icon_list = icon_list_create(wsicon_16_pb_data, wsicon_32_pb_data, wsicon_48_pb_data, wsicon_64_pb_data);
+#ifdef HAVE_GDK_GRESOURCE
+        icon_list = icon_list_create("/org/wireshark/image/wsicon16.png",
+                                        "/org/wireshark/image/wsicon32.png",
+                                        "/org/wireshark/image/wsicon48.png",
+                                        "/org/wireshark/image/wsicon64.png");
+#else
+        icon_list = icon_list_create(wsicon_16_pb_data,
+                                        wsicon_32_pb_data,
+                                        wsicon_48_pb_data,
+                                        wsicon_64_pb_data);
+#endif
     }
     gtk_window_set_icon_list(GTK_WINDOW(top_level), icon_list);
 
@@ -1655,7 +1658,17 @@ main_capture_cb_capture_fixed_finished(capture_session *cap_session _U_)
     set_titlebar_for_capture_file(NULL);
 
     if(icon_list == NULL) {
-        icon_list = icon_list_create(wsicon_16_pb_data, wsicon_32_pb_data, wsicon_48_pb_data, wsicon_64_pb_data);
+#ifdef HAVE_GDK_GRESOURCE
+        icon_list = icon_list_create("/org/wireshark/image/wsicon16.png",
+                                        "/org/wireshark/image/wsicon32.png",
+                                        "/org/wireshark/image/wsicon48.png",
+                                        "/org/wireshark/image/wsicon64.png");
+#else
+        icon_list = icon_list_create(wsicon_16_pb_data,
+                                        wsicon_32_pb_data,
+                                        wsicon_48_pb_data,
+                                        wsicon_64_pb_data);
+#endif
     }
     gtk_window_set_icon_list(GTK_WINDOW(top_level), icon_list);
 
@@ -1699,7 +1712,17 @@ main_capture_cb_capture_failed(capture_session *cap_session _U_)
     main_set_for_capture_file(FALSE);
 
     if(icon_list == NULL) {
-        icon_list = icon_list_create(wsicon_16_pb_data, wsicon_32_pb_data, wsicon_48_pb_data, wsicon_64_pb_data);
+#ifdef HAVE_GDK_GRESOURCE
+        icon_list = icon_list_create("/org/wireshark/image/wsicon16.png",
+                                        "/org/wireshark/image/wsicon32.png",
+                                        "/org/wireshark/image/wsicon48.png",
+                                        "/org/wireshark/image/wsicon64.png");
+#else
+        icon_list = icon_list_create(wsicon_16_pb_data,
+                                        wsicon_32_pb_data,
+                                        wsicon_48_pb_data,
+                                        wsicon_64_pb_data);
+#endif
     }
     gtk_window_set_icon_list(GTK_WINDOW(top_level), icon_list);
 
@@ -1867,7 +1890,11 @@ main_capture_callback(gint event, capture_session *cap_session, gpointer user_da
         main_capture_cb_capture_update_started(cap_session);
 #ifdef HAVE_GTKOSXAPPLICATION
         theApp = (GtkosxApplication *)g_object_new(GTKOSX_TYPE_APPLICATION, NULL);
-        gtkosx_application_set_dock_icon_pixbuf(theApp, gdk_pixbuf_new_from_inline(-1, wsiconcap_48_pb_data, FALSE, NULL));
+#ifdef HAVE_GDK_GRESOURCE
+        gtkosx_application_set_dock_icon_pixbuf(theApp, ws_gdk_pixbuf_new_from_resource("/org/wireshark/image/wsicon48.png"));
+#else
+        gtkosx_application_set_dock_icon_pixbuf(theApp, gdk_pixbuf_new_from_inline(-1, wsicon_48_pb_data, FALSE, NULL));
+#endif
 #endif
         break;
     case(capture_cb_capture_update_continue):
@@ -1894,7 +1921,11 @@ main_capture_callback(gint event, capture_session *cap_session, gpointer user_da
          * closes the capturing on its own! */
 #ifdef HAVE_GTKOSXAPPLICATION
         theApp = (GtkosxApplication *)g_object_new(GTKOSX_TYPE_APPLICATION, NULL);
+#ifdef HAVE_GDK_GRESOURCE
+        gtkosx_application_set_dock_icon_pixbuf(theApp, ws_gdk_pixbuf_new_from_resource("/org/wireshark/image/wsicon64.png"));
+#else
         gtkosx_application_set_dock_icon_pixbuf(theApp, gdk_pixbuf_new_from_inline(-1, wsicon_64_pb_data, FALSE, NULL));
+#endif
 #endif
         main_capture_cb_capture_stopping(cap_session);
         break;
@@ -1932,19 +1963,6 @@ get_wireshark_gtk_compiled_info(GString *str)
     /* Capture libraries */
     g_string_append(str, ", ");
     get_compiled_caplibs_version(str);
-
-    /* LIBZ */
-    g_string_append(str, ", ");
-#ifdef HAVE_LIBZ
-    g_string_append(str, "with libz ");
-#ifdef ZLIB_VERSION
-    g_string_append(str, ZLIB_VERSION);
-#else /* ZLIB_VERSION */
-    g_string_append(str, "(version unknown)");
-#endif /* ZLIB_VERSION */
-#else /* HAVE_LIBZ */
-    g_string_append(str, "without libz");
-#endif /* HAVE_LIBZ */
 }
 
 static void
@@ -1981,11 +1999,6 @@ get_wireshark_runtime_info(GString *str)
     get_runtime_caplibs_version(str);
 #endif
 
-    /* zlib */
-#if defined(HAVE_LIBZ) && !defined(_WIN32)
-    g_string_append_printf(str, ", with libz %s", zlibVersion());
-#endif
-
     /* stuff used by libwireshark */
     epan_get_runtime_version_info(str);
 
@@ -1993,11 +2006,6 @@ get_wireshark_runtime_info(GString *str)
     g_string_append(str, ", ");
     get_runtime_airpcap_version(str);
 #endif
-
-    if(u3_active()) {
-        g_string_append(str, ", ");
-        u3_runtime_info(str);
-    }
 }
 
 static e_prefs *
@@ -2188,7 +2196,7 @@ main(int argc, char *argv[])
     gint                 pl_size = 280, tv_size = 95, bv_size = 75;
     gchar               *rc_file, *cf_name = NULL, *rfilter = NULL, *dfilter = NULL, *jfilter = NULL;
     dfilter_t           *rfcode = NULL;
-    gchar               *err_msg;
+    gchar               *err_msg = NULL;
     gboolean             rfilter_parse_failed = FALSE;
     e_prefs             *prefs_p;
     char                 badopt;
@@ -2205,18 +2213,20 @@ main(int argc, char *argv[])
     GSList              *disable_heur_slist = NULL;
 
 #define OPTSTRING OPTSTRING_CAPTURE_COMMON "C:g:Hh" "jJ:kK:lm:nN:o:P:r:R:St:u:vw:X:Y:z:"
-DIAG_OFF(cast-qual)
     static const struct option long_options[] = {
-        {(char *)"help", no_argument, NULL, 'h'},
-        {(char *)"read-file", required_argument, NULL, 'r' },
-        {(char *)"read-filter", required_argument, NULL, 'R' },
-        {(char *)"display-filter", required_argument, NULL, 'Y' },
-        {(char *)"version", no_argument, NULL, 'v'},
+        {"help", no_argument, NULL, 'h'},
+        {"read-file", required_argument, NULL, 'r' },
+        {"read-filter", required_argument, NULL, 'R' },
+        {"display-filter", required_argument, NULL, 'Y' },
+        {"version", no_argument, NULL, 'v'},
         LONGOPT_CAPTURE_COMMON
         {0, 0, 0, 0 }
     };
-DIAG_ON(cast-qual)
     static const char optstring[] = OPTSTRING;
+
+#ifdef HAVE_GDK_GRESOURCE
+    main_register_resource();
+#endif
 
     cmdarg_err_init(wireshark_cmdarg_err, wireshark_cmdarg_err_cont);
 
@@ -2238,7 +2248,7 @@ DIAG_ON(cast-qual)
     /*
      * Attempt to get the pathname of the executable file.
      */
-    init_progfile_dir_error = init_progfile_dir(argv[0], (void *)main);
+    init_progfile_dir_error = init_progfile_dir(argv[0], main);
 
     /* initialize the funnel mini-api */
     initialize_funnel_ops();
@@ -2442,11 +2452,11 @@ DIAG_ON(cast-qual)
     /* Only the static part of it will be read, as we don't have the gui now to fill the */
     /* recent lists which is done in the dynamic part. */
     /* We have to do this already here, so command line parameters can overwrite these values. */
-    recent_read_profile_static(&rf_path, &rf_open_errno);
-    if (rf_path != NULL && rf_open_errno != 0) {
+    if (!recent_read_profile_static(&rf_path, &rf_open_errno)) {
         simple_dialog(ESD_TYPE_WARN, ESD_BTN_OK,
                       "Could not open recent file\n\"%s\": %s.",
                       rf_path, g_strerror(rf_open_errno));
+        g_free(rf_path);
     }
 
     if (recent.gui_fileopen_remembered_dir &&
@@ -2494,11 +2504,8 @@ DIAG_ON(cast-qual)
     capture_session_init(&global_capture_session, &cfile);
 #endif
 
-    init_report_err(failure_alert_box, open_failure_alert_box,
+    init_report_err(vfailure_alert_box, open_failure_alert_box,
                     read_failure_alert_box, write_failure_alert_box);
-
-    /* Initialize whatever we need to allocate colors for GTK+ */
-    colors_init();
 
     /* Non-blank filter means we're remote. Throttle splash screen and resolution updates. */
     filter = get_conn_cfilter();
@@ -2523,7 +2530,7 @@ DIAG_ON(cast-qual)
     /* Register all the plugin types we have. */
     epan_register_plugin_types(); /* Types known to libwireshark */
     wtap_register_plugin_types(); /* Types known to libwiretap */
-    codec_register_plugin_types(); /* Types known to libcodec */
+    codec_register_plugin_types(); /* Types known to libwscodecs */
 
     /* Scan for plugins.  This does *not* call their registration routines;
        that's done later. */
@@ -2542,8 +2549,9 @@ DIAG_ON(cast-qual)
        "-G" flag, as the "-G" flag dumps information registered by the
        dissectors, and we must do it before we read the preferences, in
        case any dissectors register preferences. */
-    epan_init(register_all_protocols,register_all_protocol_handoffs,
-              splash_update, (gpointer) splash_win);
+    if (!epan_init(register_all_protocols,register_all_protocol_handoffs,
+                   splash_update, (gpointer) splash_win))
+      return 2;
 
     splash_update(RA_LISTENERS, NULL, (gpointer)splash_win);
 
@@ -2556,6 +2564,10 @@ DIAG_ON(cast-qual)
 
 #ifdef HAVE_PLUGINS
     register_all_plugin_tap_listeners();
+#endif
+
+#ifdef HAVE_EXTCAP
+    extcap_register_preferences();
 #endif
 
     register_all_tap_listeners();
@@ -2571,9 +2583,6 @@ DIAG_ON(cast-qual)
     /* Removed thread code:
      * https://code.wireshark.org/review/gitweb?p=wireshark.git;a=commit;h=9e277ae6154fd04bf6a0a34ec5655a73e5a736a3
      */
-
-    /* this is to keep tap extensions updating once every 3 seconds */
-    tap_update_timer_id = g_timeout_add(prefs_p->tap_update_interval, tap_update_cb, NULL);
 
     splash_update(RA_CONFIGURATION, NULL, (gpointer)splash_win);
     proto_help_init();
@@ -2701,7 +2710,7 @@ DIAG_ON(cast-qual)
             case 'N':        /* Select what types of addresses/port #s to resolve */
                 badopt = string_to_name_resolve(optarg, &gbl_resolv_flags);
                 if (badopt != '\0') {
-                    cmdarg_err("-N specifies unknown resolving option '%c'; valid options are 'C', 'd', m', 'n', 'N', and 't'",
+                    cmdarg_err("-N specifies unknown resolving option '%c'; valid options are 'd', m', 'n', 'N', and 't'",
                                badopt);
                     exit(1);
                 }
@@ -3098,14 +3107,14 @@ DIAG_ON(cast-qual)
     create_main_window(pl_size, tv_size, bv_size, prefs_p);
 
     /* Read the dynamic part of the recent file, as we have the gui now ready for it. */
-    recent_read_dynamic(&rf_path, &rf_open_errno);
-    if (rf_path != NULL && rf_open_errno != 0) {
+    if (!recent_read_dynamic(&rf_path, &rf_open_errno)) {
         simple_dialog(ESD_TYPE_WARN, ESD_BTN_OK,
                       "Could not open recent file\n\"%s\": %s.",
                       rf_path, g_strerror(rf_open_errno));
+        g_free(rf_path);
     }
 
-    color_filters_enable(recent.packet_list_colorize);
+    packet_list_enable_color(recent.packet_list_colorize);
 
     /* rearrange all the widgets as we now have all recent settings ready for this */
     main_widgets_rearrange();
@@ -3123,9 +3132,10 @@ DIAG_ON(cast-qual)
     switch (user_font_apply()) {
         case FA_SUCCESS:
             break;
-        case FA_FONT_NOT_RESIZEABLE:
-            /* "user_font_apply()" popped up an alert box. */
-            /* turn off zooming - font can't be resized */
+        case FA_ZOOMED_TOO_FAR:
+            /* The zoom level is too big for this font; turn off zooming. */
+            recent.gui_zoom_level = 0;
+            break;
         case FA_FONT_NOT_AVAILABLE:
             /* XXX - did we successfully load the un-zoomed version earlier?
              If so, this *probably* means the font is available, but not at
@@ -3137,11 +3147,15 @@ DIAG_ON(cast-qual)
             /* in any other case than FA_SUCCESS, turn off zooming */
             recent.gui_zoom_level = 0;
             /* XXX: would it be a good idea to disable zooming (insensitive GUI)? */
+            break;
     }
 
     dnd_init(top_level);
 
-    color_filters_init();
+    if (!color_filters_init(&err_msg, color_filter_add_cb)) {
+        simple_dialog(ESD_TYPE_ERROR, ESD_BTN_OK, "%s", err_msg);
+        g_free(err_msg);
+    }
 #ifdef HAVE_LIBPCAP
     capture_filter_init();
 #endif
@@ -3150,6 +3164,9 @@ DIAG_ON(cast-qual)
     main_load_window_geometry(top_level);
 
     g_timeout_add(info_update_freq, resolv_update_cb, NULL);
+
+    /* this is to keep tap extensions updating once every 3 seconds */
+    tap_update_timer_id = g_timeout_add(prefs_p->tap_update_interval, tap_update_cb, NULL);
 
     /* If we were given the name of a capture file, read it in now;
      we defer it until now, so that, if we can't open it, and pop
@@ -3253,8 +3270,8 @@ DIAG_ON(cast-qual)
             if (global_capture_opts.save_file != NULL) {
                 /* Save the directory name for future file dialogs. */
                 /* (get_dirname overwrites filename) */
-                s = get_dirname(g_strdup(global_capture_opts.save_file));
-                set_last_open_dir(s);
+                s = g_strdup(global_capture_opts.save_file);
+                set_last_open_dir(get_dirname(s));
                 g_free(s);
             }
             /* "-k" was specified; start a capture. */
@@ -3266,7 +3283,7 @@ DIAG_ON(cast-qual)
                to use for this capture. */
             if (global_capture_opts.ifaces->len == 0)
                 collect_ifaces(&global_capture_opts);
-            if (capture_start(&global_capture_opts, &global_capture_session,main_window_update)) {
+            if (capture_start(&global_capture_opts, &global_capture_session, &global_info_data,main_window_update)) {
                 /* The capture started.  Open stat windows; we do so after creating
                    the main window, to avoid GTK warnings, and after successfully
                    opening the capture file, so we know we have something to compute
@@ -3302,15 +3319,15 @@ DIAG_ON(cast-qual)
         main_filter_packets(&cfile, dfilter, FALSE);
     }
 
-
-    /* register our pid if we are being run from a U3 device */
-    u3_register_pid();
-
     profile_store_persconffiles (FALSE);
 
 #ifdef HAVE_GTKOSXAPPLICATION
     theApp = (GtkosxApplication *)g_object_new(GTKOSX_TYPE_APPLICATION, NULL);
+#ifdef HAVE_GDK_GRESOURCE
+    gtkosx_application_set_dock_icon_pixbuf(theApp, ws_gdk_pixbuf_new_from_resource("/org/wireshark/image/wsicon64.png"));
+#else
     gtkosx_application_set_dock_icon_pixbuf(theApp, gdk_pixbuf_new_from_inline(-1, wsicon_64_pb_data, FALSE, NULL));
+#endif
     gtkosx_application_ready(theApp);
 #endif
 
@@ -3329,9 +3346,6 @@ DIAG_ON(cast-qual)
 #ifdef HAVE_LIBPCAP
     gtk_iface_mon_stop();
 #endif
-
-    /* deregister our pid */
-    u3_deregister_pid();
 
     epan_cleanup();
 
@@ -3355,6 +3369,10 @@ DIAG_ON(cast-qual)
        doesn't arrange that "destroy_console()" be called when we exit,
        so we call it here if a console was created. */
     destroy_console();
+#endif
+
+#ifdef HAVE_GDK_GRESOURCE
+    main_unregister_resource();
 #endif
 
     exit(0);
@@ -3394,7 +3412,7 @@ WinMain (struct HINSTANCE__ *hInstance,
     comm_ctrl.dwICC = ICC_WIN95_CLASSES;
     InitCommonControlsEx(&comm_ctrl);
 
-    /* RichEd20.DLL is needed for filter entries. */
+    /* RichEd20.DLL is needed for native file dialog filter entries. */
     ws_load_library("riched20.dll");
 
     set_has_console(FALSE);
@@ -3846,6 +3864,7 @@ void change_configuration_profile (const gchar *profile_name)
     char  *gdp_path, *dp_path;
     char  *rf_path;
     int    rf_open_errno;
+    gchar* err_msg = NULL;
 
     /* First check if profile exists */
     if (!profile_exists(profile_name, FALSE)) {
@@ -3881,11 +3900,11 @@ void change_configuration_profile (const gchar *profile_name)
 
     (void) read_configuration_files (&gdp_path, &dp_path);
 
-    recent_read_profile_static(&rf_path, &rf_open_errno);
-    if (rf_path != NULL && rf_open_errno != 0) {
+    if (!recent_read_profile_static(&rf_path, &rf_open_errno)) {
         simple_dialog(ESD_TYPE_WARN, ESD_BTN_OK,
             "Could not open common recent file\n\"%s\": %s.",
             rf_path, g_strerror(rf_open_errno));
+        g_free(rf_path);
     }
     if (recent.gui_fileopen_remembered_dir &&
         test_for_directory(recent.gui_fileopen_remembered_dir) == EISDIR) {
@@ -3893,10 +3912,13 @@ void change_configuration_profile (const gchar *profile_name)
     }
     timestamp_set_type (recent.gui_time_format);
     timestamp_set_seconds_type (recent.gui_seconds_format);
-    color_filters_enable(recent.packet_list_colorize);
+    packet_list_enable_color(recent.packet_list_colorize);
 
     prefs_to_capture_opts();
     prefs_apply_all();
+#ifdef HAVE_LIBPCAP
+    update_local_interfaces();
+#endif
     macros_post_update();
 
     /* Update window view and redraw the toolbar */
@@ -3912,7 +3934,10 @@ void change_configuration_profile (const gchar *profile_name)
     }
 
     /* Reload color filters */
-    color_filters_reload();
+    if (!color_filters_reload(&err_msg, color_filter_add_cb)) {
+        simple_dialog(ESD_TYPE_ERROR, ESD_BTN_OK, "%s", err_msg);
+        g_free(err_msg);
+    }
 
     /* Reload list of interfaces on welcome page */
     welcome_if_panel_reload();
@@ -3932,8 +3957,13 @@ void change_configuration_profile (const gchar *profile_name)
 void
 main_fields_changed (void)
 {
+    gchar* err_msg = NULL;
+
     /* Reload color filters */
-    color_filters_reload();
+    if (!color_filters_reload(&err_msg, color_filter_add_cb)) {
+        simple_dialog(ESD_TYPE_ERROR, ESD_BTN_OK, "%s", err_msg);
+        g_free(err_msg);
+    }
 
     /* Syntax check filter */
     filter_te_syntax_check_cb(main_display_filter_widget, NULL);

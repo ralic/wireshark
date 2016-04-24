@@ -992,8 +992,8 @@ proto_reg_handoff_ltp(void)
 	static int currentPort;
 
 	if (!initialized) {
-		ltp_handle = new_create_dissector_handle(dissect_ltp, proto_ltp);
-		bundle_handle = find_dissector("bundle");
+		ltp_handle = create_dissector_handle(dissect_ltp, proto_ltp);
+		bundle_handle = find_dissector_add_dependency("bundle", proto_ltp);
 		initialized = TRUE;
 	} else {
 		dissector_delete_uint("udp.port", currentPort, ltp_handle);

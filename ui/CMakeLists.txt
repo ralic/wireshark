@@ -31,8 +31,6 @@ set(COMMON_UI_SRC
 	export_object_http.c
 	export_object_smb.c
 	export_object_tftp.c
-	filters.c
-	follow.c
 	help_url.c
 	iface_lists.c
 	io_graph_item.c
@@ -44,6 +42,7 @@ set(COMMON_UI_SRC
 	profile.c
 	proto_hier_stats.c
 	recent.c
+	rtp_media.c
 	rtp_stream.c
 	service_response_time.c
 	software_update.c
@@ -53,6 +52,7 @@ set(COMMON_UI_SRC
 	tap-rtp-common.c
 	tap-sctp-analysis.c
 	tap-sequence-analysis.c
+	tap-rlc-graph.c
 	tap-tcp-stream.c
 	text_import.c
 	time_shift.c
@@ -63,6 +63,7 @@ set(COMMON_UI_SRC
 
 # Enables visibility in IDEs
 file(GLOB EXTRA_UI_HEADERS
+	rtp_media.h
 	rtp_stream.h
 	tap-iax2-analysis.h
 	tap-rtp-analysis.h
@@ -78,11 +79,11 @@ set(CLEAN_FILES
 	${COMMON_UI_SRC}
 )
 
-if (WERROR)
+if (WERROR_COMMON_FLAGS)
 	set_source_files_properties(
 		${CLEAN_FILES}
 		PROPERTIES
-		COMPILE_FLAGS -Werror
+		COMPILE_FLAGS ${WERROR_COMMON_FLAGS}
 	)
 endif()
 
@@ -94,3 +95,16 @@ add_library(ui STATIC
 
 set_target_properties(ui PROPERTIES LINK_FLAGS "${WS_LINK_FLAGS}")
 set_target_properties(ui PROPERTIES FOLDER "UI")
+
+#
+# Editor modelines  -  http://www.wireshark.org/tools/modelines.html
+#
+# Local variables:
+# c-basic-offset: 8
+# tab-width: 8
+# indent-tabs-mode: t
+# End:
+#
+# vi: set shiftwidth=8 tabstop=8 noexpandtab:
+# :indentSize=8:tabSize=8:noTabs=false:
+#

@@ -393,8 +393,6 @@ static gint ett_cast_tree     = -1;
 /* desegmentation of SCCP */
 static gboolean cast_desegment = TRUE;
 
-static dissector_handle_t data_handle;
-
 /* Dissect a single CAST PDU */
 static int
 dissect_cast_pdu(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data _U_)
@@ -1025,7 +1023,7 @@ dissect_cast(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data)
    * CAST-Packet: {Header(Size, Reserved)|Data(MessageID, Message-Data)}
    */
   /* Header fields */
-  volatile guint32 hdr_data_length;
+  guint32 hdr_data_length;
   guint32 hdr_marker;
 
   /* check, if this is really an SKINNY packet, they start with a length + 0 */
@@ -1710,8 +1708,7 @@ proto_reg_handoff_cast(void)
 {
   dissector_handle_t cast_handle;
 
-  data_handle = find_dissector("data");
-  cast_handle = new_create_dissector_handle(dissect_cast, proto_cast);
+  cast_handle = create_dissector_handle(dissect_cast, proto_cast);
   dissector_add_uint("tcp.port", TCP_PORT_CAST, cast_handle);
 }
 

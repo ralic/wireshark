@@ -246,7 +246,6 @@ static expert_field ei_address_format_invalid = EI_INIT;
 
 static dissector_table_t subdissector_table;
 static heur_dissector_list_t heur_subdissector_list;
-static dissector_handle_t data_handle;
 
 
 static const char *
@@ -795,14 +794,14 @@ decode_pgm_ports(tvbuff_t *tvb, int offset, packet_info *pinfo,
 		return;
 
 	/* Oh, well, we don't know this; dissect it as data. */
-	call_dissector(data_handle,next_tvb, pinfo, tree);
+	call_data_dissector(next_tvb, pinfo, tree);
 }
 
 /*
  * dissect_pgm - The dissector for Pragmatic General Multicast
  */
-static void
-dissect_pgm(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
+static int
+dissect_pgm(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data _U_)
 {
 	guint16 pgmhdr_sport;
 	guint16 pgmhdr_dport;
@@ -821,14 +820,11 @@ dissect_pgm(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
 	gboolean    isdata = FALSE;
 	guint       pgmlen, reportedlen;
 
-	col_set_str(pinfo->cinfo, COL_PROTOCOL, "PGM");
+	if (tvb_reported_length_remaining(tvb, 0) < 18)
+		return 0;
 
+	col_set_str(pinfo->cinfo, COL_PROTOCOL, "PGM");
 	col_clear(pinfo->cinfo, COL_INFO);
-	if (tvb_reported_length_remaining(tvb, 0) < 18) {
-		col_set_str(pinfo->cinfo, COL_INFO,
-				"Packet too small");
-		return;
-	}
 
 	pinfo->srcport = pgmhdr_sport = tvb_get_ntohs(tvb, 0);
 	pinfo->destport = pgmhdr_dport = tvb_get_ntohs(tvb, 2);
@@ -870,7 +866,7 @@ dissect_pgm(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
 		}
 		break;
 	default:
-		return;
+		return 20;
 	}
 
 	{
@@ -970,7 +966,7 @@ dissect_pgm(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
 			default:
 				expert_add_info(pinfo, ti, &ei_address_format_invalid);
 				ptvcursor_free(cursor);
-				return;
+				return tvb_captured_length(tvb);
 			}
 			break;
 		case PGM_RDATA_PCKT:
@@ -1024,7 +1020,7 @@ dissect_pgm(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
 			default:
 				expert_add_info(pinfo, ti, &ei_address_format_invalid);
 				ptvcursor_free(cursor);
-				return;
+				return tvb_captured_length(tvb);
 			}
 			break;
 		case PGM_POLL_PCKT:
@@ -1084,6 +1080,7 @@ dissect_pgm(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
 
 		ptvcursor_free(cursor);
 	}
+	return tvb_captured_length(tvb);
 }
 
 /* Register all the bits needed with the filtering engine */
@@ -1148,10 +1145,10 @@ proto_register_pgm(void)
 		  { "Reserved", "pgm.spm.res", FT_UINT16, BASE_HEX,
 		    NULL, 0x0, NULL, HFILL }},
 		{ &hf_pgm_spm_path,
-		  { "Path NLA", "pgm.spm.path", FT_IPv4, BASE_NONE,
+		  { "Path NLA", "pgm.spm.path.ipv4", FT_IPv4, BASE_NONE,
 		    NULL, 0x0, NULL, HFILL }},
 		{ &hf_pgm_spm_path6,
-		  { "Path NLA", "pgm.spm.path", FT_IPv6, BASE_NONE,
+		  { "Path NLA", "pgm.spm.path.ipv6", FT_IPv6, BASE_NONE,
 		    NULL, 0x0, NULL, HFILL }},
 #if 0
 		{ &hf_pgm_data_sqn,
@@ -1173,10 +1170,10 @@ proto_register_pgm(void)
 		  { "Reserved", "pgm.nak.srcres", FT_UINT16, BASE_HEX,
 		    NULL, 0x0, NULL, HFILL }},
 		{ &hf_pgm_nak_src,
-		  { "Source NLA", "pgm.nak.src", FT_IPv4, BASE_NONE,
+		  { "Source NLA", "pgm.nak.src.ipv4", FT_IPv4, BASE_NONE,
 		    NULL, 0x0, NULL, HFILL }},
 		{ &hf_pgm_nak_src6,
-		  { "Source NLA", "pgm.nak.src", FT_IPv6, BASE_NONE,
+		  { "Source NLA", "pgm.nak.src.ipv6", FT_IPv6, BASE_NONE,
 		    NULL, 0x0, NULL, HFILL }},
 		{ &hf_pgm_nak_grpafi,
 		  { "Multicast Group AFI", "pgm.nak.grpafi", FT_UINT16, BASE_DEC,
@@ -1185,10 +1182,10 @@ proto_register_pgm(void)
 		  { "Reserved", "pgm.nak.grpres", FT_UINT16, BASE_HEX,
 		    NULL, 0x0, NULL, HFILL }},
 		{ &hf_pgm_nak_grp,
-		  { "Multicast Group NLA", "pgm.nak.grp", FT_IPv4, BASE_NONE,
+		  { "Multicast Group NLA", "pgm.nak.grp.ipv4", FT_IPv4, BASE_NONE,
 		    NULL, 0x0, NULL, HFILL }},
 		{ &hf_pgm_nak_grp6,
-		  { "Multicast Group NLA", "pgm.nak.grp", FT_IPv6, BASE_NONE,
+		  { "Multicast Group NLA", "pgm.nak.grp.ipv6", FT_IPv6, BASE_NONE,
 		    NULL, 0x0, NULL, HFILL }},
 		{ &hf_pgm_poll_sqn,
 		  { "Sequence Number", "pgm.poll.sqn", FT_UINT32, BASE_HEX,
@@ -1206,10 +1203,10 @@ proto_register_pgm(void)
 		  { "Reserved", "pgm.poll.res", FT_UINT16, BASE_HEX,
 		    NULL, 0x0, NULL, HFILL }},
 		{ &hf_pgm_poll_path,
-		  { "Path NLA", "pgm.poll.path", FT_IPv4, BASE_NONE,
+		  { "Path NLA", "pgm.poll.path.ipv4", FT_IPv4, BASE_NONE,
 		    NULL, 0x0, NULL, HFILL }},
 		{ &hf_pgm_poll_path6,
-		  { "Path NLA", "pgm.poll.path", FT_IPv6, BASE_NONE,
+		  { "Path NLA", "pgm.poll.path.ipv6", FT_IPv6, BASE_NONE,
 		    NULL, 0x0, NULL, HFILL }},
 		{ &hf_pgm_poll_backoff_ivl,
 		  { "Back-off Interval", "pgm.poll.backoff_ivl", FT_UINT32, BASE_DEC,
@@ -1295,10 +1292,10 @@ proto_register_pgm(void)
 		  { "Reserved", "pgm.opts.ccdata.res2", FT_UINT16, BASE_DEC,
 		    NULL, 0x0, NULL, HFILL }},
 		{ &hf_pgm_opt_ccdata_acker,
-		  { "Acker", "pgm.opts.ccdata.acker", FT_IPv4, BASE_NONE,
+		  { "Acker", "pgm.opts.ccdata.acker.ipv4", FT_IPv4, BASE_NONE,
 		    NULL, 0x0, NULL, HFILL }},
 		{ &hf_pgm_opt_ccdata_acker6,
-		  { "Acker", "pgm.opts.ccdata.acker", FT_IPv6, BASE_NONE,
+		  { "Acker", "pgm.opts.ccdata.acker.ipv6", FT_IPv6, BASE_NONE,
 		    NULL, 0x0, NULL, HFILL }},
 		{ &hf_pgm_opt_ccfeedbk_res,
 		  { "Reserved", "pgm.opts.ccdata.res", FT_UINT8, BASE_DEC,
@@ -1313,10 +1310,10 @@ proto_register_pgm(void)
 		  { "Loss Rate", "pgm.opts.ccdata.lossrate", FT_UINT16, BASE_HEX,
 		    NULL, 0x0, NULL, HFILL }},
 		{ &hf_pgm_opt_ccfeedbk_acker,
-		  { "Acker", "pgm.opts.ccdata.acker", FT_IPv4, BASE_NONE,
+		  { "Acker", "pgm.opts.ccdata.acker.ipv4", FT_IPv4, BASE_NONE,
 		    NULL, 0x0, NULL, HFILL }},
 		{ &hf_pgm_opt_ccfeedbk_acker6,
-		  { "Acker", "pgm.opts.ccdata.acker", FT_IPv6, BASE_NONE,
+		  { "Acker", "pgm.opts.ccdata.acker.ipv6", FT_IPv6, BASE_NONE,
 		    NULL, 0x0, NULL, HFILL }},
 		{ &hf_pgm_opt_nak_bo_ivl_res,
 		  { "Reserved", "pgm.opts.nak_bo_ivl.res", FT_UINT8, BASE_HEX,
@@ -1346,10 +1343,10 @@ proto_register_pgm(void)
 		  { "Reserved", "pgm.opts.redirect.res2", FT_UINT16, BASE_HEX,
 		    NULL, 0x0, NULL, HFILL }},
 		{ &hf_pgm_opt_redirect_dlr,
-		  { "DLR", "pgm.opts.redirect.dlr", FT_IPv4, BASE_NONE,
+		  { "DLR", "pgm.opts.redirect.dlr.ipv4", FT_IPv4, BASE_NONE,
 		    NULL, 0x0, NULL, HFILL }},
 		{ &hf_pgm_opt_redirect_dlr6,
-		  { "DLR", "pgm.opts.redirect.dlr", FT_IPv6, BASE_NONE,
+		  { "DLR", "pgm.opts.redirect.dlr.ipv6", FT_IPv6, BASE_NONE,
 		    NULL, 0x0, NULL, HFILL }},
 		{ &hf_pgm_opt_fragment_res,
 		  { "Reserved", "pgm.opts.fragment.res", FT_UINT8, BASE_HEX,
@@ -1404,8 +1401,8 @@ proto_register_pgm(void)
 
 	/* subdissector code */
 	subdissector_table = register_dissector_table("pgm.port",
-						      "PGM port", FT_UINT16, BASE_DEC);
-	heur_subdissector_list = register_heur_dissector_list("pgm");
+						      "PGM port", proto_pgm, FT_UINT16, BASE_DEC, DISSECTOR_TABLE_NOT_ALLOW_DUPLICATE);
+	heur_subdissector_list = register_heur_dissector_list("pgm", proto_pgm);
 
 	/*
 	 * Register configuration preferences for UDP encapsulation
@@ -1453,7 +1450,6 @@ proto_reg_handoff_pgm(void)
 		pgm_handle = create_dissector_handle(dissect_pgm, proto_pgm);
 		dissector_add_for_decode_as("udp.port", pgm_handle);
 		dissector_add_uint("ip.proto", IP_PROTO_PGM, pgm_handle);
-		data_handle = find_dissector("data");
 		initialized = TRUE;
 	} else {
 		if (old_udp_encap_ucast_port != 0) {

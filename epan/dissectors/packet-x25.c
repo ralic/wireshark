@@ -523,7 +523,6 @@ static dissector_handle_t ip_handle;
 static dissector_handle_t clnp_handle;
 static dissector_handle_t ositp_handle;
 static dissector_handle_t qllc_handle;
-static dissector_handle_t data_handle;
 
 /* Preferences */
 static gboolean payload_is_qllc_sna = FALSE;
@@ -1484,7 +1483,7 @@ dissect_x25_common(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree,
                 case PRT_ID_ISO_8073:
                     /* ISO 8073 COTP */
                     if (!pinfo->fd->flags.visited)
-                        x25_hash_add_proto_start(vc, pinfo->fd->num, ositp_handle);
+                        x25_hash_add_proto_start(vc, pinfo->num, ositp_handle);
                     /* XXX - dissect the rest of the user data as COTP?
                        That needs support for NCM TPDUs, etc. */
                     break;
@@ -1492,7 +1491,7 @@ dissect_x25_common(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree,
                 case PRT_ID_ISO_8602:
                     /* ISO 8602 CLTP */
                     if (!pinfo->fd->flags.visited)
-                        x25_hash_add_proto_start(vc, pinfo->fd->num, ositp_handle);
+                        x25_hash_add_proto_start(vc, pinfo->num, ositp_handle);
                     break;
                 }
             } else if (is_x_264 == 0) {
@@ -1511,7 +1510,7 @@ dissect_x25_common(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree,
                      */
                     dissect = dissector_get_uint_handle(x25_subdissector_table, spi);
                     if (dissect != NULL)
-                            x25_hash_add_proto_start(vc, pinfo->fd->num, dissect);
+                            x25_hash_add_proto_start(vc, pinfo->num, dissect);
                 }
 
                 /*
@@ -1563,7 +1562,7 @@ dissect_x25_common(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree,
              INCOMING CALL packet, it's COTP; */
 
            if (call_request_nodata_is_cotp){
-              x25_hash_add_proto_start(vc, pinfo->fd->num, ositp_handle);
+              x25_hash_add_proto_start(vc, pinfo->num, ositp_handle);
            }
         }
         break;
@@ -1623,7 +1622,7 @@ dissect_x25_common(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree,
         col_add_fstr(pinfo->cinfo, COL_INFO, "%s VC:%d %s - %s", short_name,
                     vc, rval_to_str(tvb_get_guint8(tvb, 3), clear_code_rvals, "Unknown (0x%02x)"),
                     val_to_str_ext(tvb_get_guint8(tvb, 4), &x25_clear_diag_vals_ext, "Unknown (0x%02x)"));
-        x25_hash_add_proto_end(vc, pinfo->fd->num);
+        x25_hash_add_proto_end(vc, pinfo->num);
         if (x25_tree) {
             proto_tree_add_uint(x25_tree, hf_x25_lcn, tvb, 0, 2, bytes0_1);
             proto_tree_add_uint_format_value(x25_tree, hf_x25_type, tvb,
@@ -1702,7 +1701,7 @@ dissect_x25_common(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree,
         col_add_fstr(pinfo->cinfo, COL_INFO, "%s VC:%d %s - Diag.:%d",
                     short_name, vc, rval_to_str(tvb_get_guint8(tvb, 3), reset_code_rvals, "Unknown (0x%02x)"),
                     (int)tvb_get_guint8(tvb, 4));
-        x25_hash_add_proto_end(vc, pinfo->fd->num);
+        x25_hash_add_proto_end(vc, pinfo->num);
         if (x25_tree) {
             proto_tree_add_uint(x25_tree, hf_x25_lcn, tvb, 0, 2, bytes0_1);
             proto_tree_add_uint_format_value(x25_tree, hf_x25_type, tvb, 2, 1,
@@ -1937,7 +1936,7 @@ dissect_x25_common(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree,
       next_tvb = tvb_new_subset_remaining(tvb, localoffset);
 
     /* See if there's already a dissector for this circuit. */
-    if (try_circuit_dissector(CT_X25, vc, pinfo->fd->num, next_tvb, pinfo,
+    if (try_circuit_dissector(CT_X25, vc, pinfo->num, next_tvb, pinfo,
                               tree, &q_bit_set)) {
                 return; /* found it and dissected it */
     }
@@ -1946,7 +1945,7 @@ dissect_x25_common(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree,
     if (payload_is_qllc_sna) {
         /* Yes - dissect it as QLLC/SNA. */
         if (!pinfo->fd->flags.visited)
-            x25_hash_add_proto_start(vc, pinfo->fd->num, qllc_handle);
+            x25_hash_add_proto_start(vc, pinfo->num, qllc_handle);
         call_dissector_with_data(qllc_handle, next_tvb, pinfo, tree, &q_bit_set);
         return;
     }
@@ -1959,7 +1958,7 @@ dissect_x25_common(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree,
       if ((tvb_get_guint8(tvb, localoffset+1) & 0x0F) == 0) {
         /* Second byte contains a valid COTP TPDU */
         if (!pinfo->fd->flags.visited)
-            x25_hash_add_proto_start(vc, pinfo->fd->num, ositp_handle);
+            x25_hash_add_proto_start(vc, pinfo->num, ositp_handle);
         call_dissector(ositp_handle, next_tvb, pinfo, tree);
         return;
       }
@@ -1972,13 +1971,13 @@ dissect_x25_common(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree,
     case 0x45:
         /* Looks like an IP header */
         if (!pinfo->fd->flags.visited)
-            x25_hash_add_proto_start(vc, pinfo->fd->num, ip_handle);
+            x25_hash_add_proto_start(vc, pinfo->num, ip_handle);
         call_dissector(ip_handle, next_tvb, pinfo, tree);
         return;
 
     case NLPID_ISO8473_CLNP:
         if (!pinfo->fd->flags.visited)
-            x25_hash_add_proto_start(vc, pinfo->fd->num, clnp_handle);
+            x25_hash_add_proto_start(vc, pinfo->num, clnp_handle);
         call_dissector(clnp_handle, next_tvb, pinfo, tree);
         return;
     }
@@ -1991,28 +1990,29 @@ dissect_x25_common(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree,
     }
 
     /* All else failed; dissect it as raw data */
-    call_dissector(data_handle, next_tvb, pinfo, tree);
+    call_data_dissector(next_tvb, pinfo, tree);
 }
 
 /*
  * X.25 dissector for use when "pinfo->pseudo_header" points to a
  * "struct x25_phdr".
  */
-static void
-dissect_x25_dir(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
+static int
+dissect_x25_dir(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data _U_)
 {
     dissect_x25_common(tvb, pinfo, tree,
         (pinfo->pseudo_header->x25.flags & FROM_DCE) ? X25_FROM_DCE :
                                                        X25_FROM_DTE,
         pinfo->pseudo_header->x25.flags & FROM_DCE);
+    return tvb_captured_length(tvb);
 }
 
 /*
  * X.25 dissector for use when "pinfo->pseudo_header" doesn't point to a
  * "struct x25_phdr".
  */
-static void
-dissect_x25(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
+static int
+dissect_x25(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data _U_)
 {
     int direction;
 
@@ -2022,10 +2022,11 @@ dissect_x25(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
      * sides of the conversation, based on the addresses and
      * ports.
      */
-    direction = CMP_ADDRESS(&pinfo->src, &pinfo->dst);
+    direction = cmp_address(&pinfo->src, &pinfo->dst);
     if (direction == 0)
         direction = (pinfo->srcport > pinfo->destport)*2 - 1;
     dissect_x25_common(tvb, pinfo, tree, X25_UNKNOWN, direction > 0);
+    return tvb_captured_length(tvb);
 }
 
 static void
@@ -2368,8 +2369,8 @@ proto_register_x25(void)
     expert_register_field_array(expert_x25, ei, array_length(ei));
 
     x25_subdissector_table = register_dissector_table("x.25.spi",
-        "X.25 secondary protocol identifier", FT_UINT8, BASE_HEX);
-    x25_heur_subdissector_list = register_heur_dissector_list("x.25");
+        "X.25 secondary protocol identifier", proto_x25, FT_UINT8, BASE_HEX, DISSECTOR_TABLE_NOT_ALLOW_DUPLICATE);
+    x25_heur_subdissector_list = register_heur_dissector_list("x.25", proto_x25);
 
     register_dissector("x.25_dir", dissect_x25_dir, proto_x25);
     register_dissector("x.25", dissect_x25, proto_x25);
@@ -2405,11 +2406,10 @@ proto_reg_handoff_x25(void)
     /*
      * Get handles for various dissectors.
      */
-    ip_handle = find_dissector("ip");
-    clnp_handle = find_dissector("clnp");
-    ositp_handle = find_dissector("ositp");
-    qllc_handle = find_dissector("qllc");
-    data_handle = find_dissector("data");
+    ip_handle = find_dissector_add_dependency("ip", proto_x25);
+    clnp_handle = find_dissector_add_dependency("clnp", proto_x25);
+    ositp_handle = find_dissector_add_dependency("ositp", proto_x25);
+    qllc_handle = find_dissector_add_dependency("qllc", proto_x25);
 
     x25_handle = find_dissector("x.25");
     dissector_add_uint("llc.dsap", SAP_X25, x25_handle);

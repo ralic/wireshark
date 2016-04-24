@@ -68,8 +68,8 @@ static const value_string sscf_status_vals[] = {
   { 0,                                    NULL }
 };
 
-static void
-dissect_sscf_nni(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
+static int
+dissect_sscf_nni(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data _U_)
 {
   guint reported_length;
   proto_item *sscf_item = NULL;
@@ -102,6 +102,7 @@ dissect_sscf_nni(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
                         SSCF_SPARE_LENGTH, ENC_BIG_ENDIAN);
   }
 
+  return tvb_captured_length(tvb);
 }
 
 void
@@ -130,7 +131,7 @@ proto_register_sscf(void)
 void
 proto_reg_handoff_sscf(void)
 {
-  mtp3_handle = find_dissector("mtp3");
+  mtp3_handle = find_dissector_add_dependency("mtp3", proto_sscf);
 }
 
 /*

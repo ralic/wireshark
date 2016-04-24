@@ -58,6 +58,7 @@
 
 #include <epan/packet.h>
 #include <epan/prefs.h>
+#include <epan/proto_data.h>
 /* For tcp_dissect_pdus() */
 #include "packet-tcp.h"
 
@@ -188,8 +189,11 @@ dissect_soupbintcp_common(
     guint16           expected_len;
     guint8            pkt_type;
     gint              offset          = 0;
-    guint             this_seq        = 0, next_seq;
+    guint             this_seq        = 0, next_seq, key;
     heur_dtbl_entry_t *hdtbl_entry;
+
+    /* Record the start of the packet to use as a sequence number key */
+    key = (guint)tvb_raw_offset(tvb);
 
     /* Get the 16-bit big-endian SOUP packet length */
     expected_len = tvb_get_ntohs(tvb, 0);
@@ -239,7 +243,7 @@ dissect_soupbintcp_common(
         next_seq = atoi(tmp_buf);
 
         /* Create new conversation for this session */
-        conv = conversation_new(PINFO_FD_NUM(pinfo),
+        conv = conversation_new(pinfo->num,
                                 &pinfo->src,
                                 &pinfo->dst,
                                 pinfo->ptype,
@@ -257,7 +261,7 @@ dissect_soupbintcp_common(
     if (pkt_type == 'S') {
         if (!PINFO_FD_VISITED(pinfo)) {
             /* Get next expected sequence number from conversation */
-            conv = find_conversation(PINFO_FD_NUM(pinfo),
+            conv = find_conversation(pinfo->num,
                                      &pinfo->src,
                                      &pinfo->dst,
                                      pinfo->ptype,
@@ -279,10 +283,10 @@ dissect_soupbintcp_common(
                     wmem_file_scope(),
                     sizeof(struct pdu_data));
                 pdu_data->seq_num = this_seq;
-                p_add_proto_data(wmem_file_scope(), pinfo, proto_soupbintcp, 0, pdu_data);
+                p_add_proto_data(wmem_file_scope(), pinfo, proto_soupbintcp, key, pdu_data);
             }
         } else {
-            pdu_data = (struct pdu_data *)p_get_proto_data(wmem_file_scope(), pinfo, proto_soupbintcp, 0);
+            pdu_data = (struct pdu_data *)p_get_proto_data(wmem_file_scope(), pinfo, proto_soupbintcp, key);
             if (pdu_data) {
                 this_seq = pdu_data->seq_num;
             } else {
@@ -610,14 +614,14 @@ proto_register_soupbintcp(void)
 
     soupbintcp_range = range_empty();
 
-    heur_subdissector_list = register_heur_dissector_list("soupbintcp");
+    heur_subdissector_list = register_heur_dissector_list("soupbintcp", proto_soupbintcp);
 }
 
 
 void
 proto_reg_handoff_soupbintcp(void)
 {
-    soupbintcp_handle = new_create_dissector_handle(dissect_soupbintcp_tcp,
+    soupbintcp_handle = create_dissector_handle(dissect_soupbintcp_tcp,
                                                 proto_soupbintcp);
 
     /* For "decode-as" */

@@ -32,12 +32,20 @@ extern "C" {
 #include <glib.h>
 
 #ifdef _WIN32
-#include <io.h>
+#include <io.h>		/* for _read(), _write(), etc. */
 #include <gmodule.h>
 #endif
 
+#ifdef HAVE_FCNTL_H
+#include <fcntl.h>	/* for open() */
+#endif
+
+#ifdef HAVE_UNISTD_H
+#include <unistd.h>	/* for read(), write(), close(), etc. */
+#endif
+
 #ifdef HAVE_SYS_STAT_H
-#include <sys/stat.h>
+#include <sys/stat.h>	/* for stat() and struct stat */
 #endif
 
 /*
@@ -58,6 +66,8 @@ extern "C" {
 #ifndef S_ISDIR
 #define S_ISDIR(mode)   (((mode) & S_IFMT) == S_IFDIR)
 #endif
+
+#include <stdio.h>
 
 #ifdef _WIN32
 
@@ -80,8 +90,6 @@ extern "C" {
  *  MOVEFILE_REPLACE_EXISTING, so that it acts like UN*X rename(),
  *  removing the target if necessary.
  */
-
-#include <stdio.h>
 
 WS_DLL_PUBLIC int ws_stdio_open (const gchar *filename, int flags, int mode);
 WS_DLL_PUBLIC int ws_stdio_rename (const gchar *oldfilename, const gchar *newfilename);
@@ -113,6 +121,15 @@ WS_DLL_PUBLIC FILE * ws_stdio_freopen (const gchar *filename, const gchar *mode,
 #define ws_fstat64 _fstati64	/* use _fstati64 for 64-bit size support */
 #define ws_lseek64 _lseeki64	/* use _lseeki64 for 64-bit offset support */
 #define ws_fdopen  _fdopen
+#define ws_fileno  _fileno
+#define ws_isatty  _isatty
+
+/*
+ * Other CRT functions. getpid probably belongs in sys_util.h or proc_util.h
+ * but neither yet exist.
+ */
+#define ws_getpid  _getpid
+#define ws_umask  _umask
 
 /* DLL loading */
 
@@ -132,7 +149,7 @@ gboolean ws_init_dll_search_path();
  */
 
 WS_DLL_PUBLIC
-void *ws_load_library(gchar *library_name);
+void *ws_load_library(const gchar *library_name);
 
 /** Load a DLL using g_module_open.
  * Only the system and program directories are searched.
@@ -143,11 +160,6 @@ void *ws_load_library(gchar *library_name);
  */
 WS_DLL_PUBLIC
 GModule *ws_module_open(gchar *module_name, GModuleFlags flags);
-
-/*
- * utf8 version of getenv, needed to get win32 filename paths
- */
-WS_DLL_PUBLIC char *getenv_utf8(const char *varname);
 
 /** Create or open a "Wireshark is running" mutex.
  * Create or open a mutex which signals that Wireshark or its associated
@@ -174,12 +186,25 @@ WS_DLL_PUBLIC void create_app_running_mutex();
 
 #define ws_read    read
 #define ws_write   write
+#ifdef __cplusplus
+/*
+ * Just in case this is used in a class with a close method or member.
+ */
+#define ws_close   ::close
+#else
 #define ws_close   close
+#endif
 #define ws_dup     dup
 #define ws_fstat64 fstat	/* AC_SYS_LARGEFILE should make off_t 64-bit */
 #define ws_lseek64 lseek	/* AC_SYS_LARGEFILE should make off_t 64-bit */
 #define ws_fdopen  fdopen
+#define ws_fileno  fileno
+#define ws_isatty  isatty
 #define O_BINARY   0		/* Win32 needs the O_BINARY flag for open() */
+
+/* Other CRT functions */
+#define ws_getpid  getpid
+#define ws_umask   umask
 
 #endif /* _WIN32 */
 
@@ -192,9 +217,7 @@ WS_DLL_PUBLIC void create_app_running_mutex();
 #define ws_dir_rewind			g_dir_rewind
 #define ws_dir_close			g_dir_close
 
-/* XXX - remove include "dirent.h" */
-/* XXX - remove include "direct.h" */
-/* XXX - remove include "sys/stat.h" */
+/* XXX - remove include "sys/stat.h" from files that include this header */
 /* XXX - update docs (e.g. README.developer) */
 
 #ifdef __cplusplus

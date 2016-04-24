@@ -104,7 +104,6 @@ static int ett_fcoib_crc        = -1;
 
 static expert_field ei_fcoib_crc = EI_INIT;
 
-static dissector_handle_t data_handle;
 static dissector_handle_t fc_handle;
 
 /* global preferences */
@@ -130,12 +129,12 @@ manual_addr_match(packet_info *pinfo) {
     if (gPREF_MAN_EN) {
         /* If the manual settings are enabled see if this fits - in which case we can skip
            the following checks entirely and go straight to dissecting */
-        if (    (ADDRESSES_EQUAL(&pinfo->src, &manual_addr[0]) &&
-                 ADDRESSES_EQUAL(&pinfo->dst, &manual_addr[1]) &&
+        if (    (addresses_equal(&pinfo->src, &manual_addr[0]) &&
+                 addresses_equal(&pinfo->dst, &manual_addr[1]) &&
                  (pinfo->srcport == 0xffffffff /* is unknown */ || pinfo->srcport == gPREF_QP[0]) &&
                  (pinfo->destport == 0xffffffff /* is unknown */ || pinfo->destport == gPREF_QP[1]))    ||
-                (ADDRESSES_EQUAL(&pinfo->src, &manual_addr[1]) &&
-                 ADDRESSES_EQUAL(&pinfo->dst, &manual_addr[0]) &&
+                (addresses_equal(&pinfo->src, &manual_addr[1]) &&
+                 addresses_equal(&pinfo->dst, &manual_addr[0]) &&
                  (pinfo->srcport == 0xffffffff /* is unknown */ || pinfo->srcport == gPREF_QP[1]) &&
                  (pinfo->destport == 0xffffffff /* is unknown */ || pinfo->destport == gPREF_QP[0]))    )
             return TRUE;
@@ -324,8 +323,8 @@ dissect_fcoib(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data _U
 
     if (fc_handle) {
         call_dissector_with_data(fc_handle, next_tvb, pinfo, tree, &fc_data);
-    } else if (data_handle) {
-        call_dissector(data_handle, next_tvb, pinfo, tree);
+    } else {
+        call_data_dissector(next_tvb, pinfo, tree);
     }
 
     return TRUE;
@@ -417,8 +416,7 @@ proto_reg_handoff_fcoib(void)
     if (!initialized) {
         heur_dissector_add("infiniband.payload", dissect_fcoib, "Fibre Channel over Infiniband", "fc_infiniband", proto_fcoib, HEURISTIC_ENABLE);
 
-        data_handle = find_dissector("data");
-        fc_handle = find_dissector("fc");
+        fc_handle = find_dissector_add_dependency("fc", proto_fcoib);
 
         initialized = TRUE;
     }
@@ -438,13 +436,13 @@ proto_reg_handoff_fcoib(void)
                 if (errno || *not_parsed != '\0') {
                     error_occured = TRUE;
                 } else {
-                    SET_ADDRESS(&manual_addr[i], AT_IB, sizeof(guint16), manual_addr_data[i]);
+                    set_address(&manual_addr[i], AT_IB, sizeof(guint16), manual_addr_data[i]);
                 }
             } else {    /* GID */
                 if (!str_to_ip6( gPREF_ID[i], manual_addr_data[i])) {
                     error_occured = TRUE;
                 } else {
-                    SET_ADDRESS(&manual_addr[i], AT_IB, GID_SIZE, manual_addr_data[i]);
+                    set_address(&manual_addr[i], AT_IB, GID_SIZE, manual_addr_data[i]);
                 }
             }
 

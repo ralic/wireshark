@@ -1,11 +1,11 @@
 /* Do not modify this file. Changes will be overwritten.                      */
 /* Generated automatically by the ASN.1 to Wireshark dissector compiler       */
 /* packet-p772.c                                                              */
-/* ../../tools/asn2wrs.py -b -C -p p772 -c ./p772.cnf -s ./packet-p772-template -D . -O ../../epan/dissectors MMSAbstractService.asn MMSInformationObjects.asn MMSOtherNotificationTypeExtensions.asn MMSObjectIdentifiers.asn MMSHeadingExtensions.asn MMSUpperBounds.asn MMSExtendedBodyPartTypes.asn MMSPerRecipientSpecifierExtensions.asn */
+/* asn2wrs.py -b -C -p p772 -c ./p772.cnf -s ./packet-p772-template -D . -O ../.. MMSAbstractService.asn MMSInformationObjects.asn MMSOtherNotificationTypeExtensions.asn MMSObjectIdentifiers.asn MMSHeadingExtensions.asn MMSUpperBounds.asn MMSExtendedBodyPartTypes.asn MMSPerRecipientSpecifierExtensions.asn */
 
 /* Input file: packet-p772-template.c */
 
-#line 1 "../../asn1/p772/packet-p772-template.c"
+#line 1 "./asn1/p772/packet-p772-template.c"
 /* packet-p772.c
  * Routines for STANAG 4406 (X.400 Military Message Extensions)  packet dissection
  * Graeme Lunt 2005
@@ -55,7 +55,7 @@ static int proto_p772 = -1;
 
 
 /*--- Included file: packet-p772-val.h ---*/
-#line 1 "../../asn1/p772/packet-p772-val.h"
+#line 1 "./asn1/p772/packet-p772-val.h"
 #define id_mmhs                        "1.3.26.0.4406.0"
 #define id_mod                         id_mmhs".0"
 #define id_mm                          id_mmhs".2"
@@ -163,11 +163,11 @@ static int proto_p772 = -1;
 #define ub_data_size                   65535
 
 /*--- End of included file: packet-p772-val.h ---*/
-#line 49 "../../asn1/p772/packet-p772-template.c"
+#line 49 "./asn1/p772/packet-p772-template.c"
 
 
 /*--- Included file: packet-p772-hf.c ---*/
-#line 1 "../../asn1/p772/packet-p772-hf.c"
+#line 1 "./asn1/p772/packet-p772-hf.c"
 static int hf_p772_InformationObject_PDU = -1;    /* InformationObject */
 static int hf_p772_Acp127NotificationResponse_PDU = -1;  /* Acp127NotificationResponse */
 static int hf_p772_ExemptedAddressSeq_PDU = -1;   /* ExemptedAddressSeq */
@@ -249,13 +249,13 @@ static int hf_p772_Acp127NotificationType_acp127_pn = -1;
 static int hf_p772_Acp127NotificationType_acp127_tn = -1;
 
 /*--- End of included file: packet-p772-hf.c ---*/
-#line 51 "../../asn1/p772/packet-p772-template.c"
+#line 51 "./asn1/p772/packet-p772-template.c"
 
 /* Initialize the subtree pointers */
 static gint ett_p772 = -1;
 
 /*--- Included file: packet-p772-ett.c ---*/
-#line 1 "../../asn1/p772/packet-p772-ett.c"
+#line 1 "./asn1/p772/packet-p772-ett.c"
 static gint ett_p772_InformationObject = -1;
 static gint ett_p772_Acp127NotificationResponse = -1;
 static gint ett_p772_AddressListIndicator = -1;
@@ -285,11 +285,11 @@ static gint ett_p772_MMMessageParameters = -1;
 static gint ett_p772_Acp127NotificationType = -1;
 
 /*--- End of included file: packet-p772-ett.c ---*/
-#line 55 "../../asn1/p772/packet-p772-template.c"
+#line 55 "./asn1/p772/packet-p772-template.c"
 
 
 /*--- Included file: packet-p772-fn.c ---*/
-#line 1 "../../asn1/p772/packet-p772-fn.c"
+#line 1 "./asn1/p772/packet-p772-fn.c"
 
 static const ber_choice_t InformationObject_choice[] = {
   {   0, &hf_p772_mm             , BER_CLASS_CON, 0, BER_FLAGS_IMPLTAG, dissect_p22_IPM },
@@ -494,7 +494,7 @@ dissect_p772_OBJECT_IDENTIFIER(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int
 
 static int
 dissect_p772_T_dist_value(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 100 "../../asn1/p772/p772.cnf"
+#line 100 "./asn1/p772/p772.cnf"
 /* XXX: not implemented */
   offset = dissect_unknown_ber(actx->pinfo, tvb, offset, tree);
 
@@ -642,7 +642,7 @@ static const value_string p772_PrimaryPrecedence_vals[] = {
 
 static int
 dissect_p772_PrimaryPrecedence(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 106 "../../asn1/p772/p772.cnf"
+#line 106 "./asn1/p772/p772.cnf"
   int precedence = -1;
     offset = dissect_ber_integer(implicit_tag, actx, tree, tvb, offset, hf_index,
                                                 &precedence);
@@ -672,7 +672,7 @@ static const value_string p772_CopyPrecedence_vals[] = {
 
 static int
 dissect_p772_CopyPrecedence(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 114 "../../asn1/p772/p772.cnf"
+#line 114 "./asn1/p772/p772.cnf"
   int precedence = -1;
     offset = dissect_ber_integer(implicit_tag, actx, tree, tvb, offset, hf_index,
                                                 &precedence);
@@ -1290,14 +1290,14 @@ static int dissect_Acp127NotificationType_PDU(tvbuff_t *tvb _U_, packet_info *pi
 
 
 /*--- End of included file: packet-p772-fn.c ---*/
-#line 57 "../../asn1/p772/packet-p772-template.c"
+#line 57 "./asn1/p772/packet-p772-template.c"
 
 
 /*
 * Dissect STANAG 4406 PDUs inside a PPDU.
 */
-static void
-dissect_p772(tvbuff_t *tvb, packet_info *pinfo, proto_tree *parent_tree)
+static int
+dissect_p772(tvbuff_t *tvb, packet_info *pinfo, proto_tree *parent_tree, void* data _U_)
 {
 	int offset = 0;
 	proto_item *item=NULL;
@@ -1305,7 +1305,7 @@ dissect_p772(tvbuff_t *tvb, packet_info *pinfo, proto_tree *parent_tree)
 	asn1_ctx_t asn1_ctx;
 	asn1_ctx_init(&asn1_ctx, ASN1_ENC_BER, TRUE, pinfo);
 
-	if(parent_tree){
+	if (parent_tree) {
 		item = proto_tree_add_item(parent_tree, proto_p772, tvb, 0, -1, ENC_NA);
 		tree = proto_item_add_subtree(item, ett_p772);
 	}
@@ -1314,6 +1314,7 @@ dissect_p772(tvbuff_t *tvb, packet_info *pinfo, proto_tree *parent_tree)
 	col_set_str(pinfo->cinfo, COL_INFO, "Military");
 
 	dissect_p772_InformationObject(TRUE, tvb, offset, &asn1_ctx , tree, -1);
+	return tvb_captured_length(tvb);
 }
 
 
@@ -1326,7 +1327,7 @@ void proto_register_p772(void) {
   {
 
 /*--- Included file: packet-p772-hfarr.c ---*/
-#line 1 "../../asn1/p772/packet-p772-hfarr.c"
+#line 1 "./asn1/p772/packet-p772-hfarr.c"
     { &hf_p772_InformationObject_PDU,
       { "InformationObject", "p772.InformationObject",
         FT_UINT32, BASE_DEC, VALS(p22_InformationObject_vals), 0,
@@ -1641,7 +1642,7 @@ void proto_register_p772(void) {
         NULL, HFILL }},
 
 /*--- End of included file: packet-p772-hfarr.c ---*/
-#line 91 "../../asn1/p772/packet-p772-template.c"
+#line 92 "./asn1/p772/packet-p772-template.c"
   };
 
   /* List of subtrees */
@@ -1649,7 +1650,7 @@ void proto_register_p772(void) {
     &ett_p772,
 
 /*--- Included file: packet-p772-ettarr.c ---*/
-#line 1 "../../asn1/p772/packet-p772-ettarr.c"
+#line 1 "./asn1/p772/packet-p772-ettarr.c"
     &ett_p772_InformationObject,
     &ett_p772_Acp127NotificationResponse,
     &ett_p772_AddressListIndicator,
@@ -1679,7 +1680,7 @@ void proto_register_p772(void) {
     &ett_p772_Acp127NotificationType,
 
 /*--- End of included file: packet-p772-ettarr.c ---*/
-#line 97 "../../asn1/p772/packet-p772-template.c"
+#line 98 "./asn1/p772/packet-p772-template.c"
   };
 
   /* Register protocol */
@@ -1699,41 +1700,41 @@ void proto_register_p772(void) {
 void proto_reg_handoff_p772(void) {
 
 /*--- Included file: packet-p772-dis-tab.c ---*/
-#line 1 "../../asn1/p772/packet-p772-dis-tab.c"
-  new_register_ber_oid_dissector("1.3.26.0.4406.0.2.0", dissect_PrimaryPrecedence_PDU, proto_p772, "primary-precedence");
-  new_register_ber_oid_dissector("1.3.26.0.4406.0.2.1", dissect_CopyPrecedence_PDU, proto_p772, "copy-precedence");
-  new_register_ber_oid_dissector("1.3.26.0.4406.0.2.2", dissect_MessageType_PDU, proto_p772, "message-type");
-  new_register_ber_oid_dissector("1.3.26.0.4406.0.2.3", dissect_AddressListDesignatorSeq_PDU, proto_p772, "address-list-indicator");
-  new_register_ber_oid_dissector("1.3.26.0.4406.0.2.4", dissect_ExemptedAddressSeq_PDU, proto_p772, "exempted-address");
-  new_register_ber_oid_dissector("1.3.26.0.4406.0.2.5", dissect_ExtendedAuthorisationInfo_PDU, proto_p772, "extended-authorisation-info");
-  new_register_ber_oid_dissector("1.3.26.0.4406.0.2.6", dissect_DistributionCodes_PDU, proto_p772, "distribution-codes");
-  new_register_ber_oid_dissector("1.3.26.0.4406.0.2.7", dissect_HandlingInstructions_PDU, proto_p772, "handling-instructions");
-  new_register_ber_oid_dissector("1.3.26.0.4406.0.2.8", dissect_MessageInstructions_PDU, proto_p772, "message-instructions");
-  new_register_ber_oid_dissector("1.3.26.0.4406.0.2.9", dissect_CodressMessage_PDU, proto_p772, "codress-message");
-  new_register_ber_oid_dissector("1.3.26.0.4406.0.2.10", dissect_OriginatorReference_PDU, proto_p772, "originator-reference");
-  new_register_ber_oid_dissector("1.3.26.0.4406.0.2.11", dissect_OtherRecipientDesignatorSeq_PDU, proto_p772, "other-recipients-indicator");
-  new_register_ber_oid_dissector("1.3.26.0.4406.0.2.12", dissect_PilotInformationSeq_PDU, proto_p772, "pilot-forwarding-info");
-  new_register_ber_oid_dissector("1.3.26.0.4406.0.2.13", dissect_Acp127MessageIdentifier_PDU, proto_p772, "acp127-message-identifier");
-  new_register_ber_oid_dissector("1.3.26.0.4406.0.2.14", dissect_OriginatorPlad_PDU, proto_p772, "originator-plad");
-  new_register_ber_oid_dissector("1.3.26.0.4406.0.2.15", dissect_Acp127NotificationType_PDU, proto_p772, "acp127-notification-request");
-  new_register_ber_oid_dissector("1.3.26.0.4406.0.2.16", dissect_Acp127NotificationResponse_PDU, proto_p772, "acp127-notification-response");
-  new_register_ber_oid_dissector("1.3.26.0.4406.0.2.17", dissect_SecurityInformationLabels_PDU, proto_p772, "information-labels");
-  new_register_ber_oid_dissector("1.3.26.0.4406.0.8.0", dissect_PriorityLevelQualifier_PDU, proto_p772, "priority-level-qualifier");
-  new_register_ber_oid_dissector(id_nato_mmhs_et_adatp3, dissect_ADatP3Data_PDU, proto_p772, "adatp3");
-  new_register_ber_oid_dissector(id_nato_mmhs_et_adatp3_parameters, dissect_ADatP3Parameters_PDU, proto_p772, "adatp3-parameters");
-  new_register_ber_oid_dissector(id_nato_mmhs_et_corrections, dissect_CorrectionsData_PDU, proto_p772, "corrections");
-  new_register_ber_oid_dissector(id_nato_mmhs_et_corrections_parameters, dissect_CorrectionsParameters_PDU, proto_p772, "corrections-parameters");
-  new_register_ber_oid_dissector(id_nato_mmhs_et_forwarded_encrypted, dissect_ForwardedEncryptedData_PDU, proto_p772, "forwarded-encrypted");
-  new_register_ber_oid_dissector(id_nato_mmhs_et_forwarded_encrypted_parameters, dissect_ForwardedEncryptedParameters_PDU, proto_p772, "forwarded-encrypted-parameters");
-  new_register_ber_oid_dissector(id_nato_mmhs_et_mm_message, dissect_MMMessageData_PDU, proto_p772, "mm-message");
-  new_register_ber_oid_dissector(id_nato_mmhs_et_mm_message_parameters, dissect_MMMessageParameters_PDU, proto_p772, "mm-message-parameters");
-  new_register_ber_oid_dissector(id_nato_mmhs_et_mm_acp127data, dissect_ACP127DataData_PDU, proto_p772, "acp127-data");
-  new_register_ber_oid_dissector(id_nato_mmhs_et_mm_acp127data_parameters, dissect_ACP127DataParameters_PDU, proto_p772, "acp127-data-parameters");
-  new_register_ber_oid_dissector("2.6.1.4.17.1.3.26.0.4406.0.4.1", dissect_InformationObject_PDU, proto_p772, "id-et-content-p772");
+#line 1 "./asn1/p772/packet-p772-dis-tab.c"
+  register_ber_oid_dissector("1.3.26.0.4406.0.2.0", dissect_PrimaryPrecedence_PDU, proto_p772, "primary-precedence");
+  register_ber_oid_dissector("1.3.26.0.4406.0.2.1", dissect_CopyPrecedence_PDU, proto_p772, "copy-precedence");
+  register_ber_oid_dissector("1.3.26.0.4406.0.2.2", dissect_MessageType_PDU, proto_p772, "message-type");
+  register_ber_oid_dissector("1.3.26.0.4406.0.2.3", dissect_AddressListDesignatorSeq_PDU, proto_p772, "address-list-indicator");
+  register_ber_oid_dissector("1.3.26.0.4406.0.2.4", dissect_ExemptedAddressSeq_PDU, proto_p772, "exempted-address");
+  register_ber_oid_dissector("1.3.26.0.4406.0.2.5", dissect_ExtendedAuthorisationInfo_PDU, proto_p772, "extended-authorisation-info");
+  register_ber_oid_dissector("1.3.26.0.4406.0.2.6", dissect_DistributionCodes_PDU, proto_p772, "distribution-codes");
+  register_ber_oid_dissector("1.3.26.0.4406.0.2.7", dissect_HandlingInstructions_PDU, proto_p772, "handling-instructions");
+  register_ber_oid_dissector("1.3.26.0.4406.0.2.8", dissect_MessageInstructions_PDU, proto_p772, "message-instructions");
+  register_ber_oid_dissector("1.3.26.0.4406.0.2.9", dissect_CodressMessage_PDU, proto_p772, "codress-message");
+  register_ber_oid_dissector("1.3.26.0.4406.0.2.10", dissect_OriginatorReference_PDU, proto_p772, "originator-reference");
+  register_ber_oid_dissector("1.3.26.0.4406.0.2.11", dissect_OtherRecipientDesignatorSeq_PDU, proto_p772, "other-recipients-indicator");
+  register_ber_oid_dissector("1.3.26.0.4406.0.2.12", dissect_PilotInformationSeq_PDU, proto_p772, "pilot-forwarding-info");
+  register_ber_oid_dissector("1.3.26.0.4406.0.2.13", dissect_Acp127MessageIdentifier_PDU, proto_p772, "acp127-message-identifier");
+  register_ber_oid_dissector("1.3.26.0.4406.0.2.14", dissect_OriginatorPlad_PDU, proto_p772, "originator-plad");
+  register_ber_oid_dissector("1.3.26.0.4406.0.2.15", dissect_Acp127NotificationType_PDU, proto_p772, "acp127-notification-request");
+  register_ber_oid_dissector("1.3.26.0.4406.0.2.16", dissect_Acp127NotificationResponse_PDU, proto_p772, "acp127-notification-response");
+  register_ber_oid_dissector("1.3.26.0.4406.0.2.17", dissect_SecurityInformationLabels_PDU, proto_p772, "information-labels");
+  register_ber_oid_dissector("1.3.26.0.4406.0.8.0", dissect_PriorityLevelQualifier_PDU, proto_p772, "priority-level-qualifier");
+  register_ber_oid_dissector(id_nato_mmhs_et_adatp3, dissect_ADatP3Data_PDU, proto_p772, "adatp3");
+  register_ber_oid_dissector(id_nato_mmhs_et_adatp3_parameters, dissect_ADatP3Parameters_PDU, proto_p772, "adatp3-parameters");
+  register_ber_oid_dissector(id_nato_mmhs_et_corrections, dissect_CorrectionsData_PDU, proto_p772, "corrections");
+  register_ber_oid_dissector(id_nato_mmhs_et_corrections_parameters, dissect_CorrectionsParameters_PDU, proto_p772, "corrections-parameters");
+  register_ber_oid_dissector(id_nato_mmhs_et_forwarded_encrypted, dissect_ForwardedEncryptedData_PDU, proto_p772, "forwarded-encrypted");
+  register_ber_oid_dissector(id_nato_mmhs_et_forwarded_encrypted_parameters, dissect_ForwardedEncryptedParameters_PDU, proto_p772, "forwarded-encrypted-parameters");
+  register_ber_oid_dissector(id_nato_mmhs_et_mm_message, dissect_MMMessageData_PDU, proto_p772, "mm-message");
+  register_ber_oid_dissector(id_nato_mmhs_et_mm_message_parameters, dissect_MMMessageParameters_PDU, proto_p772, "mm-message-parameters");
+  register_ber_oid_dissector(id_nato_mmhs_et_mm_acp127data, dissect_ACP127DataData_PDU, proto_p772, "acp127-data");
+  register_ber_oid_dissector(id_nato_mmhs_et_mm_acp127data_parameters, dissect_ACP127DataParameters_PDU, proto_p772, "acp127-data-parameters");
+  register_ber_oid_dissector("2.6.1.4.17.1.3.26.0.4406.0.4.1", dissect_InformationObject_PDU, proto_p772, "id-et-content-p772");
 
 
 /*--- End of included file: packet-p772-dis-tab.c ---*/
-#line 115 "../../asn1/p772/packet-p772-template.c"
+#line 116 "./asn1/p772/packet-p772-template.c"
 
   register_ber_oid_dissector("1.3.26.0.4406.0.4.1", dissect_p772, proto_p772, "STANAG 4406");
 }

@@ -25,125 +25,32 @@
 
 #include <epan/dfilter/dfilter.h>
 
-#include <ui/filters.h>
+#include <filter_files.h>
 
-#include "ui/utf8_entities.h"
+#include <wsutil/utf8_entities.h>
 
 #include "display_filter_edit.h"
 #include "filter_dialog.h"
-#include "stock_icon.h"
+#include "stock_icon_tool_button.h"
 #include "syntax_line_edit.h"
 
 #include <QAction>
 #include <QAbstractItemView>
-#include <QApplication>
 #include <QComboBox>
 #include <QCompleter>
 #include <QEvent>
-#include <QIcon>
-#include <QPixmap>
 #include <QMenu>
-#include <QMouseEvent>
+#include <QMessageBox>
 #include <QPainter>
 #include <QStringListModel>
-#include <QStyleOptionFrame>
-#include <QToolButton>
 
-#include "ui/utf8_entities.h"
+#include <wsutil/utf8_entities.h>
 
 // To do:
 // - Get rid of shortcuts and replace them with "n most recently applied filters"?
 // - We need simplified (button- and dropdown-free) versions for use in dialogs and field-only checking.
 // - Add a separator or otherwise distinguish between recent items and fields
 //   in the completion dropdown.
-
-// We want nice icons that render correctly, and that are responsive
-// when the user hovers and clicks them.
-// Using setIcon renders correctly on normal and retina displays. It is
-// not completely responsive, particularly on OS X.
-// Calling setStyleSheet is responsive, but does not render correctly on
-// retina displays: https://bugreports.qt.io/browse/QTBUG-36825
-// Subclass QToolButton, which lets us catch events and set icons as needed.
-
-class StockIconToolButton : public QToolButton
-{
-public:
-    explicit StockIconToolButton(QWidget * parent = 0, QString stock_icon_name = QString()) :
-        QToolButton(parent),
-        leave_timer_(0)
-    {
-        if (!stock_icon_name.isEmpty()) {
-            setStockIcon(stock_icon_name);
-        }
-    }
-
-    void setIconMode(QIcon::Mode mode = QIcon::Normal) {
-        QIcon mode_icon;
-        QList<QIcon::State> states = QList<QIcon::State>() << QIcon::Off << QIcon::On;
-        foreach (QIcon::State state, states) {
-            foreach (QSize size, base_icon_.availableSizes(mode, state)) {
-                mode_icon.addPixmap(base_icon_.pixmap(size, mode, state), mode, state);
-            }
-        }
-        setIcon(mode_icon);
-    }
-
-    void setStockIcon(QString icon_name) {
-        base_icon_ = StockIcon(icon_name);
-        setIconMode();
-    }
-
-protected:
-    virtual bool event(QEvent *event) {
-        switch (event->type()) {
-            case QEvent::Enter:
-            if (isEnabled()) {
-                setIconMode(QIcon::Active);
-                if (leave_timer_ > 0) killTimer(leave_timer_);
-                leave_timer_ = startTimer(leave_interval_);
-            }
-            break;
-        case QEvent::MouseButtonPress:
-            if (isEnabled()) {
-                setIconMode(QIcon::Selected);
-            }
-            break;
-        case QEvent::Leave:
-            if (leave_timer_ > 0) killTimer(leave_timer_);
-            leave_timer_ = 0;
-        case QEvent::MouseButtonRelease:
-            setIconMode();
-            break;
-        case QEvent::Timer:
-        {
-            // We can lose QEvent::Leave, QEvent::HoverLeave and underMouse()
-            // if a tooltip appears, at least OS X:
-            // https://bugreports.qt.io/browse/QTBUG-46379
-            // Work around the issue by periodically checking the mouse
-            // position and scheduling a fake leave event when the mouse
-            // moves away.
-            QTimerEvent *te = (QTimerEvent *) event;
-            bool under_mouse = rect().contains(mapFromGlobal(QCursor::pos()));
-            if (te->timerId() == leave_timer_ && !under_mouse) {
-                killTimer(leave_timer_);
-                leave_timer_ = 0;
-                QMouseEvent *me = new QMouseEvent(QEvent::Leave, mapFromGlobal(QCursor::pos()), Qt::NoButton, Qt::NoButton, Qt::NoModifier);
-                QApplication::postEvent(this, me);
-            }
-            break;
-        }
-        default:
-            break;
-        }
-
-        return QToolButton::event(event);
-    }
-
-private:
-    QIcon base_icon_;
-    int leave_timer_;
-    static const int leave_interval_ = 500; // ms
-};
 
 #if defined(Q_OS_MAC) && 0
 // http://developer.apple.com/library/mac/#documentation/Cocoa/Reference/ApplicationKit/Classes/NSImage_Class/Reference/Reference.html
@@ -189,9 +96,11 @@ UIMiniCancelButton::UIMiniCancelButton(QWidget *pParent /* = 0 */)
 // proto.c:fld_abbrev_chars
 static const QString fld_abbrev_chars_ = "-.0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ_abcdefghijklmnopqrstuvwxyz";
 
-DisplayFilterEdit::DisplayFilterEdit(QWidget *parent, bool plain) :
+DisplayFilterEdit::DisplayFilterEdit(QWidget *parent, DisplayFilterEditType type) :
     SyntaxLineEdit(parent),
-    plain_(plain),
+    type_(type),
+    save_action_(NULL),
+    remove_action_(NULL),
     bookmark_button_(NULL),
     clear_button_(NULL),
     apply_button_(NULL)
@@ -202,25 +111,17 @@ DisplayFilterEdit::DisplayFilterEdit(QWidget *parent, bool plain) :
     setCompleter(new QCompleter(completion_model_, this));
     setCompletionTokenChars(fld_abbrev_chars_);
 
-    if (plain_) {
-        placeholder_text_ = QString(tr("Enter a display filter %1")).arg(UTF8_HORIZONTAL_ELLIPSIS);
-    } else {
-        placeholder_text_ = QString(tr("Apply a display filter %1 <%2/>")).arg(UTF8_HORIZONTAL_ELLIPSIS)
-    .arg(DEFAULT_MODIFIER);
-    }
-#if QT_VERSION >= QT_VERSION_CHECK(4, 7, 0)
-    setPlaceholderText(placeholder_text_);
-#endif
+    setDefaultPlaceholderText();
 
     //   DFCombo
     //     Bookmark
-    //     DispalyFilterEdit
+    //     DisplayFilterEdit
     //     Clear button
     //     Apply (right arrow)
     //     Combo drop-down
 
-    if (!plain_) {
-        bookmark_button_ = new StockIconToolButton(this, "x-filter-bookmark");
+    if (type_ == DisplayFilterToApply) {
+        bookmark_button_ = new StockIconToolButton(this, "x-display-filter-bookmark");
         bookmark_button_->setCursor(Qt::ArrowCursor);
         bookmark_button_->setMenu(new QMenu());
         bookmark_button_->setPopupMode(QToolButton::InstantPopup);
@@ -236,7 +137,7 @@ DisplayFilterEdit::DisplayFilterEdit(QWidget *parent, bool plain) :
                 );
     }
 
-    if (!plain_) {
+    if (type_ == DisplayFilterToApply) {
         clear_button_ = new StockIconToolButton(this, "x-filter-clear");
         clear_button_->setCursor(Qt::ArrowCursor);
         clear_button_->setToolTip(QString());
@@ -254,7 +155,7 @@ DisplayFilterEdit::DisplayFilterEdit(QWidget *parent, bool plain) :
 
     connect(this, SIGNAL(textChanged(const QString&)), this, SLOT(checkFilter(const QString&)));
 
-    if (!plain_) {
+    if (type_ == DisplayFilterToApply) {
         apply_button_ = new StockIconToolButton(this, "x-filter-apply");
         apply_button_->setCursor(Qt::ArrowCursor);
         apply_button_->setEnabled(false);
@@ -295,7 +196,31 @@ DisplayFilterEdit::DisplayFilterEdit(QWidget *parent, bool plain) :
             .arg(bksz.width())
             .arg(cbsz.width() + apsz.width() + frameWidth + 1)
                   );
-    checkFilter();
+
+    connect(wsApp, SIGNAL(appInitialized()), this, SLOT(updateBookmarkMenu()));
+    connect(wsApp, SIGNAL(displayFilterListChanged()), this, SLOT(updateBookmarkMenu()));
+}
+
+void DisplayFilterEdit::setDefaultPlaceholderText()
+{
+    switch (type_) {
+
+    case DisplayFilterToApply:
+        placeholder_text_ = QString(tr("Apply a display filter %1 <%2/>")).arg(UTF8_HORIZONTAL_ELLIPSIS)
+    .arg(DEFAULT_MODIFIER);
+        break;
+
+    case DisplayFilterToEnter:
+        placeholder_text_ = QString(tr("Enter a display filter %1")).arg(UTF8_HORIZONTAL_ELLIPSIS);
+        break;
+
+    case ReadFilterToApply:
+        placeholder_text_ = QString(tr("Apply a read filter %1")).arg(UTF8_HORIZONTAL_ELLIPSIS);
+        break;
+    }
+#if QT_VERSION >= QT_VERSION_CHECK(4, 7, 0)
+    setPlaceholderText(placeholder_text_);
+#endif
 }
 
 void DisplayFilterEdit::paintEvent(QPaintEvent *evt) {
@@ -398,13 +323,7 @@ void DisplayFilterEdit::checkFilter(const QString& filter_text)
     switch (syntaxState()) {
     case Deprecated:
     {
-        /*
-         * We're being lazy and only printing the first "problem" token.
-         * Would it be better to print all of them?
-         */
-        QString deprecatedMsg(tr("\"%1\" may have unexpected results (see the User's Guide)")
-                .arg(deprecatedToken()));
-        emit pushFilterSyntaxWarning(deprecatedMsg);
+        emit pushFilterSyntaxWarning(syntaxErrorMessage());
         break;
     }
     case Invalid:
@@ -421,53 +340,75 @@ void DisplayFilterEdit::checkFilter(const QString& filter_text)
     if (bookmark_button_) {
         bool enable_save_action = false;
         bool match = false;
-        QMenu *bb_menu = bookmark_button_->menu();
 
-        bb_menu->clear();
-        QAction *save_action = bb_menu->addAction(tr("Save this filter"));
-        connect(save_action, SIGNAL(triggered(bool)), this, SLOT(saveFilter()));
-        QAction *manage_action = bb_menu->addAction(tr("Manage Display Filters"));
-        connect(manage_action, SIGNAL(triggered(bool)), this, SLOT(showFilters()));
-
-        QAction *first_filter = NULL;
         for (GList *df_item = get_filter_list_first(DFILTER_LIST); df_item; df_item = g_list_next(df_item)) {
             if (!df_item->data) continue;
             filter_def *df_def = (filter_def *) df_item->data;
             if (!df_def->name || !df_def->strval) continue;
 
-            int one_em = bb_menu->fontMetrics().height();
-            QString prep_text = QString("%1: %2").arg(df_def->name).arg(df_def->strval);
-            prep_text = bb_menu->fontMetrics().elidedText(prep_text, Qt::ElideRight, one_em * 40);
-
-            QAction *prep_action = bb_menu->addAction(prep_text);
-            prep_action->setData(df_def->strval);
-            connect(prep_action, SIGNAL(triggered(bool)), this, SLOT(prepareFilter()));
-            if (!first_filter) first_filter = prep_action;
-
             if (filter_text.compare(df_def->strval) == 0) {
                 match = true;
             }
         }
-        if (first_filter) bb_menu->insertSeparator(first_filter);
 
         if (match) {
             bookmark_button_->setStockIcon("x-filter-matching-bookmark");
-            QAction *remove_action = new QAction(tr("Remove this filter"), bb_menu);
-            bb_menu->insertAction(manage_action, remove_action);
-            remove_action->setData(filter_text);
-            connect(remove_action, SIGNAL(triggered(bool)), this, SLOT(removeFilter()));
+            if (remove_action_) {
+                remove_action_->setData(text());
+                remove_action_->setVisible(true);
+            }
         } else {
-            bookmark_button_->setStockIcon("x-filter-bookmark");
+            bookmark_button_->setStockIcon("x-display-filter-bookmark");
+            if (remove_action_) {
+                remove_action_->setVisible(false);
+            }
         }
 
         if (!match && (syntaxState() == Valid || syntaxState() == Deprecated) && !filter_text.isEmpty()) {
             enable_save_action = true;
         }
-        save_action->setEnabled(enable_save_action);
+        if (save_action_) {
+            save_action_->setEnabled(enable_save_action);
+        }
     }
     if (apply_button_) {
         apply_button_->setEnabled(syntaxState() != Invalid);
     }
+}
+
+void DisplayFilterEdit::updateBookmarkMenu()
+{
+    if (!bookmark_button_)
+        return;
+
+    QMenu *bb_menu = bookmark_button_->menu();
+    bb_menu->clear();
+
+    save_action_ = bb_menu->addAction(tr("Save this filter"));
+    connect(save_action_, SIGNAL(triggered(bool)), this, SLOT(saveFilter()));
+    remove_action_ = bb_menu->addAction(tr("Remove this filter"));
+    connect(remove_action_, SIGNAL(triggered(bool)), this, SLOT(removeFilter()));
+    QAction *manage_action = bb_menu->addAction(tr("Manage Display Filters"));
+    connect(manage_action, SIGNAL(triggered(bool)), this, SLOT(showFilters()));
+    QAction *expr_action = bb_menu->addAction(tr("Manage Filter Expressions"));
+    connect(expr_action, SIGNAL(triggered(bool)), this, SLOT(showExpressionPrefs()));
+    bb_menu->addSeparator();
+
+    for (GList *df_item = get_filter_list_first(DFILTER_LIST); df_item; df_item = g_list_next(df_item)) {
+        if (!df_item->data) continue;
+        filter_def *df_def = (filter_def *) df_item->data;
+        if (!df_def->name || !df_def->strval) continue;
+
+        int one_em = bb_menu->fontMetrics().height();
+        QString prep_text = QString("%1: %2").arg(df_def->name).arg(df_def->strval);
+        prep_text = bb_menu->fontMetrics().elidedText(prep_text, Qt::ElideRight, one_em * 40);
+
+        QAction *prep_action = bb_menu->addAction(prep_text);
+        prep_action->setData(df_def->strval);
+        connect(prep_action, SIGNAL(triggered(bool)), this, SLOT(prepareFilter()));
+    }
+
+    checkFilter();
 }
 
 // GTK+ behavior:
@@ -590,16 +531,7 @@ void DisplayFilterEdit::changeEvent(QEvent* event)
         switch (event->type())
         {
         case QEvent::LanguageChange:
-            if (plain_) {
-                placeholder_text_ = QString(tr("Enter a display filter %1")).
-                    arg(UTF8_HORIZONTAL_ELLIPSIS);
-            } else {
-                placeholder_text_ = QString(tr("Apply a display filter %1 <%2/>"))
-                    .arg(UTF8_HORIZONTAL_ELLIPSIS).arg(DEFAULT_MODIFIER);
-            }
-#if QT_VERSION >= QT_VERSION_CHECK(4, 7, 0)
-            setPlaceholderText(placeholder_text_);
-#endif
+            setDefaultPlaceholderText();
             break;
         default:
             break;
@@ -630,12 +562,32 @@ void DisplayFilterEdit::removeFilter()
             remove_from_filter_list(DFILTER_LIST, df_item);
         }
     }
+
+    char *f_path;
+    int f_save_errno;
+
+    save_filter_list(DFILTER_LIST, &f_path, &f_save_errno);
+    if (f_path != NULL) {
+        // We had an error saving the filter.
+        QString warning_title = tr("Unable to save display filter settings.");
+        QString warning_msg = tr("Could not save to your display filter file\n\"%1\": %2.").arg(f_path).arg(g_strerror(f_save_errno));
+
+        QMessageBox::warning(this, warning_title, warning_msg, QMessageBox::Ok);
+        g_free(f_path);
+    }
+
+    updateBookmarkMenu();
 }
 
 void DisplayFilterEdit::showFilters()
 {
     FilterDialog display_filter_dlg(window(), FilterDialog::DisplayFilter);
     display_filter_dlg.exec();
+}
+
+void DisplayFilterEdit::showExpressionPrefs()
+{
+    emit showPreferencesDialog(PreferencesDialog::ppFilterExpressions);
 }
 
 void DisplayFilterEdit::prepareFilter()

@@ -32,6 +32,9 @@
 #include <epan/conversation.h>
 #include <epan/ipproto.h>
 #include <epan/expert.h>
+#include <epan/proto_data.h>
+
+#include <wsutil/str_util.h>
 #include "packet-frame.h"
 #include "packet-osi.h"
 
@@ -143,7 +146,8 @@ static const fragment_items cotp_frag_items = {
   "segments"
 };
 
-static dissector_handle_t data_handle;
+static dissector_handle_t rdp_cr_handle;
+static dissector_handle_t rdp_cc_handle;
 
 /*
  * ISO8073 OSI COTP definition
@@ -322,6 +326,10 @@ static int hf_cotp_vp_dst_tsap_bytes = -1;
 
 /* global variables */
 
+/* List of dissectors to call for the variable part of CR PDUs. */
+static heur_dissector_list_t cotp_cr_heur_subdissector_list;
+/* List of dissectors to call for the variable part of CC PDUs. */
+static heur_dissector_list_t cotp_cc_heur_subdissector_list;
 /* List of dissectors to call for COTP packets put atop the Inactive
    Subset of CLNP. */
 static heur_dissector_list_t cotp_is_heur_subdissector_list;
@@ -873,8 +881,7 @@ static int ositp_decode_DR(tvbuff_t *tvb, int offset, guint8 li, guint8 tpdu,
   expert_add_info_format(pinfo, ti, &ei_cotp_disconnect_request, "Disconnect Request(DR): 0x%x -> 0x%x", src_ref, dst_ref);
 
   /* User data */
-  call_dissector(data_handle, tvb_new_subset_remaining(tvb, offset), pinfo,
-                 tree);
+  call_data_dissector(tvb_new_subset_remaining(tvb, offset), pinfo, tree);
   offset += tvb_captured_length_remaining(tvb, offset);
      /* we dissected all of the containing PDU */
 
@@ -977,7 +984,7 @@ static int ositp_decode_DT(tvbuff_t *tvb, int offset, guint8 li, guint8 tpdu,
         cotp_frame_reset = FALSE;
         cotp_last_fragment = fragment;
         dst_ref = cotp_dst_ref;
-        conv = find_conversation(pinfo->fd->num, &pinfo->src, &pinfo->dst,
+        conv = find_conversation(pinfo->num, &pinfo->src, &pinfo->dst,
                                  pinfo->ptype, pinfo->srcport, pinfo->destport,
                                  0);
         if (conv) {
@@ -1169,7 +1176,7 @@ static int ositp_decode_DT(tvbuff_t *tvb, int offset, guint8 li, guint8 tpdu,
         next_tvb = process_reassembled_data (next_tvb, offset, pinfo,
                                              "Reassembled COTP", fd_head,
                                              &cotp_frag_items, NULL, tree);
-      } else if (pinfo->fd->num != fd_head->reassembled_in) {
+      } else if (pinfo->num != fd_head->reassembled_in) {
         /* Add a "Reassembled in" link if not reassembled in this frame */
         proto_tree_add_uint(cotp_tree, *(cotp_frag_items.hf_reassembled_in),
                             next_tvb, 0, 0, fd_head->reassembled_in);
@@ -1184,7 +1191,7 @@ static int ositp_decode_DT(tvbuff_t *tvb, int offset, guint8 li, guint8 tpdu,
       *subdissector_found = TRUE;
     } else {
       /* Fill in other Dissectors using inactive subset here */
-      call_dissector(data_handle,next_tvb, pinfo, tree);
+      call_data_dissector(next_tvb, pinfo, tree);
     }
   } else {
     /*
@@ -1198,7 +1205,7 @@ static int ositp_decode_DT(tvbuff_t *tvb, int offset, guint8 li, guint8 tpdu,
                                   tree, &hdtbl_entry, NULL)) {
         *subdissector_found = TRUE;
       } else {
-        call_dissector(data_handle,next_tvb, pinfo, tree);
+        call_data_dissector(next_tvb, pinfo, tree);
       }
     }
   }
@@ -1403,7 +1410,7 @@ static int ositp_decode_ED(tvbuff_t *tvb, int offset, guint8 li, guint8 tpdu,
    * in an ED packet?
    */
   next_tvb = tvb_new_subset_remaining(tvb, offset);
-  call_dissector(data_handle,next_tvb, pinfo, tree);
+  call_data_dissector(next_tvb, pinfo, tree);
 
   offset += tvb_captured_length_remaining(tvb, offset);
      /* we dissected all of the containing PDU */
@@ -1493,10 +1500,10 @@ static int ositp_decode_RJ(tvbuff_t *tvb, int offset, guint8 li, guint8 tpdu,
 
 } /* ositp_decode_RJ */
 
-static int ositp_decode_CC(tvbuff_t *tvb, int offset, guint8 li, guint8 tpdu,
-                           packet_info *pinfo, proto_tree *tree,
-                           gboolean uses_inactive_subset,
-                           gboolean *subdissector_found)
+static int ositp_decode_CR_CC(tvbuff_t *tvb, int offset, guint8 li, guint8 tpdu,
+                              packet_info *pinfo, proto_tree *tree,
+                              gboolean uses_inactive_subset,
+                              gboolean *subdissector_found)
 {
   /* note: in the ATN the user is up to chose between 3 different checksums:
    *       standard OSI, 2 or 4 octet extended checksum.
@@ -1564,37 +1571,33 @@ static int ositp_decode_CC(tvbuff_t *tvb, int offset, guint8 li, guint8 tpdu,
   offset += 1;
   li -= 1;
 
-    /* Microsoft runs their Remote Desktop Protocol atop ISO COTP
-       atop TPKT, and does some weird stuff in the CR packet:
+  if (li > 0) {
+    /* There's more data left, so we have the variable part.
 
-           http://msdn.microsoft.com/en-us/library/cc240470
+       Microsoft's RDP hijacks the variable part of CR and CC PDUs
+       for their own user data (RDP runs atop Class 0, which doesn't
+       support user data).
 
-       where they might stuff a string that begins with "Cookie: ",
-       possibly followed by an RDP Negotiation Request, into the
-       variable part of the CR packet.  (See also
-
-           http://download.microsoft.com/download/5/B/C/5BC37A4E-6304-45AB-8C2D-AE712526E7F7/TS_Session_Directory.pdf
-
-       a/k/a "[MSFT-SDLBTS]", as linked to, under the name "Session
-       Directory and Load Balancing Using Terminal Server", on
-
-           http://msdn.microsoft.com/en-us/library/E4BD6494-06AD-4aed-9823-445E921C9624
-
-       which indicates that the routingToken is a string of the form
-       "Cookie: msts=...".)
-
-       They also may stuff an RDP Negotiation Response into the CC
-       packet.
-
-       XXX - have TPKT know that a given session is an RDP session,
-       and let us know, so we know whether to check for this stuff. */
-  ositp_decode_var_part(tvb, offset, li, class_option, tpdu_len , pinfo,
-                          cotp_tree);
-  offset += li;
+       Try what heuristic dissectors we have. */
+    next_tvb = tvb_new_subset_length(tvb, offset, li);
+    if (dissector_try_heuristic((tpdu == CR_TPDU) ?
+                                 cotp_cr_heur_subdissector_list :
+                                 cotp_cc_heur_subdissector_list,
+                                next_tvb, pinfo, tree, &hdtbl_entry, NULL)) {
+      /* A subdissector claimed this, so it really belongs to them. */
+      *subdissector_found = TRUE;
+    } else {
+      /* No heuristic dissector claimed it, so dissect it as a regular
+         variable part. */
+      ositp_decode_var_part(tvb, offset, li, class_option, tpdu_len, pinfo,
+                            cotp_tree);
+    }
+    offset += li;
+  }
 
   /*
-   * XXX - tell the subdissector that this is user data in a CC or
-   * CR packet rather than a DT packet?
+   * XXX - tell the subdissector that this is user data in a CR or
+   * CC packet rather than a DT packet?
    */
   next_tvb = tvb_new_subset_remaining(tvb, offset);
   if (!uses_inactive_subset){
@@ -1602,17 +1605,17 @@ static int ositp_decode_CC(tvbuff_t *tvb, int offset, guint8 li, guint8 tpdu,
                                 tree, &hdtbl_entry, NULL)) {
       *subdissector_found = TRUE;
     } else {
-      call_dissector(data_handle,next_tvb, pinfo, tree);
+      call_data_dissector(next_tvb, pinfo, tree);
     }
   }
   else
-    call_dissector(data_handle, next_tvb, pinfo, tree);
+    call_data_dissector( next_tvb, pinfo, tree);
   offset += tvb_captured_length_remaining(tvb, offset);
   /* we dissected all of the containing PDU */
 
   return offset;
 
-} /* ositp_decode_CC */
+} /* ositp_decode_CR_CC */
 
 static int ositp_decode_DC(tvbuff_t *tvb, int offset, guint8 li, guint8 tpdu,
                            packet_info *pinfo, proto_tree *tree)
@@ -1640,7 +1643,7 @@ static int ositp_decode_DC(tvbuff_t *tvb, int offset, guint8 li, guint8 tpdu,
   dst_ref = tvb_get_ntohs(tvb, offset + P_DST_REF);
   src_ref = tvb_get_ntohs(tvb, offset + P_SRC_REF);
   pinfo->clnp_dstref = dst_ref;
-  pinfo->clnp_dstref = src_ref;
+  pinfo->clnp_srcref = src_ref;
 
   col_append_fstr(pinfo->cinfo, COL_INFO,
                   "DC TPDU src-ref: 0x%04x dst-ref: 0x%04x", src_ref, dst_ref);
@@ -2074,11 +2077,11 @@ static int ositp_decode_UD(tvbuff_t *tvb, int offset, guint8 li, guint8 tpdu,
                               pinfo, tree, &hdtbl_entry, NULL)) {
     *subdissector_found = TRUE;
   } else {
-    call_dissector(data_handle,next_tvb, pinfo, tree);
+    call_data_dissector(next_tvb, pinfo, tree);
   }
 
 
-  /*call_dissector(data_handle,next_tvb, pinfo, tree); */
+  /*call_data_dissector(next_tvb, pinfo, tree); */
 
   offset += tvb_captured_length_remaining(tvb, offset);
   /* we dissected all of the containing PDU */
@@ -2107,12 +2110,6 @@ static gint dissect_ositp_internal(tvbuff_t *tvb, packet_info *pinfo,
   gboolean is_cltp = FALSE;
   gboolean subdissector_found = FALSE;
 
-  if (!proto_is_protocol_enabled(find_protocol_by_id(proto_cotp)))
-    return FALSE;   /* COTP has been disabled */
-  /* XXX - what about CLTP? */
-
-  pinfo->current_proto = "COTP";
-
   /* Initialize the COL_INFO field; each of the TPDUs will have its
      information appended. */
   col_set_str(pinfo->cinfo, COL_INFO, "");
@@ -2128,7 +2125,7 @@ static gint dissect_ositp_internal(tvbuff_t *tvb, packet_info *pinfo,
     if ((li = tvb_get_guint8(tvb, offset + P_LI)) == 0) {
       col_append_str(pinfo->cinfo, COL_INFO, "Length indicator is zero");
       if (!first_tpdu)
-        call_dissector(data_handle, tvb_new_subset_remaining(tvb, offset),
+        call_data_dissector( tvb_new_subset_remaining(tvb, offset),
                        pinfo, tree);
       return found_ositp;
     }
@@ -2141,8 +2138,8 @@ static gint dissect_ositp_internal(tvbuff_t *tvb, packet_info *pinfo,
     switch (tpdu) {
       case CC_TPDU :
       case CR_TPDU :
-        new_offset = ositp_decode_CC(tvb, offset, li, tpdu, pinfo, tree,
-                                     uses_inactive_subset, &subdissector_found);
+        new_offset = ositp_decode_CR_CC(tvb, offset, li, tpdu, pinfo, tree,
+                                        uses_inactive_subset, &subdissector_found);
         break;
       case DR_TPDU :
         new_offset = ositp_decode_DR(tvb, offset, li, tpdu, pinfo, tree);
@@ -2184,7 +2181,7 @@ static gint dissect_ositp_internal(tvbuff_t *tvb, packet_info *pinfo,
 
     if (new_offset == -1) { /* incorrect TPDU */
       if (!first_tpdu)
-        call_dissector(data_handle, tvb_new_subset_remaining(tvb, offset),
+        call_data_dissector( tvb_new_subset_remaining(tvb, offset),
                        pinfo, tree);
       break;
     }
@@ -2423,15 +2420,19 @@ void proto_register_cotp(void)
                                  "transport PDUs\" in the CLNP protocol "
                                  "settings.", &cotp_decode_atn);
 
+  /* For handling protocols hijacking the variable part of CR or CC PDUs */
+  cotp_cr_heur_subdissector_list = register_heur_dissector_list("cotp_cr", proto_cotp);
+  cotp_cc_heur_subdissector_list = register_heur_dissector_list("cotp_cc", proto_cotp);
+
   /* subdissector code in inactive subset */
-  cotp_is_heur_subdissector_list = register_heur_dissector_list("cotp_is");
+  cotp_is_heur_subdissector_list = register_heur_dissector_list("cotp_is", proto_cotp);
 
   /* other COTP/ISO 8473 subdissectors */
-  cotp_heur_subdissector_list = register_heur_dissector_list("cotp");
+  cotp_heur_subdissector_list = register_heur_dissector_list("cotp", proto_cotp);
 
   /* XXX - what about CLTP and proto_cltp? */
-  new_register_dissector("ositp", dissect_ositp, proto_cotp);
-  new_register_dissector("ositp_inactive", dissect_ositp_inactive, proto_cotp);
+  register_dissector("ositp", dissect_ositp, proto_cotp);
+  register_dissector("ositp_inactive", dissect_ositp_inactive, proto_cotp);
 
   register_init_routine(cotp_reassemble_init);
   register_cleanup_routine(cotp_reassemble_cleanup);
@@ -2455,7 +2456,7 @@ void proto_register_cltp(void)
   proto_register_field_array(proto_cltp, hf, array_length(hf));
   proto_register_subtree_array(ett, array_length(ett));
 
-  cltp_heur_subdissector_list = register_heur_dissector_list("cltp");
+  cltp_heur_subdissector_list = register_heur_dissector_list("cltp", proto_cltp);
 }
 
 void
@@ -2466,7 +2467,8 @@ proto_reg_handoff_cotp(void)
   ositp_handle = find_dissector("ositp");
   dissector_add_uint("ip.proto", IP_PROTO_TP, ositp_handle);
 
-  data_handle = find_dissector("data");
+  rdp_cr_handle = find_dissector("rdp_cr");
+  rdp_cc_handle = find_dissector("rdp_cc");
 
   proto_clnp = proto_get_id_by_filter_name("clnp");
 }
@@ -2483,4 +2485,3 @@ proto_reg_handoff_cotp(void)
  * vi: set shiftwidth=2 tabstop=8 expandtab:
  * :indentSize=2:tabSize=8:noTabs=true:
  */
-

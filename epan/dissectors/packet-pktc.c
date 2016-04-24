@@ -5,6 +5,7 @@
  * References:
  * [1] PacketCable 1.0 Security Specification, PKT-SP-SEC-I11-040730, July 30,
  *     2004, Cable Television Laboratories, Inc., http://www.PacketCable.com/
+ *     http://www.cablelabs.com/wp-content/uploads/specdocs/PKT-SP-SEC-I11-040730.pdf
  *
  * Ronnie Sahlberg 2004
  * Thomas Anders 2004
@@ -36,6 +37,7 @@
 #include <epan/to_str.h>
 #include <epan/asn1.h>
 #include "packet-pktc.h"
+#include "packet-ber.h"
 #include "packet-kerberos.h"
 #include "packet-snmp.h"
 
@@ -48,6 +50,7 @@ void proto_register_pktc_mtafqdn(void);
 void proto_reg_handoff_pktc_mtafqdn(void);
 
 static int proto_pktc = -1;
+static int proto_pktc_mtafqdn = -1;
 static gint hf_pktc_app_spec_data = -1;
 static gint hf_pktc_list_of_ciphersuites = -1;
 static gint hf_pktc_list_of_ciphersuites_len = -1;
@@ -94,6 +97,7 @@ static gint ett_pktc_mtafqdn = -1;
 
 static expert_field ei_pktc_unknown_kmmid = EI_INIT;
 static expert_field ei_pktc_unknown_doi = EI_INIT;
+static expert_field ei_pktc_unknown_kerberos_application = EI_INIT;
 
 #define KMMID_WAKEUP            0x01
 #define KMMID_AP_REQUEST        0x02
@@ -228,7 +232,6 @@ dissect_pktc_app_specific_data(packet_info *pinfo, proto_tree *parent_tree, tvbu
             break;
         default:
             proto_tree_add_expert(tree, pinfo, &ei_pktc_unknown_kmmid, tvb, offset, 1);
-            THROW(ReportedBoundsError); /* bail out and inform user we can't dissect the packet */
         };
         break;
     case DOI_IPSEC:
@@ -246,12 +249,10 @@ dissect_pktc_app_specific_data(packet_info *pinfo, proto_tree *parent_tree, tvbu
             break;
         default:
             proto_tree_add_expert(tree, pinfo, &ei_pktc_unknown_kmmid, tvb, offset, 1);
-            THROW(ReportedBoundsError); /* bail out and inform user we can't dissect the packet */
         };
         break;
     default:
         proto_tree_add_expert(tree, pinfo, &ei_pktc_unknown_doi, tvb, offset, 1);
-        THROW(ReportedBoundsError); /* bail out and inform user we can't dissect the packet */
     }
 
     proto_item_set_len(item, offset-old_offset);
@@ -307,7 +308,6 @@ dissect_pktc_list_of_ciphersuites(packet_info *pinfo _U_, proto_tree *parent_tre
         break;
     default:
         proto_tree_add_expert(tree, pinfo, &ei_pktc_unknown_doi, tvb, offset, 1);
-            THROW(ReportedBoundsError); /* bail out and inform user we can't dissect the packet */
     }
 
     proto_item_set_len(item, offset-old_offset);
@@ -435,7 +435,7 @@ dissect_pktc_rekey(packet_info *pinfo, proto_tree *tree, tvbuff_t *tvb, int offs
 
     /* Timestamp: YYMMDDhhmmssZ */
     /* They really came up with a two-digit year in late 1990s! =8o */
-    timestr=tvb_get_ptr(tvb, offset, 13);
+    timestr=tvb_get_string_enc(wmem_packet_scope(), tvb, offset, 13, ENC_ASCII);
     proto_tree_add_string_format_value(tree, hf_pktc_timestamp, tvb, offset, 13, timestr,
                                 "%.2s-%.2s-%.2s %.2s:%.2s:%.2s",
                                  timestr, timestr+2, timestr+4, timestr+6, timestr+8, timestr+10);
@@ -526,8 +526,6 @@ dissect_pktc_mtafqdn_krbsafeuserdata(packet_info *pinfo, tvbuff_t *tvb, proto_tr
     case PKTC_MTAFQDN_REP:
         /* MTA FQDN */
         string_len = tvb_reported_length_remaining(tvb, offset) - 4;
-        if (string_len <= 0)
-                THROW(ReportedBoundsError);
         proto_tree_add_item(tree, hf_pktc_mtafqdn_fqdn, tvb, offset, string_len, ENC_ASCII|ENC_NA);
         offset+=string_len;
 
@@ -546,13 +544,16 @@ static kerberos_callbacks cb[] = {
     { 0, NULL }
 };
 
-static void
-dissect_pktc_mtafqdn(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
+static int
+dissect_pktc_mtafqdn(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data _U_)
 {
     int offset=0;
     proto_tree *pktc_mtafqdn_tree;
     proto_item *item;
     tvbuff_t *pktc_mtafqdn_tvb;
+    gint8              ber_class;
+    gboolean           pc;
+    gint32             tag;
 
     col_set_str(pinfo->cinfo, COL_PROTOCOL, "PKTC");
 
@@ -564,18 +565,30 @@ dissect_pktc_mtafqdn(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
 
     /* KRB_AP_RE[QP] */
     pktc_mtafqdn_tvb = tvb_new_subset_remaining(tvb, offset);
-    offset += dissect_kerberos_main(pktc_mtafqdn_tvb, pinfo, pktc_mtafqdn_tree, FALSE, NULL);
+    get_ber_identifier(pktc_mtafqdn_tvb, 0, &ber_class, &pc, &tag);
+    if ((tag == KERBEROS_APPLICATIONS_AP_REQ) || (tag == KERBEROS_APPLICATIONS_AP_REP)) {
+        offset += dissect_kerberos_main(pktc_mtafqdn_tvb, pinfo, pktc_mtafqdn_tree, FALSE, NULL);
+    } else {
+        expert_add_info_format(pinfo, item, &ei_pktc_unknown_kerberos_application, "Unknown Kerberos application (%d), expected 10 or 11", tag);
+        return tvb_captured_length(tvb);
+    }
 
     /* KRB_SAFE */
     pktc_mtafqdn_tvb = tvb_new_subset_remaining(tvb, offset);
-    offset += dissect_kerberos_main(pktc_mtafqdn_tvb, pinfo, pktc_mtafqdn_tree, FALSE, cb);
+    get_ber_identifier(pktc_mtafqdn_tvb, 0, &ber_class, &pc, &tag);
+    if (tag == KERBEROS_APPLICATIONS_KRB_SAFE) {
+        offset += dissect_kerberos_main(pktc_mtafqdn_tvb, pinfo, pktc_mtafqdn_tree, FALSE, cb);
+    } else {
+        expert_add_info_format(pinfo, item, &ei_pktc_unknown_kerberos_application, "Unknown Kerberos application (%d), expected 20", tag);
+    }
 
     proto_item_set_len(item, offset);
+    return tvb_captured_length(tvb);
 }
 
 
-static void
-dissect_pktc(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
+static int
+dissect_pktc(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data _U_)
 {
     guint8 kmmid, doi, version;
     int offset=0;
@@ -633,6 +646,7 @@ dissect_pktc(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
     };
 
     proto_item_set_len(item, offset);
+    return tvb_captured_length(tvb);
 }
 
 void
@@ -658,7 +672,7 @@ proto_register_pktc(void)
             "Server Kerberos Principal Identifier", "pktc.server_principal", FT_STRING, BASE_NONE,
             NULL, 0, NULL, HFILL }},
         { &hf_pktc_timestamp, {
-            "Timestamp", "pktc.timestamp", FT_STRING, BASE_NONE,
+            "Timestamp", "pktc.timestamp", FT_STRING, STR_UNICODE,
             NULL, 0, "Timestamp (UTC)", HFILL }},
         { &hf_pktc_app_spec_data, {
             "Application Specific Data", "pktc.asd", FT_NONE, BASE_NONE,
@@ -777,15 +791,18 @@ proto_register_pktc_mtafqdn(void)
     };
 
     static ei_register_info ei[] = {
-        { &ei_pktc_unknown_kmmid, { "pktc.unknown_kmmid", PI_PROTOCOL, PI_WARN, "Unknown KMMID", EXPFILL }},
-        { &ei_pktc_unknown_doi, { "pktc.unknown_doi", PI_PROTOCOL, PI_WARN, "Unknown DOI", EXPFILL }},
+        { &ei_pktc_unknown_kmmid, { "pktc.mtafqdn.unknown_kmmid", PI_PROTOCOL, PI_WARN, "Unknown KMMID", EXPFILL }},
+        { &ei_pktc_unknown_doi, { "pktc.mtafqdn.unknown_doi", PI_PROTOCOL, PI_WARN, "Unknown DOI", EXPFILL }},
+        { &ei_pktc_unknown_kerberos_application, { "pktc.mtafqdn.unknown_kerberos_application", PI_PROTOCOL, PI_WARN, "Unknown Kerberos application", EXPFILL }},
     };
 
     expert_module_t* expert_pktc;
 
-    proto_register_field_array(proto_pktc, hf, array_length(hf));
+    proto_pktc_mtafqdn = proto_register_protocol("PacketCable MTA FQDN", "PKTC MTA FQDN", "pktc.mtafqdn");
+
+    proto_register_field_array(proto_pktc_mtafqdn, hf, array_length(hf));
     proto_register_subtree_array(ett, array_length(ett));
-    expert_pktc = expert_register_protocol(proto_pktc);
+    expert_pktc = expert_register_protocol(proto_pktc_mtafqdn);
     expert_register_field_array(expert_pktc, ei, array_length(ei));
 }
 
@@ -794,7 +811,7 @@ proto_reg_handoff_pktc_mtafqdn(void)
 {
     dissector_handle_t pktc_mtafqdn_handle;
 
-    pktc_mtafqdn_handle = create_dissector_handle(dissect_pktc_mtafqdn, proto_pktc);
+    pktc_mtafqdn_handle = create_dissector_handle(dissect_pktc_mtafqdn, proto_pktc_mtafqdn);
     dissector_add_uint("udp.port", PKTC_MTAFQDN_PORT, pktc_mtafqdn_handle);
 }
 

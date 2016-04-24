@@ -95,7 +95,7 @@ WSLUA_METAMETHOD FieldInfo__call(lua_State* L) {
 
     switch(fi->ws_fi->hfinfo->type) {
         case FT_BOOLEAN:
-                lua_pushboolean(L,(int)fvalue_get_uinteger(&(fi->ws_fi->value)));
+                lua_pushboolean(L,(int)fvalue_get_uinteger64(&(fi->ws_fi->value)));
                 return 1;
         case FT_UINT8:
         case FT_UINT16:
@@ -124,41 +124,31 @@ WSLUA_METAMETHOD FieldInfo__call(lua_State* L) {
             }
         case FT_ETHER: {
                 Address eth = (Address)g_malloc(sizeof(address));
-                eth->type = AT_ETHER;
-                eth->len = fi->ws_fi->length;
-                eth->data = tvb_memdup(NULL,fi->ws_fi->ds_tvb,fi->ws_fi->start,fi->ws_fi->length);
+                alloc_address_tvb(NULL,eth,AT_ETHER,fi->ws_fi->length,fi->ws_fi->ds_tvb,fi->ws_fi->start);
                 pushAddress(L,eth);
                 return 1;
             }
         case FT_IPv4:{
                 Address ipv4 = (Address)g_malloc(sizeof(address));
-                ipv4->type = AT_IPv4;
-                ipv4->len = fi->ws_fi->length;
-                ipv4->data = tvb_memdup(NULL,fi->ws_fi->ds_tvb,fi->ws_fi->start,fi->ws_fi->length);
+                alloc_address_tvb(NULL,ipv4,AT_IPv4,fi->ws_fi->length,fi->ws_fi->ds_tvb,fi->ws_fi->start);
                 pushAddress(L,ipv4);
                 return 1;
             }
         case FT_IPv6: {
                 Address ipv6 = (Address)g_malloc(sizeof(address));
-                ipv6->type = AT_IPv6;
-                ipv6->len = fi->ws_fi->length;
-                ipv6->data = tvb_memdup(NULL,fi->ws_fi->ds_tvb,fi->ws_fi->start,fi->ws_fi->length);
+                alloc_address_tvb(NULL,ipv6,AT_IPv6,fi->ws_fi->length,fi->ws_fi->ds_tvb,fi->ws_fi->start);
                 pushAddress(L,ipv6);
                 return 1;
             }
         case FT_FCWWN: {
                 Address fcwwn = (Address)g_malloc(sizeof(address));
-                fcwwn->type = AT_FCWWN;
-                fcwwn->len = fi->ws_fi->length;
-                fcwwn->data = tvb_memdup(NULL,fi->ws_fi->ds_tvb,fi->ws_fi->start,fi->ws_fi->length);
+                alloc_address_tvb(NULL,fcwwn,AT_FCWWN,fi->ws_fi->length,fi->ws_fi->ds_tvb,fi->ws_fi->start);
                 pushAddress(L,fcwwn);
                 return 1;
             }
         case FT_IPXNET:{
                 Address ipx = (Address)g_malloc(sizeof(address));
-                ipx->type = AT_IPX;
-                ipx->len = fi->ws_fi->length;
-                ipx->data = tvb_memdup(NULL,fi->ws_fi->ds_tvb,fi->ws_fi->start,fi->ws_fi->length);
+                alloc_address_tvb(NULL,ipx,AT_IPX,fi->ws_fi->length,fi->ws_fi->ds_tvb,fi->ws_fi->start);
                 pushAddress(L,ipx);
                 return 1;
             }
@@ -442,7 +432,7 @@ WSLUA_METAMETHOD FieldInfo__lt(lua_State* L) {
 }
 
 /* Gets registered as metamethod automatically by WSLUA_REGISTER_META */
-static int FieldInfo__gc(lua_State* L _U_) {
+static int FieldInfo__gc(lua_State* L) {
     FieldInfo fi = toFieldInfo(L,1);
 
     if (!fi) return 0;
@@ -551,6 +541,11 @@ void wslua_prime_dfilter(epan_dissect_t *edt) {
     }
 }
 
+/* Check if we have any registered field extractors. */
+gboolean wslua_has_field_extractors(void) {
+    return (wslua_dfilter && dfilter_has_interesting_fields(wslua_dfilter));
+}
+
 /*
  * field extractor registration is tricky, In order to allow
  * the user to define them in the body of the script we will
@@ -562,10 +557,10 @@ void wslua_prime_dfilter(epan_dissect_t *edt) {
  * after the fields are primed.
  */
 
+static gboolean fake_tap = FALSE;
 void lua_prime_all_fields(proto_tree* tree _U_) {
     GString* fake_tap_filter = g_string_new("frame");
     guint i;
-    static gboolean fake_tap = FALSE;
     gchar *err_msg;
 
     for(i=0; i < wanted_fields->len; i++) {
@@ -601,20 +596,12 @@ void lua_prime_all_fields(proto_tree* tree _U_) {
         if (error) {
             report_failure("while registering lua_fake_tap:\n%s",error->str);
             g_string_free(error,TRUE);
-        } else {
-            if (wslua_dfilter) {
-                dfilter_free(wslua_dfilter);
-                wslua_dfilter = NULL;
-            }
-            if (!dfilter_compile(fake_tap_filter->str, &wslua_dfilter, &err_msg)) {
-                report_failure("while compiling dfilter \"%s\" for wslua: %s", fake_tap_filter->str, err_msg);
-                g_free(err_msg);
-            }
+        } else if (!dfilter_compile(fake_tap_filter->str, &wslua_dfilter, &err_msg)) {
+            report_failure("while compiling dfilter \"%s\" for wslua: %s", fake_tap_filter->str, err_msg);
+            g_free(err_msg);
         }
-    } else if (fake_tap) {
-        remove_tap_listener(&fake_tap);
-        fake_tap = FALSE;
     }
+    g_string_free(fake_tap_filter, TRUE);
 }
 
 WSLUA_CONSTRUCTOR Field_new(lua_State *L) {
@@ -819,6 +806,20 @@ int Field_register(lua_State* L) {
     WSLUA_REGISTER_CLASS(Field);
     WSLUA_REGISTER_ATTRIBUTES(Field);
     outstanding_FieldInfo = g_ptr_array_new();
+
+    return 0;
+}
+
+int wslua_deregister_fields(lua_State* L _U_) {
+    if (wslua_dfilter) {
+        dfilter_free(wslua_dfilter);
+        wslua_dfilter = NULL;
+    }
+
+    if (fake_tap) {
+        remove_tap_listener(&fake_tap);
+        fake_tap = FALSE;
+    }
 
     return 0;
 }

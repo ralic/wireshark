@@ -1,4 +1,4 @@
-/* wireshark_dialog.cpp
+/* wireshark_dialog.h
  *
  * Wireshark - Network traffic analyzer
  * By Gerald Combs <gerald@wireshark.org>
@@ -39,10 +39,9 @@
 // TapDialog might make sense as well.
 
 #include "capture_file.h"
+#include "geometry_state_dialog.h"
 
-#include <QDialog>
-
-class WiresharkDialog : public QDialog
+class WiresharkDialog : public GeometryStateDialog
 {
     Q_OBJECT
 
@@ -72,7 +71,7 @@ public slots:
      * called explicilty if any member functions are called or variables are
      * accessed after tapping is finished.
      */
-    void endRetapPackets();
+    virtual void endRetapPackets();
 
 protected:
     virtual void keyPressEvent(QKeyEvent *event) { QDialog::keyPressEvent(event); }
@@ -123,6 +122,12 @@ protected:
     // XXX Needs a getter?
     bool file_closed_;
 
+    /**
+     * @brief Check to see if the user has closed (and not minimized) the dialog.
+     * @return true if the dialog has been closed, false otherwise.
+     */
+    bool dialogClosed() { return dialog_closed_; }
+
 protected slots:
     /**
      * @brief Called when the capture file is about to close. This can be
@@ -130,15 +135,17 @@ protected slots:
      * file_closed_.
      */
     virtual void captureFileClosing();
+    virtual void captureFileClosed();
 
 private:
     void setWindowTitleFromSubtitle();
+
     void tryDeleteLater();
 
     QString subtitle_;
     QList<void *> tap_listeners_;
     int retap_depth_;
-    int dialog_closed_;
+    bool dialog_closed_;
 
 private slots:
 };

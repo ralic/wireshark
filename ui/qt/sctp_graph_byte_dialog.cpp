@@ -72,7 +72,7 @@ void SCTPGraphByteDialog::drawBytesGraph()
     tsn_t *tsn;
     guint8 type;
     guint32 maxBytes;
-    long sumBytes = 0;
+    guint64 sumBytes = 0;
 
     if (direction == 1) {
         maxBytes = selected_assoc->n_data_bytes_ep1;
@@ -90,8 +90,12 @@ void SCTPGraphByteDialog::drawBytesGraph()
         while (tlist)
         {
             type = ((struct chunk_header *)tlist->data)->type;
-            if (type == SCTP_DATA_CHUNK_ID) {
+            if (type == SCTP_DATA_CHUNK_ID || type == SCTP_I_DATA_CHUNK_ID) {
                 length = g_ntohs(((struct data_chunk_header *)tlist->data)->length);
+                if (type == SCTP_DATA_CHUNK_ID)
+                    length -= DATA_CHUNK_HEADER_LENGTH;
+                else
+                    length -= I_DATA_CHUNK_HEADER_LENGTH;
                 sumBytes += length;
                 yb.append(sumBytes);
                 xb.append(tsn->secs + tsn->usecs/1000000.0);

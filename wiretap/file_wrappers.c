@@ -39,25 +39,18 @@
  *  3. This notice may not be removed or altered from any source distribution.
  */
 
-#include "config.h"
-
-#ifdef HAVE_UNISTD_H
-#include <unistd.h>
-#endif /* HAVE_UNISTD_H */
+#include <config.h>
 
 #include <errno.h>
-#include <stdio.h>
-#ifdef HAVE_FCNTL_H
-#include <fcntl.h>
-#endif /* HAVE_FCNTL_H */
 #include <string.h>
 #include "wtap-int.h"
 #include "file_wrappers.h"
 #include <wsutil/file_util.h>
 
-#ifdef HAVE_LIBZ
+#ifdef HAVE_ZLIB
+#define ZLIB_CONST
 #include <zlib.h>
-#endif /* HAVE_LIBZ */
+#endif /* HAVE_ZLIB */
 
 /*
  * See RFC 1952 for a description of the gzip file format.
@@ -75,30 +68,12 @@
  * might be expanded to include routines to handle the various
  * compression types.
  */
-static const char *compressed_file_extensions[] = {
-#ifdef HAVE_LIBZ
+const char *compressed_file_extension_table[] = {
+#ifdef HAVE_ZLIB
     "gz",
 #endif
     NULL
 };
-
-/*
- * Return a GSList of all the compressed file extensions.
- * The data pointers all point to items in compressed_file_extensions[],
- * so the GSList can just be freed with g_slist_free().
- */
-GSList *
-wtap_get_compressed_file_extensions(void)
-{
-    const char **extension;
-    GSList *extensions;
-
-    extensions = NULL;
-    for (extension = &compressed_file_extensions[0]; *extension != NULL;
-         extension++)
-        extensions = g_slist_append(extensions, (gpointer)(*extension));
-    return extensions;
-}
 
 /* #define GZBUFSIZE 8192 */
 #define GZBUFSIZE 4096
@@ -107,7 +82,7 @@ wtap_get_compressed_file_extensions(void)
 typedef enum {
     UNKNOWN,       /* unknown - look for a gzip header */
     UNCOMPRESSED,  /* uncompressed - copy input directly */
-#ifdef HAVE_LIBZ
+#ifdef HAVE_ZLIB
     ZLIB,          /* decompress a zlib stream */
     GZIP_AFTER_HEADER
 #endif
@@ -137,7 +112,7 @@ struct wtap_reader {
 
     guint avail_in;            /* number of bytes available at next_in */
     unsigned char *next_in;    /* next input byte */
-#ifdef HAVE_LIBZ
+#ifdef HAVE_ZLIB
     /* zlib inflate stream */
     z_stream strm;             /* stream structure in-place (not a pointer) */
     gboolean dont_check_crc;   /* TRUE if we aren't supposed to check the CRC */
@@ -154,7 +129,7 @@ raw_read(FILE_T state, unsigned char *buf, unsigned int count, guint *have)
 
     *have = 0;
     do {
-        ret = read(state->fd, buf + *have, count - *have);
+        ret = ws_read(state->fd, buf + *have, count - *have);
         if (ret <= 0)
             break;
         *have += (unsigned)ret;
@@ -257,9 +232,14 @@ fast_seek_header(FILE_T file, gint64 in_pos, gint64 out_pos,
 }
 
 static void
-fast_seek_reset(FILE_T state _U_)
+fast_seek_reset(
+#ifdef HAVE_ZLIB
+    FILE_T state)
+#else
+    FILE_T state _U_)
+#endif
 {
-#ifdef HAVE_LIBZ
+#ifdef HAVE_ZLIB
     if (state->compression == ZLIB && state->fast_seek_cur) {
         struct zlib_cur_seek_point *cur = (struct zlib_cur_seek_point *) state->fast_seek_cur;
 
@@ -268,7 +248,7 @@ fast_seek_reset(FILE_T state _U_)
 #endif
 }
 
-#ifdef HAVE_LIBZ
+#ifdef HAVE_ZLIB
 
 /* Get next byte from input, or -1 if end or error.
  *
@@ -481,7 +461,13 @@ zlib_read(FILE_T state, unsigned char *buf, unsigned int count)
         ret = inflate(strm, Z_NO_FLUSH);
 #endif
         state->avail_in = strm->avail_in;
+#ifdef z_const
+DIAG_OFF(cast-qual)
+        state->next_in = (unsigned char *)strm->next_in;
+DIAG_ON(cast-qual)
+#else
         state->next_in = strm->next_in;
+#endif
         if (ret == Z_STREAM_ERROR) {
             state->err = WTAP_ERR_DECOMPRESS;
             state->err_info = strm->msg;
@@ -586,7 +572,7 @@ gz_head(FILE_T state)
     }
 
     /* look for the gzip magic header bytes 31 and 139 */
-#ifdef HAVE_LIBZ
+#ifdef HAVE_ZLIB
     if (state->next_in[0] == 31) {
         state->avail_in--;
         state->next_in++;
@@ -719,7 +705,7 @@ fill_out_buffer(FILE_T state)
             return -1;
         state->next = state->out;
     }
-#ifdef HAVE_LIBZ
+#ifdef HAVE_ZLIB
     else if (state->compression == ZLIB) {      /* decompress */
         zlib_read(state, state->out, state->size << 1);
     }
@@ -838,7 +824,7 @@ file_fdopen(int fd)
         return NULL;
     }
 
-#ifdef HAVE_LIBZ
+#ifdef HAVE_ZLIB
     /* allocate inflate memory */
     state->strm.zalloc = Z_NULL;
     state->strm.zfree = Z_NULL;
@@ -865,7 +851,7 @@ file_open(const char *path)
 {
     int fd;
     FILE_T ft;
-#ifdef HAVE_LIBZ
+#ifdef HAVE_ZLIB
     const char *suffixp;
 #endif
 
@@ -888,7 +874,7 @@ file_open(const char *path)
         return NULL;
     }
 
-#ifdef HAVE_LIBZ
+#ifdef HAVE_ZLIB
     /*
      * If this file's name ends in ".caz", it's probably a compressed
      * Windows Sniffer file.  The compression is gzip, but if we
@@ -1004,7 +990,7 @@ file_seek(FILE_T file, gint64 offset, int whence, int *err)
          * has been called on this file, which should never be the case
          * for a pipe.
          */
-#ifdef HAVE_LIBZ
+#ifdef HAVE_ZLIB
         if (here->compression == ZLIB) {
 #ifdef HAVE_INFLATEPRIME
             off = here->in - (here->data.zlib.bits ? 1 : 0);
@@ -1036,7 +1022,7 @@ file_seek(FILE_T file, gint64 offset, int whence, int *err)
         file->err_info = NULL;
         file->avail_in = 0;
 
-#ifdef HAVE_LIBZ
+#ifdef HAVE_ZLIB
         if (here->compression == ZLIB) {
             z_stream *strm = &file->strm;
 
@@ -1457,7 +1443,7 @@ file_close(FILE_T file)
 
     /* free memory and close file */
     if (file->size) {
-#ifdef HAVE_LIBZ
+#ifdef HAVE_ZLIB
         inflateEnd(&(file->strm));
 #endif
         g_free(file->out);
@@ -1476,7 +1462,7 @@ file_close(FILE_T file)
         ws_close(fd);
 }
 
-#ifdef HAVE_LIBZ
+#ifdef HAVE_ZLIB
 /* internal gzip file state data structure for writing */
 struct wtap_writer {
     int fd;                 /* file descriptor */
@@ -1506,7 +1492,7 @@ gzwfile_open(const char *path)
     state = gzwfile_fdopen(fd);
     if (state == NULL) {
         save_errno = errno;
-        close(fd);
+        ws_close(fd);
         errno = save_errno;
     }
     return state;
@@ -1611,7 +1597,7 @@ gz_comp(GZWFILE_T state, int flush)
                                      (flush != Z_FINISH || ret == Z_STREAM_END))) {
             have = strm->next_out - state->next;
             if (have) {
-                got = write(state->fd, state->next, (unsigned int)have);
+                got = ws_write(state->fd, state->next, (unsigned int)have);
                 if (got < 0) {
                     state->err = errno;
                     return -1;
@@ -1680,7 +1666,13 @@ gzwfile_write(GZWFILE_T state, const void *buf, guint len)
             n = state->size - strm->avail_in;
             if (n > len)
                 n = len;
+#ifdef z_const
+DIAG_OFF(cast-qual)
+            memcpy((Bytef *)strm->next_in + strm->avail_in, buf, n);
+DIAG_ON(cast-qual)
+#else
             memcpy(strm->next_in + strm->avail_in, buf, n);
+#endif
             strm->avail_in += n;
             state->pos += n;
             buf = (const char *)buf + n;
@@ -1696,10 +1688,12 @@ gzwfile_write(GZWFILE_T state, const void *buf, guint len)
 
         /* directly compress user buffer to file */
         strm->avail_in = len;
-#if ZLIB_CONST
+#ifdef z_const
         strm->next_in = (z_const Bytef *)buf;
 #else
+DIAG_OFF(cast-qual)
         strm->next_in = (Bytef *)buf;
+DIAG_ON(cast-qual)
 #endif
         state->pos += len;
         if (gz_comp(state, Z_NO_FLUSH) == -1)
@@ -1727,9 +1721,15 @@ gzwfile_flush(GZWFILE_T state)
 }
 
 /* Flush out all data written, and close the file.  Returns a Wiretap
-   error on failure; returns 0 on success. */
+   error on failure; returns 0 on success.
+
+   If is_stdout is true, do all of that except for closing the file
+   descriptor, as we don't want to close the standard output file
+   descriptor out from under the program (even though, if the program
+   is writing a capture file to the standard output, it shouldn't be
+   doing anything *else* on the standard output). */
 int
-gzwfile_close(GZWFILE_T state)
+gzwfile_close(GZWFILE_T state, gboolean is_stdout)
 {
     int ret = 0;
 
@@ -1740,8 +1740,10 @@ gzwfile_close(GZWFILE_T state)
     g_free(state->out);
     g_free(state->in);
     state->err = Z_OK;
-    if (close(state->fd) == -1 && ret == 0)
-        ret = errno;
+    if (!is_stdout) {
+        if (ws_close(state->fd) == -1 && ret == 0)
+            ret = errno;
+    }
     g_free(state);
     return ret;
 }

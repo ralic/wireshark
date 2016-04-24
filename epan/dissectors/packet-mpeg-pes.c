@@ -1,11 +1,11 @@
 /* Do not modify this file. Changes will be overwritten.                      */
 /* Generated automatically by the ASN.1 to Wireshark dissector compiler       */
 /* packet-mpeg-pes.c                                                          */
-/* ../../tools/asn2wrs.py -p mpeg-pes -c ./mpeg-pes.cnf -s ./packet-mpeg-pes-template -D . -O ../../epan/dissectors mpeg-pes.asn */
+/* asn2wrs.py -p mpeg-pes -c ./mpeg-pes.cnf -s ./packet-mpeg-pes-template -D . -O ../.. mpeg-pes.asn */
 
 /* Input file: packet-mpeg-pes-template.c */
 
-#line 1 "../../asn1/mpeg-pes/packet-mpeg-pes-template.c"
+#line 1 "./asn1/mpeg-pes/packet-mpeg-pes-template.c"
 /* MPEG Packetized Elementary Stream (PES) packet decoder.
  * Written by Shaun Jackman <sjackman@gmail.com>.
  * Copyright 2007 Shaun Jackman
@@ -39,7 +39,7 @@
 
 
 /*--- Included file: packet-mpeg-pes-hf.c ---*/
-#line 1 "../../asn1/mpeg-pes/packet-mpeg-pes-hf.c"
+#line 1 "./asn1/mpeg-pes/packet-mpeg-pes-hf.c"
 static int hf_mpeg_pes_prefix = -1;               /* OCTET_STRING_SIZE_3 */
 static int hf_mpeg_pes_stream = -1;               /* T_stream */
 static int hf_mpeg_pes_length = -1;               /* INTEGER_0_65535 */
@@ -92,10 +92,10 @@ static int hf_mpeg_pes_frame_type = -1;           /* T_frame_type */
 static int hf_mpeg_pes_vbv_delay = -1;            /* BIT_STRING_SIZE_16 */
 
 /*--- End of included file: packet-mpeg-pes-hf.c ---*/
-#line 33 "../../asn1/mpeg-pes/packet-mpeg-pes-template.c"
+#line 33 "./asn1/mpeg-pes/packet-mpeg-pes-template.c"
 
 /*--- Included file: packet-mpeg-pes-ett.c ---*/
-#line 1 "../../asn1/mpeg-pes/packet-mpeg-pes-ett.c"
+#line 1 "./asn1/mpeg-pes/packet-mpeg-pes-ett.c"
 static gint ett_mpeg_pes_PES = -1;
 static gint ett_mpeg_pes_Stream = -1;
 static gint ett_mpeg_pes_Sequence_header = -1;
@@ -104,10 +104,10 @@ static gint ett_mpeg_pes_Group_of_pictures = -1;
 static gint ett_mpeg_pes_Picture = -1;
 
 /*--- End of included file: packet-mpeg-pes-ett.c ---*/
-#line 34 "../../asn1/mpeg-pes/packet-mpeg-pes-template.c"
+#line 34 "./asn1/mpeg-pes/packet-mpeg-pes-template.c"
 
 /*--- Included file: packet-mpeg-pes-fn.c ---*/
-#line 1 "../../asn1/mpeg-pes/packet-mpeg-pes-fn.c"
+#line 1 "./asn1/mpeg-pes/packet-mpeg-pes-fn.c"
 
 
 static int
@@ -472,7 +472,7 @@ dissect_mpeg_pes_Picture(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_
 
 
 /*--- End of included file: packet-mpeg-pes-fn.c ---*/
-#line 35 "../../asn1/mpeg-pes/packet-mpeg-pes-template.c"
+#line 35 "./asn1/mpeg-pes/packet-mpeg-pes-template.c"
 
 void proto_register_mpeg_pes(void);
 void proto_reg_handoff_mpeg_pes(void);
@@ -805,8 +805,8 @@ dissect_mpeg_pes_pack_header(tvbuff_t *tvb, gint offset,
 	return offset;
 }
 
-static void
-dissect_mpeg(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree);
+static int
+dissect_mpeg(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data);
 
 static gboolean
 dissect_mpeg_pes(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data _U_)
@@ -815,7 +815,6 @@ dissect_mpeg_pes(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data
 	int stream;
 	asn1_ctx_t asn1_ctx;
 	gint offset = 0;
-	const char *s;
 
 	if (!tvb_bytes_exist(tvb, 0, 3))
 		return FALSE;	/* not enough bytes for a PES prefix */
@@ -827,9 +826,7 @@ dissect_mpeg_pes(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data
 	col_clear(pinfo->cinfo, COL_INFO);
 
 	stream = tvb_get_guint8(tvb, 3);
-	s = try_val_to_str(stream, mpeg_pes_T_stream_vals);
-	if (s != NULL)
-		col_set_str(pinfo->cinfo, COL_INFO, s);
+	col_add_fstr(pinfo->cinfo, COL_INFO, "%s ", val_to_str(stream, mpeg_pes_T_stream_vals, "Unknown stream: %d"));
 
 #if 0
 	if (tree == NULL)
@@ -843,9 +840,7 @@ dissect_mpeg_pes(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data
 		int frame_type;
 
 		frame_type = tvb_get_guint8(tvb, 5) >> 3 & 0x07;
-		s = try_val_to_str(frame_type, mpeg_pes_T_frame_type_vals);
-		if (s != NULL)
-			col_set_str(pinfo->cinfo, COL_INFO, s);
+		col_add_fstr(pinfo->cinfo, COL_INFO, "%s ", val_to_str(frame_type, mpeg_pes_T_frame_type_vals, "Unknown frame type: %d"));
 
 		offset = dissect_mpeg_pes_Picture(tvb, offset, &asn1_ctx,
 				tree, hf_mpeg_video_picture);
@@ -945,7 +940,7 @@ dissect_mpeg_pes(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data
 			if (tvb_get_ntoh24(es, 0) == PES_PREFIX)
 				dissect_mpeg_pes(es, pinfo, tree, NULL);
 			else if (tvb_get_guint8(es, 0) == 0xff)
-				dissect_mpeg(es, pinfo, tree);
+				dissect_mpeg(es, pinfo, tree, data);
 			else
 				proto_tree_add_item(tree, hf_mpeg_pes_data, es,
 						0, -1, ENC_NA);
@@ -967,17 +962,18 @@ dissect_mpeg_pes(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data
 
 static heur_dissector_list_t heur_subdissector_list;
 
-static void
-dissect_mpeg(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
+static int
+dissect_mpeg(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data _U_)
 {
     heur_dtbl_entry_t *hdtbl_entry;
 
     if (!dissector_try_heuristic(heur_subdissector_list, tvb, pinfo, tree, &hdtbl_entry, NULL)) {
-	col_set_str(pinfo->cinfo, COL_PROTOCOL, "MPEG");
-	col_clear(pinfo->cinfo, COL_INFO);
-	if (tree)
+	    col_set_str(pinfo->cinfo, COL_PROTOCOL, "MPEG");
+	    col_clear(pinfo->cinfo, COL_INFO);
+
 	    proto_tree_add_item(tree, proto_mpeg, tvb, 0, -1, ENC_NA);
     }
+	return tvb_captured_length(tvb);
 }
 
 void
@@ -986,7 +982,7 @@ proto_register_mpeg_pes(void)
 	static hf_register_info hf[] = {
 
 /*--- Included file: packet-mpeg-pes-hfarr.c ---*/
-#line 1 "../../asn1/mpeg-pes/packet-mpeg-pes-hfarr.c"
+#line 1 "./asn1/mpeg-pes/packet-mpeg-pes-hfarr.c"
     { &hf_mpeg_pes_prefix,
       { "prefix", "mpeg-pes.prefix",
         FT_BYTES, BASE_NONE, NULL, 0,
@@ -1189,7 +1185,7 @@ proto_register_mpeg_pes(void)
         "BIT_STRING_SIZE_16", HFILL }},
 
 /*--- End of included file: packet-mpeg-pes-hfarr.c ---*/
-#line 547 "../../asn1/mpeg-pes/packet-mpeg-pes-template.c"
+#line 543 "./asn1/mpeg-pes/packet-mpeg-pes-template.c"
 		{ &hf_mpeg_pes_pack_header,
 			{ "Pack header", "mpeg-pes.pack",
 				FT_NONE, BASE_NONE, NULL, 0, NULL, HFILL }},
@@ -1239,7 +1235,7 @@ proto_register_mpeg_pes(void)
 				FT_UINT8, BASE_HEX, VALS(mpeg_pes_TrickModeIntraSliceRefresh_vals), 0,
 				"mpeg_pes trick mode intra slice refresh", HFILL }},
 		{ &hf_mpeg_pes_dsm_trick_mode_frequency_truncation,
-			{ "frequency truncation", "mpeg-pes.trick-mode-frequeny-truncation",
+			{ "frequency truncation", "mpeg-pes.trick-mode-frequency-truncation",
 				FT_UINT8, BASE_HEX, VALS(mpeg_pes_TrickModeFrequencyTruncation_vals), 0,
 				"mpeg_pes trick mode frequency truncation", HFILL }},
 		{ &hf_mpeg_pes_dsm_trick_mode_rep_cntrl,
@@ -1298,7 +1294,7 @@ proto_register_mpeg_pes(void)
 	static gint *ett[] = {
 
 /*--- Included file: packet-mpeg-pes-ettarr.c ---*/
-#line 1 "../../asn1/mpeg-pes/packet-mpeg-pes-ettarr.c"
+#line 1 "./asn1/mpeg-pes/packet-mpeg-pes-ettarr.c"
     &ett_mpeg_pes_PES,
     &ett_mpeg_pes_Stream,
     &ett_mpeg_pes_Sequence_header,
@@ -1307,7 +1303,7 @@ proto_register_mpeg_pes(void)
     &ett_mpeg_pes_Picture,
 
 /*--- End of included file: packet-mpeg-pes-ettarr.c ---*/
-#line 654 "../../asn1/mpeg-pes/packet-mpeg-pes-template.c"
+#line 650 "./asn1/mpeg-pes/packet-mpeg-pes-template.c"
 		&ett_mpeg_pes_pack_header,
 		&ett_mpeg_pes_header_data,
 		&ett_mpeg_pes_trick_mode
@@ -1316,13 +1312,13 @@ proto_register_mpeg_pes(void)
 	proto_mpeg = proto_register_protocol(
 			"Moving Picture Experts Group", "MPEG", "mpeg");
 	register_dissector("mpeg", dissect_mpeg, proto_mpeg);
-	heur_subdissector_list = register_heur_dissector_list("mpeg");
+	heur_subdissector_list = register_heur_dissector_list("mpeg", proto_mpeg);
 
 	proto_mpeg_pes = proto_register_protocol(
 			"Packetized Elementary Stream", "MPEG PES", "mpeg-pes");
 	proto_register_field_array(proto_mpeg_pes, hf, array_length(hf));
 	proto_register_subtree_array(ett, array_length(ett));
-	new_register_dissector("mpeg-pes", dissect_mpeg_pes, proto_mpeg_pes);
+	register_dissector("mpeg-pes", dissect_mpeg_pes, proto_mpeg_pes);
 }
 
 void

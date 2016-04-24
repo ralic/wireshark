@@ -107,7 +107,6 @@ static dissector_handle_t ib_link_handle;
 
 /* Subdissectors Declarations */
 static dissector_handle_t ipv6_handle;
-static dissector_handle_t data_handle;
 static dissector_handle_t eth_handle;
 static dissector_table_t ethertype_dissector_table;
 
@@ -134,11 +133,7 @@ typedef enum {
 
 /* Forward-declarations */
 
-static void dissect_roce(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree);
-static void dissect_rroce(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree);
-static void dissect_infiniband(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree);
 static void dissect_infiniband_common(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, ib_packet_start_header starts_with);
-static void dissect_infiniband_link(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree);
 static gint32 find_next_header_sequence(struct infinibandinfo* ibInfo);
 static gboolean contains(guint32 value, guint32* arr, int length);
 static void dissect_general_info(tvbuff_t *tvb, gint offset, packet_info *pinfo, ib_packet_start_header starts_with);
@@ -1497,27 +1492,30 @@ static void table_destroy_notify(gpointer data) {
 /* Helper dissector for correctly dissecting RRoCE packets (encapsulated within an IP */
 /* frame). The only difference from regular IB packets is that RRoCE packets do not contain */
 /* a LRH, and always start with a BTH.                                                      */
-static void
-dissect_rroce(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
+static int
+dissect_rroce(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data _U_)
 {
     /* this is a RRoCE packet, so signal the IB dissector not to look for LRH/GRH */
     dissect_infiniband_common(tvb, pinfo, tree, IB_PACKET_STARTS_WITH_BTH);
+    return tvb_captured_length(tvb);
 }
 
 /* Helper dissector for correctly dissecting RoCE packets (encapsulated within an Ethernet */
 /* frame). The only difference from regular IB packets is that RoCE packets do not contain */
 /* a LRH, and always start with a GRH.                                                      */
-static void
-dissect_roce(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
+static int
+dissect_roce(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data _U_)
 {
     /* this is a RoCE packet, so signal the IB dissector not to look for LRH */
     dissect_infiniband_common(tvb, pinfo, tree, IB_PACKET_STARTS_WITH_GRH);
+    return tvb_captured_length(tvb);
 }
 
-static void
-dissect_infiniband(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
+static int
+dissect_infiniband(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data _U_)
 {
     dissect_infiniband_common(tvb, pinfo, tree, IB_PACKET_STARTS_WITH_LRH);
+    return tvb_captured_length(tvb);
 }
 
 /* Common Dissector for both InfiniBand and RoCE packets
@@ -1626,7 +1624,7 @@ dissect_infiniband_common(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, i
     /* Set destination in packet view. */
     dst_addr = wmem_alloc(pinfo->pool, sizeof(guint16));
     *((guint16*) dst_addr) = tvb_get_ntohs(tvb, offset);
-    SET_ADDRESS(&pinfo->dst, AT_IB, sizeof(guint16), dst_addr);
+    set_address(&pinfo->dst, AT_IB, sizeof(guint16), dst_addr);
 
     offset += 2;
 
@@ -1643,7 +1641,7 @@ dissect_infiniband_common(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, i
     /* Set Source in packet view. */
     src_addr = wmem_alloc(pinfo->pool, sizeof(guint16));
     *((guint16*) src_addr) = tvb_get_ntohs(tvb, offset);
-    SET_ADDRESS(&pinfo->src, AT_IB, sizeof(guint16), src_addr);
+    set_address(&pinfo->src, AT_IB, sizeof(guint16), src_addr);
 
     offset += 2;
     packetLength -= 8; /* Shave 8 bytes for the LRH. */
@@ -1674,12 +1672,12 @@ skip_lrh:
             proto_tree_add_item(global_route_header_tree, hf_infiniband_source_gid,         tvb, offset, 16, ENC_NA);
 
             /* set source GID in packet view*/
-            TVB_SET_ADDRESS(&pinfo->src, AT_IB, tvb, offset, GID_SIZE);
+            set_address_tvb(&pinfo->src, AT_IB, GID_SIZE, tvb, offset);
             offset += 16;
 
             proto_tree_add_item(global_route_header_tree, hf_infiniband_destination_gid,    tvb, offset, 16, ENC_NA);
             /* set destination GID in packet view*/
-            TVB_SET_ADDRESS(&pinfo->dst, AT_IB, tvb, offset, GID_SIZE);
+            set_address_tvb(&pinfo->dst, AT_IB, GID_SIZE, tvb, offset);
 
             offset += 16;
             packetLength -= 40; /* Shave 40 bytes for GRH */
@@ -1743,7 +1741,7 @@ skip_lrh:
         case IP_NON_IBA:
             /* Raw IPv6 Packet */
             dst_addr = wmem_strdup(pinfo->pool, "IPv6 over IB Packet");
-            SET_ADDRESS(&pinfo->dst,  AT_STRINGZ, (int)strlen((char *)dst_addr)+1, dst_addr);
+            set_address(&pinfo->dst,  AT_STRINGZ, (int)strlen((char *)dst_addr)+1, dst_addr);
 
             parse_IPvSix(all_headers_tree, tvb, &offset, pinfo);
             break;
@@ -1996,8 +1994,8 @@ skip_lrh:
 
 }
 
-static void
-dissect_infiniband_link(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
+static int
+dissect_infiniband_link(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data _U_)
 {
     /* Top Level Item */
     proto_item *infiniband_link_packet;
@@ -2031,7 +2029,7 @@ dissect_infiniband_link(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
 
     if (operand > 1) {
         proto_item_set_text(operand_item, "%s", "Reserved");
-        call_dissector(data_handle, tvb, pinfo, link_tree);
+        call_data_dissector(tvb, pinfo, link_tree);
     } else {
         proto_tree_add_item(link_tree, hf_infiniband_link_fctbs, tvb, offset, 2, ENC_BIG_ENDIAN);
         offset += 2;
@@ -2043,6 +2041,7 @@ dissect_infiniband_link(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
         proto_tree_add_item(link_tree, hf_infiniband_link_lpcrc, tvb, offset, 2, ENC_BIG_ENDIAN);
     }
 
+    return tvb_captured_length(tvb);
 }
 
 
@@ -2348,7 +2347,7 @@ static void parse_PAYLOAD(proto_tree *parentTree,
     /* Payload - Packet Payload */
     guint8              management_class;
     tvbuff_t *volatile  next_tvb;
-    gint                captured_length, reported_length;
+    gint                reported_length;
     guint16             etype, reserved;
     const char         *saved_proto;
     volatile gboolean   dissector_found = FALSE;
@@ -2455,13 +2454,7 @@ static void parse_PAYLOAD(proto_tree *parentTree,
          * call the appropriate dissector. If not we call the "data" dissector.
          */
         if (!dissector_found && pref_identify_iba_payload && (reserved == 0)) {
-
-            /* Get the captured length and reported length of the data
-               after the Ethernet type. */
-            captured_length = tvb_captured_length_remaining(tvb, local_offset+4);
-            reported_length = tvb_reported_length_remaining(tvb, local_offset+4);
-
-            next_tvb = tvb_new_subset(tvb, local_offset+4, captured_length, reported_length);
+            next_tvb = tvb_new_subset_remaining(tvb, local_offset+4);
 
             /* Look for sub-dissector, and call it if found.
                Catch exceptions, so that if the reported length of "next_tvb"
@@ -2511,18 +2504,12 @@ static void parse_PAYLOAD(proto_tree *parentTree,
 
         }
 
-        captured_length = tvb_captured_length_remaining(tvb, local_offset);
         reported_length = tvb_reported_length_remaining(tvb,
                                 local_offset);
 
         if (reported_length >= crclen)
             reported_length -= crclen;
-        if (captured_length > reported_length)
-            captured_length = reported_length;
-
-        next_tvb = tvb_new_subset(tvb, local_offset,
-                      captured_length,
-                      reported_length);
+        next_tvb = tvb_new_subset_length(tvb, local_offset, reported_length);
 
         /* Try any heuristic dissectors that requested a chance to try and dissect IB payloads */
         if (!dissector_found) {
@@ -2532,7 +2519,7 @@ static void parse_PAYLOAD(proto_tree *parentTree,
         if (!dissector_found) {
             /* No sub-dissector found.
                Label rest of packet as "Data" */
-            call_dissector(data_handle, next_tvb, pinfo, top_tree);
+            call_data_dissector(next_tvb, pinfo, top_tree);
 
         }
 
@@ -2573,8 +2560,7 @@ static void parse_IPvSix(proto_tree *parentTree, tvbuff_t *tvb, gint *offset, pa
     tvbuff_t *ipv6_tvb;
 
     /* (- 2) for VCRC which lives at the end of the packet   */
-    ipv6_tvb = tvb_new_subset(tvb, *offset,
-                  tvb_captured_length_remaining(tvb, *offset) - 2,
+    ipv6_tvb = tvb_new_subset_length(tvb, *offset,
                   tvb_reported_length_remaining(tvb, *offset) - 2);
     call_dissector(ipv6_handle, ipv6_tvb, pinfo, parentTree);
     *offset = tvb_reported_length(tvb) - 2;
@@ -2624,14 +2610,12 @@ static void parse_RWH(proto_tree *ah_tree, tvbuff_t *tvb, gint *offset, packet_i
     if ((captured_length >= 0) && (reported_length >= 0)) {
         if (reported_length >= 2)
             reported_length -= 2;
-        if (captured_length > reported_length)
-            captured_length = reported_length;
     }
 
-    next_tvb = tvb_new_subset(tvb, *offset, captured_length, reported_length);
+    next_tvb = tvb_new_subset_length(tvb, *offset, reported_length);
     if (!dissector_try_uint(ethertype_dissector_table, ether_type,
             next_tvb, pinfo, top_tree))
-       call_dissector(data_handle, next_tvb, pinfo, top_tree);
+       call_data_dissector(next_tvb, pinfo, top_tree);
 
     *offset = tvb_reported_length(tvb) - 2;
     /* Display the VCRC */
@@ -2660,7 +2644,7 @@ static gboolean parse_EoIB(proto_tree *tree, tvbuff_t *tvb, gint offset, packet_
         return FALSE;
     }
 
-    encap_tvb = tvb_new_subset(tvb, offset + 4, tvb_captured_length_remaining(tvb, offset + 4), encap_size - 4);
+    encap_tvb = tvb_new_subset_length(tvb, offset + 4, encap_size - 4);
 
     header_item = proto_tree_add_item(tree, hf_infiniband_EOIB, tvb, offset, 4, ENC_NA);
     header_subtree = proto_item_add_subtree(header_item, ett_eoib);
@@ -2679,7 +2663,7 @@ static gboolean parse_EoIB(proto_tree *tree, tvbuff_t *tvb, gint offset, packet_
 
     if (seg_offset || ms) {
         /* this is a fragment of an encapsulated Ethernet jumbo frame, parse as data */
-        call_dissector(data_handle, encap_tvb, pinfo, top_tree);
+        call_data_dissector(encap_tvb, pinfo, top_tree);
     } else {
         /* non-fragmented frames can be fully parsed */
         call_dissector(eth_handle, encap_tvb, pinfo, top_tree);
@@ -3037,13 +3021,13 @@ static void parse_COM_MGT(proto_tree *parentTree, packet_info *pinfo, tvbuff_t *
                 proto_data = wmem_new(wmem_file_scope(), conversation_infiniband_data);
                 proto_data->service_id = connection->service_id;
 
-                conv = conversation_new(pinfo->fd->num, &pinfo->src, &pinfo->dst,
+                conv = conversation_new(pinfo->num, &pinfo->src, &pinfo->dst,
                                         PT_IBQP, pinfo->srcport, pinfo->destport, 0);
                 conversation_add_proto_data(conv, proto_infiniband, proto_data);
             }
 
             /* give a chance for subdissectors to analyze the private data */
-            next_tvb = tvb_new_subset(tvb, local_offset, 92, -1);
+            next_tvb = tvb_new_subset_length(tvb, local_offset, 92);
             if (! dissector_try_heuristic(heur_dissectors_cm_private, next_tvb, pinfo, parentTree, &hdtbl_entry, NULL) )
                 /* if none reported success, add this as raw "data" */
                 proto_tree_add_item(CM_header_tree, hf_cm_req_private_data, tvb, local_offset, 92, ENC_NA);
@@ -3106,24 +3090,24 @@ static void parse_COM_MGT(proto_tree *parentTree, packet_info *pinfo, tvbuff_t *
                        each side of the Reliable Connection. */
 
                     /* first register the conversation using the GIDs */
-                    SET_ADDRESS(&req_addr, AT_IB, GID_SIZE, connection->req_gid);
-                    SET_ADDRESS(&resp_addr, AT_IB, GID_SIZE, connection->resp_gid);
+                    set_address(&req_addr, AT_IB, GID_SIZE, connection->req_gid);
+                    set_address(&resp_addr, AT_IB, GID_SIZE, connection->resp_gid);
 
-                    conv = conversation_new(pinfo->fd->num, &req_addr, &req_addr,
+                    conv = conversation_new(pinfo->num, &req_addr, &req_addr,
                                             PT_IBQP, connection->req_qp, connection->req_qp, NO_ADDR2|NO_PORT2);
                     conversation_add_proto_data(conv, proto_infiniband, proto_data);
-                    conv = conversation_new(pinfo->fd->num, &resp_addr, &resp_addr,
+                    conv = conversation_new(pinfo->num, &resp_addr, &resp_addr,
                                             PT_IBQP, connection->resp_qp, connection->resp_qp, NO_ADDR2|NO_PORT2);
                     conversation_add_proto_data(conv, proto_infiniband, proto_data);
 
                     /* next, register the conversation using the LIDs */
-                    SET_ADDRESS(&req_addr, AT_IB, sizeof(guint16), &(connection->req_lid));
-                    SET_ADDRESS(&resp_addr, AT_IB, sizeof(guint16), &(connection->resp_lid));
+                    set_address(&req_addr, AT_IB, sizeof(guint16), &(connection->req_lid));
+                    set_address(&resp_addr, AT_IB, sizeof(guint16), &(connection->resp_lid));
 
-                    conv = conversation_new(pinfo->fd->num, &req_addr, &req_addr,
+                    conv = conversation_new(pinfo->num, &req_addr, &req_addr,
                                             PT_IBQP, connection->req_qp, connection->req_qp, NO_ADDR2|NO_PORT2);
                     conversation_add_proto_data(conv, proto_infiniband, proto_data);
-                    conv = conversation_new(pinfo->fd->num, &resp_addr, &resp_addr,
+                    conv = conversation_new(pinfo->num, &resp_addr, &resp_addr,
                                             PT_IBQP, connection->resp_qp, connection->resp_qp, NO_ADDR2|NO_PORT2);
                     conversation_add_proto_data(conv, proto_infiniband, proto_data);
 
@@ -3132,7 +3116,7 @@ static void parse_COM_MGT(proto_tree *parentTree, packet_info *pinfo, tvbuff_t *
             }
 
             /* give a chance for subdissectors to get the private data */
-            next_tvb = tvb_new_subset(tvb, local_offset, 196, -1);
+            next_tvb = tvb_new_subset_length(tvb, local_offset, 196);
             if (! dissector_try_heuristic(heur_dissectors_cm_private, next_tvb, pinfo, parentTree, &hdtbl_entry, NULL) )
                 /* if none reported success, add this as raw "data" */
                 proto_tree_add_item(CM_header_tree, hf_cm_rep_privatedata, tvb, local_offset, 196, ENC_NA);
@@ -4946,14 +4930,14 @@ static void dissect_general_info(tvbuff_t *tvb, gint offset, packet_info *pinfo,
     /* Set destination in packet view. */
     dst_addr = wmem_alloc(pinfo->pool, sizeof(guint16));
     *((guint16*) dst_addr) = tvb_get_ntohs(tvb, offset);
-    SET_ADDRESS(&pinfo->dst, AT_IB, sizeof(guint16), dst_addr);
+    set_address(&pinfo->dst, AT_IB, sizeof(guint16), dst_addr);
 
     offset += 4;
 
     /* Set Source in packet view. */
     src_addr = wmem_alloc(pinfo->pool, sizeof(guint16));
     *((guint16*) src_addr) = tvb_get_ntohs(tvb, offset);
-    SET_ADDRESS(&pinfo->src, AT_IB, sizeof(guint16), src_addr);
+    set_address(&pinfo->src, AT_IB, sizeof(guint16), src_addr);
 
     offset += 2;
 
@@ -4967,11 +4951,11 @@ skip_lrh:
             offset += 2;
 
             /* Set source GID in packet view. */
-            TVB_SET_ADDRESS(&pinfo->src, AT_IB, tvb, offset, GID_SIZE);
+            set_address_tvb(&pinfo->src, AT_IB, GID_SIZE, tvb, offset);
             offset += 16;
 
             /* Set destination GID in packet view. */
-            TVB_SET_ADDRESS(&pinfo->dst, AT_IB, tvb, offset, GID_SIZE);
+            set_address_tvb(&pinfo->dst, AT_IB, GID_SIZE, tvb, offset);
             offset += 16;
 
             if (nxtHdr != 0x1B)
@@ -4999,7 +4983,7 @@ skip_lrh:
         case IP_NON_IBA:
             /* Raw IPv6 Packet */
             dst_addr = wmem_strdup(pinfo->pool, "IPv6 over IB Packet");
-            SET_ADDRESS(&pinfo->dst,  AT_STRINGZ, (int)strlen((char *)dst_addr)+1, dst_addr);
+            set_address(&pinfo->dst,  AT_STRINGZ, (int)strlen((char *)dst_addr)+1, dst_addr);
             break;
         case RAW:
             break;
@@ -6855,7 +6839,7 @@ void proto_register_infiniband(void)
         },
         { &hf_infiniband_MCMemberRecord_JoinState, {
                 "JoinState", "infiniband.mcmemberrecord.joinstate",
-                FT_UINT8, BASE_HEX, NULL, 0xF0, NULL, HFILL}
+                FT_UINT8, BASE_HEX, NULL, 0x0F, NULL, HFILL}
         },
         { &hf_infiniband_MCMemberRecord_ProxyJoin, {
                 "ProxyJoin", "infiniband.mcmemberrecord.proxyjoin",
@@ -7416,8 +7400,8 @@ void proto_register_infiniband(void)
     proto_register_subtree_array(ett, array_length(ett));
 
     /* register the subdissector tables */
-    heur_dissectors_payload = register_heur_dissector_list("infiniband.payload");
-    heur_dissectors_cm_private = register_heur_dissector_list("infiniband.mad.cm.private");
+    heur_dissectors_payload = register_heur_dissector_list("infiniband.payload", proto_infiniband);
+    heur_dissectors_cm_private = register_heur_dissector_list("infiniband.mad.cm.private", proto_infiniband);
 
     /* register dissection preferences */
     infiniband_module = prefs_register_protocol(proto_infiniband, proto_reg_handoff_infiniband);
@@ -7454,9 +7438,26 @@ void proto_reg_handoff_infiniband(void)
     static guint prev_rroce_udp_port;
     dissector_handle_t roce_handle, rroce_handle;
 
-    ipv6_handle               = find_dissector("ipv6");
-    data_handle               = find_dissector("data");
-    eth_handle                = find_dissector("eth");
+    ipv6_handle               = find_dissector_add_dependency("ipv6", proto_infiniband);
+
+    /*
+     * I haven't found an official spec for EoIB, but slide 10
+     * of
+     *
+     *    http://downloads.openfabrics.org/Media/Sonoma2009/Sonoma_2009_Tues_converged-net-bridging.pdf
+     *
+     * shows the "Eth Payload" following the "Eth Header" and optional
+     * "Vlan tag", and doesn't show an FCS; "Payload" generally
+     * refers to the data transported by the protocol, which wouldn't
+     * include the FCS.
+     *
+     * In addition, the capture attached to bug 5061 includes no
+     * Ethernet FCS.
+     *
+     * So we assume the Ethernet frames carried by EoIB don't include
+     * the Ethernet FCS.
+     */
+    eth_handle                = find_dissector("eth_withoutfcs");
     ethertype_dissector_table = find_dissector_table("ethertype");
 
     /* announce an anonymous Infiniband dissector */

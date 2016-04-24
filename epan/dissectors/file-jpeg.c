@@ -484,7 +484,7 @@ process_sos_header(proto_tree *tree, tvbuff_t *tvb, guint32 len _U_,
  * Process a Comment header (with length).
  */
 static void
-process_comment_header(proto_tree *tree, tvbuff_t *tvb, guint32 len _U_,
+process_comment_header(proto_tree *tree, tvbuff_t *tvb, guint32 len,
         guint16 marker, const char *marker_name)
 {
     proto_item *ti;
@@ -1331,7 +1331,7 @@ proto_register_jfif(void)
     expert_jfif = expert_register_protocol(proto_jfif);
     expert_register_field_array(expert_jfif, ei, array_length(ei));
 
-    new_register_dissector(IMG_JFIF, dissect_jfif, proto_jfif);
+    register_dissector(IMG_JFIF, dissect_jfif, proto_jfif);
 }
 
 

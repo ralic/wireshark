@@ -63,7 +63,6 @@ static gint hf_lwapp_control_length = -1;
 static dissector_handle_t eth_withoutfcs_handle;
 static dissector_handle_t wlan_handle;
 static dissector_handle_t wlan_bsfc_handle;
-static dissector_handle_t data_handle;
 
 /* Set by preferences */
 static gboolean swap_frame_control;
@@ -301,7 +300,7 @@ dissect_control(tvbuff_t *tvb, packet_info *pinfo,
 
         /* Dissect rest of packet as data */
         next_tvb = tvb_new_subset_remaining(tvb, offset);
-        call_dissector(data_handle,next_tvb, pinfo, tree);
+        call_data_dissector(next_tvb, pinfo, tree);
     }
 
 } /* dissect_control */
@@ -311,9 +310,9 @@ dissect_control(tvbuff_t *tvb, packet_info *pinfo,
  * the start of the packet, so it simply re-calls the ethernet
  * dissector on the packet.
  */
-static void
+static int
 dissect_lwapp_l3(tvbuff_t *tvb, packet_info *pinfo,
-                            proto_tree *tree)
+                            proto_tree *tree, void* data _U_)
 {
     /* Set up structures needed to add the protocol subtree and manage it */
     proto_item *ti;
@@ -325,18 +324,16 @@ dissect_lwapp_l3(tvbuff_t *tvb, packet_info *pinfo,
     col_set_str(pinfo->cinfo, COL_PROTOCOL, "LWAPP-L3");
     col_set_str(pinfo->cinfo, COL_INFO, "802.3 Packets over Layer 3");
 
-    if (tree) {
-        /* create display subtree for the protocol */
-        ti = proto_tree_add_item(tree, proto_lwapp_l3, tvb, offset,
-                                 -1, ENC_NA);
-        lwapp_tree = proto_item_add_subtree(ti, ett_lwapp_l3);
-    } else {
-        lwapp_tree = NULL;
-    }
+    /* create display subtree for the protocol */
+    ti = proto_tree_add_item(tree, proto_lwapp_l3, tvb, offset,
+                                -1, ENC_NA);
+    lwapp_tree = proto_item_add_subtree(ti, ett_lwapp_l3);
+
     /* Dissect as Ethernet */
     next_client = tvb_new_subset_remaining(tvb, 0);
     call_dissector(eth_withoutfcs_handle, next_client, pinfo, lwapp_tree);
-    return;
+
+    return tvb_captured_length(tvb);
 
 } /* dissect_lwapp_l3*/
 
@@ -346,9 +343,9 @@ dissect_lwapp_l3(tvbuff_t *tvb, packet_info *pinfo,
  * lwapp payload in the data, and doesn't care whether the data was
  * from a UDP packet, or a Layer 2 one.
  */
-static void
+static int
 dissect_lwapp(tvbuff_t *tvb, packet_info *pinfo,
-                        proto_tree *tree)
+                        proto_tree *tree, void* data _U_)
 {
     LWAPP_Header header;
     guint8       slotId;
@@ -450,7 +447,7 @@ dissect_lwapp(tvbuff_t *tvb, packet_info *pinfo,
     } else {
         dissect_control(next_client, pinfo, tree);
     }
-    return;
+    return tvb_captured_length(tvb);
 
 } /* dissect_lwapp*/
 
@@ -545,10 +542,9 @@ proto_reg_handoff_lwapp(void)
     /*
      * Get handles for the Ethernet and wireless dissectors.
      */
-    eth_withoutfcs_handle = find_dissector("eth_withoutfcs");
-    wlan_handle = find_dissector("wlan_withoutfcs");
-    wlan_bsfc_handle = find_dissector("wlan_bsfc");
-    data_handle = find_dissector("data");
+    eth_withoutfcs_handle = find_dissector_add_dependency("eth_withoutfcs", proto_lwapp);
+    wlan_handle = find_dissector_add_dependency("wlan_withoutfcs", proto_lwapp);
+    wlan_bsfc_handle = find_dissector_add_dependency("wlan_bsfc", proto_lwapp);
 
     /* This dissector assumes lwapp packets in an 802.3 frame */
     lwapp_l3_handle = create_dissector_handle(dissect_lwapp_l3, proto_lwapp_l3);
@@ -567,7 +563,7 @@ proto_reg_handoff_lwapp(void)
      * becoming obscelete, but we still wanted to dissect the
      * packets.
      *
-     * Next, lwapp can be over UDP, but packged for L3 tunneling.  This
+     * Next, lwapp can be over UDP, but packaged for L3 tunneling.  This
      * is the new-style.  In this case, LWAP headers are just transmitted
      * via UDP.
      *

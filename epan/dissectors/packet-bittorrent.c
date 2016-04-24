@@ -493,7 +493,7 @@ dissect_bittorrent_message (tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
 }
 
 static int
-dissect_bittorrent_welcome (tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree)
+dissect_bittorrent_welcome (tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
 {
    int   offset = 0;
    int   i;
@@ -676,7 +676,7 @@ proto_register_bittorrent(void)
    proto_register_field_array(proto_bittorrent, hf, array_length(hf));
    proto_register_subtree_array(ett, array_length(ett));
 
-   new_register_dissector("bittorrent.tcp", dissect_bittorrent, proto_bittorrent);
+   register_dissector("bittorrent.tcp", dissect_bittorrent, proto_bittorrent);
 
    bittorrent_module = prefs_register_protocol(proto_bittorrent, NULL);
    prefs_register_bool_preference(bittorrent_module, "desegment",
@@ -694,7 +694,7 @@ proto_register_bittorrent(void)
 void
 proto_reg_handoff_bittorrent(void)
 {
-   bencode_handle = find_dissector("bencode");
+   bencode_handle = find_dissector_add_dependency("bencode", proto_bittorrent);
 
    dissector_handle = find_dissector("bittorrent.tcp");
 #if 0

@@ -297,13 +297,13 @@ proto_register_sync(void)
     expert_sync = expert_register_protocol(proto_sync);
     expert_register_field_array(expert_sync, ei, array_length(ei));
 
-    sync_handle = new_register_dissector("sync", dissect_sync, proto_sync);
+    sync_handle = register_dissector("sync", dissect_sync, proto_sync);
 }
 
 void
 proto_reg_handoff_sync(void)
 {
-    ip_handle   = find_dissector("ip");
+    ip_handle   = find_dissector_add_dependency("ip", proto_sync);
 
     dissector_add_for_decode_as("udp.port", sync_handle);
 }

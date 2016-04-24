@@ -41,7 +41,8 @@
 #include "packet-tcp.h"
 #include "packet-ssl.h"
 
-#ifdef HAVE_LIBZ
+#ifdef HAVE_ZLIB
+#define ZLIB_CONST
 #include <zlib.h>
 #endif
 
@@ -57,7 +58,7 @@ void proto_reg_handoff_spdy(void);
  * entities and for decompressing request & reply header blocks.
  */
 typedef struct _spdy_conv_t {
-#ifdef HAVE_LIBZ
+#ifdef HAVE_ZLIB
   z_streamp rqst_decompressor;
   z_streamp rply_decompressor;
   uLong     dictionary_id;
@@ -88,7 +89,6 @@ typedef struct _spdy_conv_t {
 #define SPDY_FLAG_SETTINGS_PERSISTED 0x02
 
 #define TCP_PORT_SPDY 6121
-#define SSL_PORT_SPDY 443
 
 static const value_string frame_type_names[] = {
   { SPDY_DATA,          "DATA" },
@@ -238,7 +238,6 @@ static expert_field ei_spdy_invalid_go_away = EI_INIT;
 static expert_field ei_spdy_invalid_frame_type = EI_INIT;
 static expert_field ei_spdy_reassembly_info = EI_INIT;
 
-static dissector_handle_t data_handle;
 static dissector_handle_t media_handle;
 static dissector_handle_t spdy_handle;
 static dissector_table_t media_type_subdissector_table;
@@ -249,7 +248,7 @@ static gboolean spdy_assemble_entity_bodies = TRUE;
 /*
  * Decompression of zlib encoded entities.
  */
-#ifdef HAVE_LIBZ
+#ifdef HAVE_ZLIB
 static gboolean spdy_decompress_body = TRUE;
 static gboolean spdy_decompress_headers = TRUE;
 #else
@@ -438,7 +437,7 @@ static const char spdy_dictionary[] = {
   0x2c, 0x65, 0x6e, 0x71, 0x3d, 0x30, 0x2e         /* - e n q - 0 -   */
 };
 
-#ifdef HAVE_LIBZ
+#ifdef HAVE_ZLIB
 /* callback function used at the end of file-scope to cleanup zlib's inflate
  * streams to avoid memory leaks.
  * XXX: can we be more aggressive and call this sooner for finished streams?
@@ -468,7 +467,7 @@ spdy_init_protocol(void)
 static spdy_conv_t * get_or_create_spdy_conversation_data(packet_info *pinfo) {
   conversation_t  *conversation;
   spdy_conv_t *conv_data;
-#ifdef HAVE_LIBZ
+#ifdef HAVE_ZLIB
   int retcode;
 #endif
 
@@ -482,7 +481,7 @@ static spdy_conv_t * get_or_create_spdy_conversation_data(packet_info *pinfo) {
 
     conv_data->streams = NULL;
     if (spdy_decompress_headers) {
-#ifdef HAVE_LIBZ
+#ifdef HAVE_ZLIB
       conv_data->rqst_decompressor = wmem_new0(wmem_file_scope(), z_stream);
       conv_data->rply_decompressor = wmem_new0(wmem_file_scope(), z_stream);
       retcode = inflateInit(conv_data->rqst_decompressor);
@@ -547,7 +546,7 @@ static spdy_stream_info_t* spdy_get_stream_info(spdy_conv_t *conv_data,
 }
 
 /*
- * Adds a data chunk to a given SPDY converstaion/stream.
+ * Adds a data chunk to a given SPDY conversation/stream.
  */
 static void spdy_add_data_chunk(spdy_conv_t *conv_data,
                                 guint32 stream_id,
@@ -759,7 +758,7 @@ static int dissect_spdy_data_payload(tvbuff_t *tvb,
         if (!is_single_chunk) {
           if (spdy_assemble_entity_bodies) {
             copied_data = (guint8 *)tvb_memdup(wmem_file_scope(),next_tvb, 0, frame->length);
-            spdy_add_data_chunk(conv_data, stream_id, pinfo->fd->num, copied_data, frame->length);
+            spdy_add_data_chunk(conv_data, stream_id, pinfo->num, copied_data, frame->length);
           } else {
             spdy_increment_data_chunk_count(conv_data, stream_id);
           }
@@ -873,7 +872,7 @@ static int dissect_spdy_data_payload(tvbuff_t *tvb,
         if (spdy_decompress_body) {
           proto_item_append_text(e_ti, " [Error: Decompression failed]");
         }
-        call_dissector(data_handle, data_tvb, pinfo, e_tree);
+        call_data_dissector(data_tvb, pinfo, e_tree);
 
         goto body_dissected;
       }
@@ -929,7 +928,7 @@ static int dissect_spdy_data_payload(tvbuff_t *tvb,
       call_dissector_with_data(media_handle, next_tvb, pinfo, spdy_tree, media_str);
     } else {
       /* Call the default data dissector */
-      call_dissector(data_handle, next_tvb, pinfo, spdy_tree);
+      call_data_dissector(next_tvb, pinfo, spdy_tree);
     }
 
 body_dissected:
@@ -943,7 +942,7 @@ body_dissected:
   return frame->length;
 }
 
-#ifdef HAVE_LIBZ
+#ifdef HAVE_ZLIB
 /*
  * Performs header decompression.
  *
@@ -962,7 +961,13 @@ static guint8* spdy_decompress_header_block(tvbuff_t *tvb,
   const guint8 *hptr = tvb_get_ptr(tvb, offset, length);
   guint8 *uncomp_block = (guint8 *)wmem_alloc(wmem_packet_scope(), DECOMPRESS_BUFSIZE);
 
+#ifdef z_const
+  decomp->next_in = (z_const Bytef *)hptr;
+#else
+DIAG_OFF(cast-qual)
   decomp->next_in = (Bytef *)hptr;
+DIAG_ON(cast-qual)
+#endif
   decomp->avail_in = length;
   decomp->next_out = uncomp_block;
   decomp->avail_out = DECOMPRESS_BUFSIZE;
@@ -1148,7 +1153,7 @@ static int dissect_spdy_header_payload(
     if (header_info == NULL) {
       guint8 *uncomp_ptr = NULL;
       guint uncomp_length = 0;
-#ifdef HAVE_LIBZ
+#ifdef HAVE_ZLIB
       z_streamp decomp;
 
       /* Get our decompressor. */
@@ -1906,7 +1911,7 @@ void proto_register_spdy(void)
   expert_spdy = expert_register_protocol(proto_spdy);
   expert_register_field_array(expert_spdy, ei, array_length(ei));
 
-  new_register_dissector("spdy", dissect_spdy, proto_spdy);
+  spdy_handle = register_dissector("spdy", dissect_spdy, proto_spdy);
 
   spdy_module = prefs_register_protocol(proto_spdy, NULL);
   prefs_register_bool_preference(spdy_module, "assemble_data_frames",
@@ -1925,9 +1930,6 @@ void proto_register_spdy(void)
                                  "using \"Content-Encoding: \"",
                                  &spdy_decompress_body);
 
-  /** Create dissector handle and register for dissection. */
-  spdy_handle = new_create_dissector_handle(dissect_spdy, proto_spdy);
-
   register_init_routine(&spdy_init_protocol);
 
   /*
@@ -1940,10 +1942,10 @@ void proto_register_spdy(void)
 void proto_reg_handoff_spdy(void) {
 
   dissector_add_uint("tcp.port", TCP_PORT_SPDY, spdy_handle);
-  ssl_dissector_add(SSL_PORT_SPDY, "spdy", TRUE);
+  /* Use "0" to avoid overwriting HTTPS port and still offer support over SSL */
+  ssl_dissector_add(0, spdy_handle);
 
-  data_handle = find_dissector("data");
-  media_handle = find_dissector("media");
+  media_handle = find_dissector_add_dependency("media", proto_spdy);
   port_subdissector_table = find_dissector_table("http.port");
   media_type_subdissector_table = find_dissector_table("media_type");
 

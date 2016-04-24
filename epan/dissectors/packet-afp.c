@@ -53,7 +53,7 @@ http://developer.apple.com/DOCUMENTATION/macos8/pdf/ASAppleTalkFiling2.1_2.2.pdf
 
 http://developer.apple.com/documentation/Networking/Conceptual/AFP/index.html
 
-  Current AFP 3.x specfication, in HTML form, at
+  Current AFP 3.x specification, in HTML form, at
 http://developer.apple.com/mac/library/documentation/Networking/Reference/AFP_Reference/Reference/reference.html
 
   Current AFP 3.x programming guide, in HTML form, at
@@ -370,7 +370,6 @@ static expert_field ei_afp_toc_offset = EI_INIT;
 
 static int afp_tap			    = -1;
 
-static dissector_handle_t data_handle;
 static dissector_handle_t spotlight_handle;
 
 static const value_string vol_signature_vals[] = {
@@ -2708,7 +2707,7 @@ dissect_reply_afp_write(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree,
 
 /* ************************** */
 static gint
-dissect_query_afp_write_ext(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree, gint offset)
+dissect_query_afp_write_ext(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, gint offset)
 {
 	proto_tree_add_item(tree, hf_afp_flag, tvb, offset, 1, ENC_BIG_ENDIAN);
 	offset += 1;
@@ -2737,7 +2736,7 @@ dissect_reply_afp_write_ext(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *t
 
 /* ************************** */
 static gint
-dissect_query_afp_read(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree, gint offset)
+dissect_query_afp_read(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, gint offset)
 {
 	int param;
 
@@ -2768,7 +2767,7 @@ dissect_query_afp_read(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree, 
 
 /* ************************** */
 static gint
-dissect_query_afp_read_ext(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree, gint offset)
+dissect_query_afp_read_ext(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, gint offset)
 {
 	PAD(1);
 
@@ -5141,9 +5140,9 @@ dissect_afp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data)
 		else
 			request_val->spotlight_req_command = -1;
 
-		request_val->frame_req = pinfo->fd->num;
+		request_val->frame_req = pinfo->num;
 		request_val->frame_res = 0;
-		request_val->req_time=pinfo->fd->abs_ts;
+		request_val->req_time=pinfo->abs_ts;
 
 		g_hash_table_insert(afp_request_hash, new_request_key,
 								request_val);
@@ -5401,7 +5400,7 @@ dissect_afp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data)
 			ti = proto_tree_add_uint(afp_tree, hf_afp_response_to,
 			    tvb, 0, 0, request_val->frame_req);
 			PROTO_ITEM_SET_GENERATED(ti);
-			nstime_delta(&delta_ts, &pinfo->fd->abs_ts, &request_val->req_time);
+			nstime_delta(&delta_ts, &pinfo->abs_ts, &request_val->req_time);
 			ti = proto_tree_add_time(afp_tree, hf_afp_time, tvb,
 			    0, 0, &delta_ts);
 			PROTO_ITEM_SET_GENERATED(ti);
@@ -5411,7 +5410,7 @@ dissect_afp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data)
 		 * Set "frame_res" if it's not already known.
 		 */
 		if (request_val->frame_res == 0)
-			request_val->frame_res = pinfo->fd->num;
+			request_val->frame_res = pinfo->num;
 
 		/*
 		 * Tap the packet before the dissectors are called so we
@@ -5520,7 +5519,7 @@ dissect_afp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data)
 		}
 	}
 	if (offset < len) {
-		call_dissector(data_handle, tvb_new_subset_remaining(tvb, offset),
+		call_data_dissector(tvb_new_subset_remaining(tvb, offset),
 		    pinfo, afp_tree);
 	}
 
@@ -7050,7 +7049,7 @@ proto_register_afp(void)
 		    NULL, HFILL }},
 
 		{ &hf_afp_unknown,
-		  { "Unknown parameter",         "afp.unknown",
+		  { "Unknown parameter",         "afp.unknown_bytes",
 		    FT_BYTES, BASE_NONE, NULL, 0x0,
 		    NULL, HFILL }},
 
@@ -7253,7 +7252,7 @@ proto_register_afp(void)
 		{ &ei_afp_abnormal_num_subqueries, { "afp.abnormal_num_subqueries", PI_PROTOCOL, PI_WARN, "Abnormal number of subqueries", EXPFILL }},
 		{ &ei_afp_too_many_acl_entries, { "afp.too_many_acl_entries", PI_UNDECODED, PI_WARN, "Too many ACL entries", EXPFILL }},
 		{ &ei_afp_ip_port_reused, { "afp.ip_port_reused", PI_SEQUENCE, PI_WARN, "IP port reused, you need to split the capture file", EXPFILL }},
-		{ &ei_afp_toc_offset, { "afp.toc_offset", PI_PROTOCOL, PI_WARN, "ToC offset bogus", EXPFILL }},
+		{ &ei_afp_toc_offset, { "afp.toc_offset.bogus", PI_PROTOCOL, PI_WARN, "ToC offset bogus", EXPFILL }},
 	};
 	expert_module_t* expert_afp;
 
@@ -7266,10 +7265,10 @@ proto_register_afp(void)
 	register_init_routine(afp_init);
 	register_cleanup_routine(afp_cleanup);
 
-	new_register_dissector("afp", dissect_afp, proto_afp);
-	new_register_dissector("afp_server_status", dissect_afp_server_status,
+	register_dissector("afp", dissect_afp, proto_afp);
+	register_dissector("afp_server_status", dissect_afp_server_status,
 	    proto_afp);
-	new_register_dissector("afp_spotlight", dissect_spotlight, proto_afp);
+	register_dissector("afp_spotlight", dissect_spotlight, proto_afp);
 
 	afp_tap = register_tap("afp");
 
@@ -7279,8 +7278,7 @@ proto_register_afp(void)
 void
 proto_reg_handoff_afp(void)
 {
-	data_handle = find_dissector("data");
-	spotlight_handle = find_dissector("afp_spotlight");
+	spotlight_handle = find_dissector_add_dependency("afp_spotlight", proto_afp);
 }
 
 /* -------------------------------

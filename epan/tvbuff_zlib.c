@@ -27,13 +27,14 @@
 
 #include <string.h>
 
-#ifdef HAVE_LIBZ
+#ifdef HAVE_ZLIB
+#define ZLIB_CONST
 #include <zlib.h>
 #endif
 
 #include "tvbuff.h"
 
-#ifdef HAVE_LIBZ
+#ifdef HAVE_ZLIB
 /*
  * Uncompresses a zlib compressed packet inside a message of tvb at offset with
  * length comprlen.  Returns an uncompressed tvbuffer if uncompression
@@ -67,7 +68,8 @@ tvb_uncompress(tvbuff_t *tvb, const int offset, int comprlen)
 		return NULL;
 	}
 
-	compr = (guint8 *)tvb_memdup(NULL, tvb, offset, comprlen);
+	compr = (guint8 *)g_malloc(comprlen);
+	tvb_memcpy(tvb, compr, offset, comprlen);
 
 	if (!compr)
 		return NULL;
@@ -246,9 +248,6 @@ tvb_uncompress(tvbuff_t *tvb, const int offset, int comprlen)
 			}
 
 
-			inflateReset(strm);
-			next = c;
-			strm->next_in = next;
 			if (c - compr > comprlen) {
 				inflateEnd(strm);
 				g_free(strm);
@@ -256,7 +255,13 @@ tvb_uncompress(tvbuff_t *tvb, const int offset, int comprlen)
 				g_free(strmbuf);
 				return NULL;
 			}
+			/* Drop gzip header */
 			comprlen -= (int) (c - compr);
+			next = c;
+
+			inflateReset(strm);
+			strm->next_in   = next;
+			strm->avail_in  = comprlen;
 
 			inflateEnd(strm);
 			inflateInit2(strm, wbits);

@@ -51,8 +51,6 @@ static gint ett_fefd = -1;
 static gint ett_fefd_flags = -1;
 static gint ett_fefd_tlv = -1;
 
-static dissector_handle_t data_handle;
-
 #define TYPE_DEVICE_ID        0x0001
 #define TYPE_PORT_ID          0x0002
 #define TYPE_ECHO             0x0003
@@ -86,8 +84,8 @@ static const value_string opcode_vals[] = {
     { 0,               NULL }
 };
 
-static void
-dissect_fefd(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
+static int
+dissect_fefd(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data _U_)
 {
     proto_item *ti;
     proto_tree *fefd_tree = NULL;
@@ -211,13 +209,14 @@ dissect_fefd(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
                 proto_tree_add_item(tlv_tree, hf_fefd_data, tvb, offset + 4,
                                     length - 4, ENC_NA);
             } else {
-                return;
+                return tvb_captured_length(tvb);
             }
             offset += length;
         }
     }
 
-    call_dissector(data_handle, tvb_new_subset_remaining(tvb, offset), pinfo, fefd_tree);
+    call_data_dissector(tvb_new_subset_remaining(tvb, offset), pinfo, fefd_tree);
+    return tvb_captured_length(tvb);
 }
 
 void
@@ -285,7 +284,6 @@ proto_reg_handoff_fefd(void)
 {
     dissector_handle_t fefd_handle;
 
-    data_handle = find_dissector("data");
     fefd_handle = create_dissector_handle(dissect_fefd, proto_fefd);
     dissector_add_uint("llc.force10_pid", 0x0111, fefd_handle);
 }

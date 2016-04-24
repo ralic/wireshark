@@ -34,15 +34,16 @@ set(CLEAN_FILES
 	${IDL2WRS_FILES}
 )
 
-if (WERROR)
+if (WERROR_COMMON_FLAGS)
 	set_source_files_properties(
 		${CLEAN_FILES}
 		PROPERTIES
-		COMPILE_FLAGS -Werror
+		COMPILE_FLAGS ${WERROR_COMMON_FLAGS}
 	)
 endif()
 
 add_executable(idl2wrs ${IDL2WRS_FILES})
+set_target_properties(idl2wrs PROPERTIES FOLDER "Executables")
 
 target_link_libraries(idl2wrs ${GLIB2_LIBRARIES})
 

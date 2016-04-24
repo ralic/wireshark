@@ -34,7 +34,7 @@
 
 #include "ui/decode_as_utils.h"
 #include "ui/simple_dialog.h"
-#include "ui/utf8_entities.h"
+#include <wsutil/utf8_entities.h>
 
 #include "ui/gtk/main.h"
 #include "ui/gtk/decode_as_dlg.h"
@@ -79,10 +79,11 @@
 #define E_LIST_S_MAX        E_LIST_S_TABLE
 #define E_LIST_S_COLUMNS   (E_LIST_S_MAX + 1)
 
-#define E_PAGE_LIST   "notebook_page_list"
-#define E_PAGE_TABLE  "notebook_page_table_name"
-#define E_PAGE_TITLE  "notebook_page_title"
-#define E_PAGE_VALUE  "notebook_page_value"
+#define E_PAGE_LIST           "notebook_page_list"
+#define E_PAGE_TABLE          "notebook_page_table_name"
+#define E_PAGE_TITLE          "notebook_page_title"
+#define E_PAGE_VALUE          "notebook_page_value"
+#define E_PAGE_CURR_LAYER_NUM "notebook_page_curr_layer_num"
 
 #define E_PAGE_ACTION "notebook_page_action"
 
@@ -440,7 +441,13 @@ decode_show_destroy_cb (GtkWidget *win _U_, gpointer user_data _U_)
 static void
 decode_show_save_cb (GtkWidget *win _U_, gpointer user_data _U_)
 {
-    save_decode_as_entries();
+    gchar* err = NULL;
+
+    if (save_decode_as_entries(&err) < 0)
+    {
+        simple_dialog(ESD_TYPE_ERROR, ESD_BTN_OK, "%s", err);
+        g_free(err);
+    }
 }
 
 /* add a single binding to the Show list */
@@ -671,17 +678,20 @@ decode_simple (GtkWidget *notebook_pg)
     /* Apply values to dissector table (stored in entry) */
     for (value_loop = 0; value_loop < entry->values[requested_index].num_values; value_loop++)
     {
+        guint8 saved_curr_layer_num = cfile.edt->pi.curr_layer_num;
+        cfile.edt->pi.curr_layer_num = (guint8)GPOINTER_TO_UINT(g_object_get_data(G_OBJECT(notebook_pg), E_PAGE_CURR_LAYER_NUM));
         value_ptr = entry->values[requested_index].build_values[value_loop](&cfile.edt->pi);
         if (abbrev != NULL && strcmp(abbrev, "(default)") == 0) {
             add_reset_list = entry->reset_value(table_name, value_ptr);
         } else {
             add_reset_list = entry->change_value(table_name, value_ptr, &handle, abbrev);
         }
+        cfile.edt->pi.curr_layer_num = saved_curr_layer_num;
 
         if (add_reset_list) {
             selector_type = g_new(guint,1);
             *selector_type = GPOINTER_TO_UINT(value_ptr);
-            decode_build_reset_list(g_strdup(table_name), FT_UINT32, selector_type, NULL, NULL);
+            decode_build_reset_list(table_name, FT_UINT32, selector_type, NULL, NULL);
         }
     }
 
@@ -1214,6 +1224,7 @@ decode_add_simple_page (decode_as_t *entry)
     if (entry->num_items == 1)
     {
         g_object_set_data(G_OBJECT(page), E_PAGE_VALUE, entry->values[0].build_values[0](&cfile.edt->pi));
+        g_object_set_data(G_OBJECT(page), E_PAGE_CURR_LAYER_NUM, GUINT_TO_POINTER(cfile.edt->pi.curr_layer_num));
 
         /* Always enabled */
         entry->values->label_func(&cfile.edt->pi, prompt);
@@ -1303,6 +1314,9 @@ decode_add_notebook (GtkWidget *format_hb)
     const char*        proto_name;
     GList             *list_entry;
     decode_as_t       *entry;
+    guint8             saved_curr_layer_num = cfile.edt->pi.curr_layer_num;
+
+    cfile.edt->pi.curr_layer_num = 1;
 
     /* Start a nootbook for flipping between sets of changes */
     notebook = gtk_notebook_new();
@@ -1319,8 +1333,7 @@ decode_add_notebook (GtkWidget *format_hb)
             entry = (decode_as_t *)list_entry->data;
             if (!strcmp(proto_name, entry->name))
             {
-                if ((find_dissector_table(entry->table_name) != NULL) ||
-                    (!strcmp(proto_name, "dcerpc")))
+                if (find_dissector_table(entry->table_name) != NULL)
                 {
                     page = decode_add_simple_page(entry);
                     label = gtk_label_new(entry->title);
@@ -1332,7 +1345,10 @@ decode_add_notebook (GtkWidget *format_hb)
         }
 
         protos = wmem_list_frame_next(protos);
+        cfile.edt->pi.curr_layer_num++;
     }
+
+    cfile.edt->pi.curr_layer_num = saved_curr_layer_num;
 
     /* Select the last added page (selects first by default) */
     /* Notebook must be visible for set_page to work. */

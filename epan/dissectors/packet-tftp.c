@@ -85,7 +85,6 @@ static gint ett_tftp_option = -1;
 static expert_field ei_tftp_blocksize_range = EI_INIT;
 
 static dissector_handle_t tftp_handle;
-static dissector_handle_t data_handle;
 
 #define UDP_PORT_TFTP_RANGE    "69"
 
@@ -340,7 +339,7 @@ static void dissect_tftp_message(tftp_conv_info_t *tftp_info,
     /* Show data in tree */
     if (bytes > 0) {
       data_tvb = tvb_new_subset(tvb, offset, -1, bytes);
-      call_dissector(data_handle, data_tvb, pinfo, tree);
+      call_data_dissector(data_tvb, pinfo, tree);
     }
 
     /* If Export Object tap is listening, need to accumulate blocks info list
@@ -539,8 +538,8 @@ dissect_embeddedtftp_heur(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, v
   return TRUE;
 }
 
-static void
-dissect_tftp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
+static int
+dissect_tftp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data _U_)
 {
   conversation_t   *conversation = NULL;
   tftp_conv_info_t *tftp_info;
@@ -566,25 +565,25 @@ dissect_tftp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
    */
   if (value_is_in_range(global_tftp_port_range, pinfo->destport) ||
       (pinfo->match_uint == pinfo->destport)) {
-    conversation = find_conversation(pinfo->fd->num, &pinfo->src, &pinfo->dst, PT_UDP,
+    conversation = find_conversation(pinfo->num, &pinfo->src, &pinfo->dst, PT_UDP,
                                      pinfo->srcport, 0, NO_PORT_B);
-    if( (conversation == NULL) || (conversation->dissector_handle != tftp_handle) ){
-      conversation = conversation_new(pinfo->fd->num, &pinfo->src, &pinfo->dst, PT_UDP,
+    if( (conversation == NULL) || (conversation_get_dissector(conversation, pinfo->num) != tftp_handle) ){
+      conversation = conversation_new(pinfo->num, &pinfo->src, &pinfo->dst, PT_UDP,
                                       pinfo->srcport, 0, NO_PORT2);
       conversation_set_dissector(conversation, tftp_handle);
     }
   } else {
-    conversation = find_conversation(pinfo->fd->num, &pinfo->src, &pinfo->dst,
+    conversation = find_conversation(pinfo->num, &pinfo->src, &pinfo->dst,
                                      pinfo->ptype, pinfo->srcport, pinfo->destport, 0);
-    if( (conversation == NULL) || (conversation->dissector_handle != tftp_handle) ){
-      conversation = conversation_new(pinfo->fd->num, &pinfo->src, &pinfo->dst, PT_UDP,
+    if( (conversation == NULL) || (conversation_get_dissector(conversation, pinfo->num) != tftp_handle) ){
+      conversation = conversation_new(pinfo->num, &pinfo->src, &pinfo->dst, PT_UDP,
                                       pinfo->destport, pinfo->srcport, 0);
       conversation_set_dissector(conversation, tftp_handle);
     } else if (conversation->options & NO_PORT_B) {
       if (pinfo->destport == conversation->key_ptr->port1)
         conversation_set_port2(conversation, pinfo->srcport);
       else
-        return;
+        return 0;
     }
   }
   tftp_info = (tftp_conv_info_t *)conversation_get_proto_data(conversation, proto_tftp);
@@ -602,6 +601,7 @@ dissect_tftp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
   }
 
   dissect_tftp_message(tftp_info, tvb, pinfo, tree);
+  return tvb_captured_length(tvb);
 }
 
 
@@ -702,7 +702,6 @@ proto_reg_handoff_tftp(void)
 
   if (!tftp_initialized) {
     tftp_handle = find_dissector("tftp");
-    data_handle = find_dissector("data");
     heur_dissector_add("stun", dissect_embeddedtftp_heur, "TFTP over TURN", "tftp_stun", proto_tftp, HEURISTIC_ENABLE);
     tftp_initialized = TRUE;
   } else {

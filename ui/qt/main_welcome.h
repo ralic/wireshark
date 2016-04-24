@@ -40,7 +40,13 @@ class MainWelcome : public QFrame
     Q_OBJECT
 public:
     explicit MainWelcome(QWidget *parent = 0);
+    virtual ~MainWelcome();
     InterfaceTree *getInterfaceTree();
+    const QString captureFilter();
+    void setCaptureFilter(const QString capture_filter);
+
+public slots:
+    void interfaceSelected();
 
 protected:
     void resizeEvent(QResizeEvent *event);
@@ -53,27 +59,35 @@ private:
     // We may want to subclass it at some point.
     QListWidget *recent_files_;
 //    MWOverlay *overlay;
+    QMenu *recent_ctx_menu_;
 
 
 signals:
     void startCapture();
-    void recentFileActivated(QString& cfile);
+    void recentFileActivated(QString cfile);
     void pushFilterSyntaxStatus(const QString&);
     void popFilterSyntaxStatus();
     void captureFilterSyntaxChanged(bool valid);
-#if HAVE_EXTCAP
+#ifdef HAVE_EXTCAP
     void showExtcapOptions(QString &device_name);
 #endif
 
+public slots:
+    void setCaptureFilterText(const QString capture_filter);
+
 private slots:
     void appInitialized();
-#if HAVE_EXTCAP
+    void captureFilterTextEdited(const QString capture_filter);
+#ifdef HAVE_EXTCAP
     void interfaceClicked(QTreeWidgetItem *item, int column);
 #endif
     void interfaceDoubleClicked(QTreeWidgetItem *item, int column);
     void updateRecentFiles();
     void openRecentItem(QListWidgetItem *item);
     void changeEvent(QEvent* event);
+    void showRecentContextMenu(QPoint pos);
+    void showRecentFolder();
+    void copyRecentPath();
 };
 
 #endif // MAIN_WELCOME_H

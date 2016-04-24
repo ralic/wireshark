@@ -72,8 +72,6 @@ static const value_string egd_stat_vals[] = {
 
 static int proto_egd = -1;
 
-static dissector_handle_t data_handle;
-
 static int hf_egd_ver = -1;
 static int hf_egd_type = -1;
 static int hf_egd_rid = -1;
@@ -88,7 +86,7 @@ static int hf_egd_resv = -1;
 static gint ett_egd = -1;
 static gint ett_status_item = -1;
 
-static void dissect_egd(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
+static int dissect_egd(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data _U_)
 {
   /* replace UDP with EGD in display */
   col_set_str(pinfo->cinfo, COL_PROTOCOL, "EGD");
@@ -150,9 +148,10 @@ static void dissect_egd(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
     if (data_length > 0)
     {
       next_tvb = tvb_new_subset_remaining(tvb, offset);
-      call_dissector(data_handle, next_tvb, pinfo, egd_tree);
+      call_data_dissector(next_tvb, pinfo, egd_tree);
     }
   }
+  return tvb_captured_length(tvb);
 }
 
 void proto_register_egd(void)
@@ -242,9 +241,6 @@ void proto_reg_handoff_egd(void)
 
   egd_handle = create_dissector_handle(dissect_egd, proto_egd);
   dissector_add_uint("udp.port", EGD_PORT, egd_handle);
-
-  /* find data dissector */
-  data_handle = find_dissector("data");
 }
 
 /*

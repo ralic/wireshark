@@ -31,10 +31,7 @@
 #include "packet-ieee802154.h"
 #include <epan/prefs.h>
 #include <epan/strutil.h>
-
-#ifdef HAVE_LIBGCRYPT
 #include <wsutil/wsgcrypt.h>
-#endif
 
 /*LwMesh lengths*/
 #define LWM_HEADER_BASE_LEN            7
@@ -97,9 +94,6 @@
 /*  Function declarations */
 void proto_register_lwm(void);
 void proto_reg_handoff_lwm(void);
-
-/*  Dissector handles */
-static dissector_handle_t       data_handle;
 
 /* User string with the decryption key. */
 static const gchar *lwmes_key_str = NULL;
@@ -426,6 +420,7 @@ static int dissect_lwm(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void
 
             ieee_packet = (ieee802154_packet *)data;
 
+            memset(&nwkSecurityVector, 0, sizeof(nwkSecurityVector));
             nwkSecurityVector[0] = lwm_seq;
             nwkSecurityVector[1] = ((guint32)lwm_dst_addr<< 16) | lwm_dst_endp;
             nwkSecurityVector[2]= ((guint32) lwm_src_addr<< 16) | lwm_src_endp;
@@ -434,7 +429,7 @@ static int dissect_lwm(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void
             payload_length=tvb_reported_length(new_tvb) - LWM_MIC_LEN;
 
             /* ECB - Nwk security vector*/
-            text = (guint8 *)tvb_memdup(NULL, new_tvb, 0, payload_length);
+            text = (guint8 *)tvb_memdup(pinfo->pool, new_tvb, 0, payload_length);
             payload_offset=0;
 
             /*Decrypt the actual data */
@@ -457,7 +452,7 @@ static int dissect_lwm(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void
                          tvb_reported_length(new_tvb) - LWM_MIC_LEN);
                     expert_add_info(pinfo, lwm_tree, &ei_lwm_decryption_failed);
                     tvb_set_reported_length(new_tvb, tvb_reported_length(new_tvb) - LWM_MIC_LEN);
-                    call_dissector(data_handle, new_tvb, pinfo, lwm_tree);
+                    call_data_dissector(new_tvb, pinfo, lwm_tree);
                 }
 
                 text_dec = &text[payload_offset];
@@ -481,9 +476,8 @@ static int dissect_lwm(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void
             if(vmic == lwm_mic)
             {
                 decrypted_tvb = tvb_new_real_data(text,length, length);
-                call_dissector(data_handle, decrypted_tvb, pinfo, lwm_tree);
+                call_data_dissector(decrypted_tvb, pinfo, lwm_tree);
                 /* XXX - needed?
-                   tvb_set_free_cb(decrypted_tvb, g_free);
                    add_new_data_source(pinfo, decrypted_tvb, "Decrypted LWmesh Payload"); */
                 col_append_fstr(pinfo->cinfo, COL_INFO, ",  MIC SUCCESS");
 
@@ -494,7 +488,7 @@ static int dissect_lwm(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void
                      "Encrypted data (%i byte(s)) MIC FAILURE",
                      tvb_reported_length(new_tvb) - LWM_MIC_LEN);
                 tvb_set_reported_length(new_tvb, tvb_reported_length(new_tvb) - LWM_MIC_LEN);
-                call_dissector(data_handle, new_tvb, pinfo, lwm_tree);
+                call_data_dissector(new_tvb, pinfo, lwm_tree);
             }
         }
         else
@@ -505,7 +499,7 @@ static int dissect_lwm(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void
 
             expert_add_info(pinfo, lwm_tree, &ei_lwm_no_decryption_key);
             tvb_set_reported_length(new_tvb, tvb_reported_length(new_tvb) - LWM_MIC_LEN);
-            call_dissector(data_handle, new_tvb, pinfo, lwm_tree);
+            call_data_dissector(new_tvb, pinfo, lwm_tree);
         }
 #else /* ! HAVE_LIBGCRYPT */
         col_add_fstr(pinfo->cinfo, COL_INFO,
@@ -514,7 +508,7 @@ static int dissect_lwm(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void
 
         expert_add_info(pinfo, lwm_tree, &ei_lwm_no_decryption_key);
         tvb_set_reported_length(new_tvb, tvb_reported_length(new_tvb) - LWM_MIC_LEN);
-        call_dissector(data_handle, new_tvb, pinfo, lwm_tree);
+        call_data_dissector(new_tvb, pinfo, lwm_tree);
 #endif /* ! HAVE_LIBGCRYPT */
     }
     /*stack command endpoint 0 and not secured*/
@@ -560,7 +554,7 @@ static int dissect_lwm(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void
         default:
             /*Unknown command*/
             expert_add_info_format(pinfo, lwm_cmd_tree, &ei_lwm_mal_error, "Unknown command");
-            call_dissector(data_handle, new_tvb, pinfo, lwm_cmd_tree);
+            call_data_dissector(new_tvb, pinfo, lwm_cmd_tree);
             return tvb_captured_length(tvb);
         }
 
@@ -575,12 +569,12 @@ static int dissect_lwm(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void
                 "Size is %i byte(s), instead of %i bytes", tvb_reported_length(new_tvb), len);
 
             new_tvb = tvb_new_subset_remaining(new_tvb, len);
-            call_dissector(data_handle, new_tvb, pinfo, lwm_tree);
+            call_data_dissector(new_tvb, pinfo, lwm_tree);
         }
     }
     else{
         /*unknown data*/
-        call_dissector(data_handle, new_tvb, pinfo, lwm_tree);
+        call_data_dissector(new_tvb, pinfo, lwm_tree);
     }
     return tvb_captured_length(tvb);
 } /* dissect_lwm */
@@ -911,7 +905,7 @@ void proto_register_lwm(void)
             "128-bit decryption key in hexadecimal format", (const char **)&lwmes_key_str);
 
     /*  Register dissector with Wireshark. */
-    new_register_dissector("lwm", dissect_lwm, proto_lwm);
+    register_dissector("lwm", dissect_lwm, proto_lwm);
 
 } /* proto_register_lwm */
 
@@ -931,8 +925,6 @@ void proto_reg_handoff_lwm(void)
 {
     GByteArray      *bytes;
     gboolean         res;
-
-    data_handle     = find_dissector("data");
 
     /* Convert key to raw bytes */
     bytes = g_byte_array_new();

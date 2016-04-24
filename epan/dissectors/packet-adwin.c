@@ -498,8 +498,6 @@ static int hf_adwin_val4              = -1;
 static gint ett_adwin                 = -1;
 static gint ett_adwin_debug           = -1;
 
-static dissector_handle_t data_handle;
-
 /* response/request tracking */
 typedef struct _adwin_transaction_t {
 	guint32 req_frame;
@@ -548,14 +546,14 @@ adwin_request_response_handling(tvbuff_t *tvb, packet_info *pinfo,
 		if (direction == ADWIN_REQUEST) {
 			/* This is a request */
 			adwin_trans = wmem_new(wmem_file_scope(), adwin_transaction_t);
-			adwin_trans->req_frame = pinfo->fd->num;
+			adwin_trans->req_frame = pinfo->num;
 			adwin_trans->rep_frame = 0;
-			adwin_trans->req_time = pinfo->fd->abs_ts;
+			adwin_trans->req_time = pinfo->abs_ts;
 			wmem_map_insert(adwin_info->pdus, GUINT_TO_POINTER(seq_num), (void *)adwin_trans);
 		} else {
 			adwin_trans = (adwin_transaction_t *)wmem_map_lookup(adwin_info->pdus, GUINT_TO_POINTER(seq_num));
 			if (adwin_trans) {
-				adwin_trans->rep_frame = pinfo->fd->num;
+				adwin_trans->rep_frame = pinfo->num;
 			}
 		}
 	} else {
@@ -566,7 +564,7 @@ adwin_request_response_handling(tvbuff_t *tvb, packet_info *pinfo,
 		adwin_trans = wmem_new(wmem_packet_scope(), adwin_transaction_t);
 		adwin_trans->req_frame = 0;
 		adwin_trans->rep_frame = 0;
-		adwin_trans->req_time = pinfo->fd->abs_ts;
+		adwin_trans->req_time = pinfo->abs_ts;
 	}
 
 	/* print state tracking in the tree */
@@ -589,7 +587,7 @@ adwin_request_response_handling(tvbuff_t *tvb, packet_info *pinfo,
 					tvb, 0, 0, adwin_trans->req_frame);
 			PROTO_ITEM_SET_GENERATED(it);
 
-			nstime_delta(&ns, &pinfo->fd->abs_ts, &adwin_trans->req_time);
+			nstime_delta(&ns, &pinfo->abs_ts, &adwin_trans->req_time);
 			it = proto_tree_add_time(adwin_tree, hf_adwin_response_time, tvb, 0, 0, &ns);
 			PROTO_ITEM_SET_GENERATED(it);
 		}
@@ -854,7 +852,7 @@ dissect_UDPR2(tvbuff_t *tvb, packet_info *pinfo,
 	proto_tree_add_item(adwin_tree, hf_adwin_packet_index,   tvb, 4,  4, ENC_LITTLE_ENDIAN);
 
 	if (! global_adwin_dissect_data) {
-		call_dissector(data_handle, tvb_new_subset_length(tvb, 8, 250*4), pinfo, adwin_debug_tree);
+		call_data_dissector(tvb_new_subset_length(tvb, 8, 250*4), pinfo, adwin_debug_tree);
 		return;
 	}
 
@@ -893,7 +891,7 @@ dissect_UDPR3(tvbuff_t *tvb, packet_info *pinfo,
 	proto_tree_add_item(adwin_tree, hf_adwin_packet_no,      tvb, 4,  4, ENC_LITTLE_ENDIAN);
 
 	if (! global_adwin_dissect_data) {
-		call_dissector(data_handle, tvb_new_subset_length(tvb, 8, 350*4), pinfo, adwin_debug_tree);
+		call_data_dissector(tvb_new_subset_length(tvb, 8, 350*4), pinfo, adwin_debug_tree);
 		return;
 	}
 
@@ -945,7 +943,7 @@ dissect_UDPR4(tvbuff_t *tvb, packet_info *pinfo,
 	data_type = tvb_get_letohl(tvb, 1412);
 
 	if (! global_adwin_dissect_data) {
-		call_dissector(data_handle, tvb_new_subset_length(tvb, 8, 350*4), pinfo, adwin_debug_tree);
+		call_data_dissector(tvb_new_subset_length(tvb, 8, 350*4), pinfo, adwin_debug_tree);
 		return;
 	}
 
@@ -1004,7 +1002,7 @@ dissect_GDSHP(tvbuff_t *tvb, packet_info *pinfo,
 	proto_tree_add_item(adwin_tree, hf_adwin_unused,         tvb, 8,  4, ENC_NA);
 
 	if (! global_adwin_dissect_data) {
-		call_dissector(data_handle, tvb_new_subset_length(tvb, 12, 336*4), pinfo, adwin_debug_tree);
+		call_data_dissector(tvb_new_subset_length(tvb, 12, 336*4), pinfo, adwin_debug_tree);
 		return;
 	}
 
@@ -1169,8 +1167,7 @@ proto_reg_handoff_adwin(void)
 	static unsigned int udp_port;
 
 	if (! adwin_prefs_initialized) {
-		adwin_handle = new_create_dissector_handle(dissect_adwin, proto_adwin);
-		data_handle = find_dissector("data");
+		adwin_handle = create_dissector_handle(dissect_adwin, proto_adwin);
 		adwin_prefs_initialized = TRUE;
 	} else {
 		dissector_delete_uint("udp.port", udp_port, adwin_handle);

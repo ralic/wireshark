@@ -32,6 +32,7 @@
 
 #include "packet-tcp.h"
 #include "packet-aim.h"
+#include "packet-ssl.h"
 #include <epan/prefs.h>
 #include <epan/expert.h>
 
@@ -461,6 +462,8 @@ static expert_field ei_aim_messageblock_len = EI_INIT;
 
 /* desegmentation of AIM over TCP */
 static gboolean aim_desegment = TRUE;
+
+static dissector_handle_t aim_handle;
 
 
 const aim_subtype
@@ -1028,7 +1031,7 @@ dissect_aim_short_capability(proto_tree *entry, tvbuff_t *tvb, int offset)
 }
 
 int
-dissect_aim_tlv_value_client_capabilities(proto_item *ti _U_, guint16 valueid _U_, tvbuff_t *tvb, packet_info *pinfo _U_)
+dissect_aim_tlv_value_client_capabilities(proto_item *ti, guint16 valueid _U_, tvbuff_t *tvb, packet_info *pinfo _U_)
 {
 	int offset = 0;
 	proto_tree *entry;
@@ -1045,7 +1048,7 @@ dissect_aim_tlv_value_client_capabilities(proto_item *ti _U_, guint16 valueid _U
 }
 
 static int
-dissect_aim_tlv_value_client_short_capabilities(proto_item *ti _U_, guint16 valueid _U_, tvbuff_t *tvb, packet_info *pinfo _U_)
+dissect_aim_tlv_value_client_short_capabilities(proto_item *ti, guint16 valueid _U_, tvbuff_t *tvb, packet_info *pinfo _U_)
 {
 	int offset = 0;
 	proto_tree *entry;
@@ -1167,7 +1170,7 @@ dissect_aim_tlv_value_string08_array (proto_item *ti, guint16 valueid _U_, tvbuf
 }
 
 int
-dissect_aim_tlv_value_bytes (proto_item *ti _U_, guint16 valueid _U_, tvbuff_t *tvb _U_, packet_info *pinfo _U_)
+dissect_aim_tlv_value_bytes (proto_item *ti _U_, guint16 valueid _U_, tvbuff_t *tvb, packet_info *pinfo _U_)
 {
 	return tvb_reported_length(tvb);
 }
@@ -1274,7 +1277,7 @@ dissect_aim_tlv_value_messageblock (proto_item *ti, guint16 valueid _U_, tvbuff_
 
 /* Dissect a TLV value */
 int
-dissect_aim_tlv(tvbuff_t *tvb, packet_info *pinfo _U_, int offset,
+dissect_aim_tlv(tvbuff_t *tvb, packet_info *pinfo, int offset,
 		proto_tree *tree, const aim_tlv *tlv)
 {
 	guint16 valueid;
@@ -1460,6 +1463,19 @@ dissect_aim(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data)
 	tcp_dissect_pdus(tvb, pinfo, tree, aim_desegment, 6, get_aim_pdu_len,
 			 dissect_aim_pdu, data);
 	return tvb_reported_length(tvb);
+}
+
+static int
+dissect_aim_ssl_heur(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data)
+{
+	dissector_handle_t *app_handle = (dissector_handle_t *) data;
+	/* XXX improve heuristics */
+	if (tvb_reported_length(tvb) < 1 || tvb_get_guint8(tvb, 0) != 0x2a) {
+		return FALSE;
+	}
+	dissect_aim(tvb, pinfo, tree, NULL);
+	*app_handle = aim_handle;
+	return TRUE;
 }
 
 
@@ -1696,6 +1712,7 @@ proto_register_aim(void)
 
 	/* Register the protocol name and description */
 	proto_aim = proto_register_protocol("AOL Instant Messenger", "AIM", "aim");
+	aim_handle = register_dissector("aim", dissect_aim, proto_aim);
 
 	/* Required function calls to register the header fields and subtrees used */
 	proto_register_field_array(proto_aim, hf, array_length(hf));
@@ -1715,10 +1732,10 @@ proto_register_aim(void)
 void
 proto_reg_handoff_aim(void)
 {
-	dissector_handle_t aim_handle;
-
-	aim_handle = new_create_dissector_handle(dissect_aim, proto_aim);
 	dissector_add_uint("tcp.port", TCP_PORT_AIM, aim_handle);
+	ssl_dissector_add(0, aim_handle);
+	/* Heuristics disabled by default, it is really weak... */
+	heur_dissector_add("ssl", dissect_aim_ssl_heur, "AIM over SSL", "aim_ssl", proto_aim, HEURISTIC_DISABLE);
 }
 
 /*

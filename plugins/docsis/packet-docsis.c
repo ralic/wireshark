@@ -92,6 +92,7 @@ static int hf_docsis_frag_last = -1;
 static int hf_docsis_frag_seq = -1;
 static int hf_docsis_sid = -1;
 static int hf_docsis_mini_slots = -1;
+static int hf_docsis_requested_size = -1;
 static int hf_docsis_hcs = -1;
 static int hf_docsis_bpi_en = -1;
 static int hf_docsis_toggle_bit = -1;
@@ -113,7 +114,6 @@ static int hf_docsis_ehdr_bpup2_ver = -1;
 static int hf_docsis_ehdr_bpup2_sid = -1;
 static dissector_handle_t docsis_handle;
 static dissector_handle_t eth_withoutfcs_handle;
-static dissector_handle_t data_handle;
 static dissector_handle_t docsis_mgmt_handle;
 #if 0
 static dissector_table_t docsis_dissector_table;
@@ -157,6 +157,7 @@ static const value_string fcparm_vals[] = {
   {0x1, "Mac Management Message"},
   {0x2, "Request Frame"},
   {0x3, "Fragmentation Header"},
+  {0x4, "Queue Depth-based Request Frame"},
   {0x1C, "Concatenation Header"},
   {0, NULL}
 };
@@ -334,8 +335,8 @@ dissect_ehdr (tvbuff_t * tvb, proto_tree * tree, gboolean isfrag)
 }
 
 
-static void
-dissect_docsis (tvbuff_t * tvb, packet_info * pinfo, proto_tree * tree)
+static int
+dissect_docsis (tvbuff_t * tvb, packet_info * pinfo, proto_tree * tree, void* data _U_)
 {
   guint8 fc;
   guint8 fctype;
@@ -364,20 +365,29 @@ dissect_docsis (tvbuff_t * tvb, packet_info * pinfo, proto_tree * tree)
   fcparm = (fc >> 1) & 0x1F;    /* Frame Control Parameter: Next 5 Bits */
   ehdron = (fc & 0x01);         /* Extended Header Bit: LSB */
 
-  mac_parm = tvb_get_guint8 (tvb, 1);   /* Mac Parm */
-  len_sid = tvb_get_ntohs (tvb, 2);     /* Length Or SID */
+  if (fcparm == 0x04) {
+    mac_parm = tvb_get_ntohs (tvb, 1);
+    len_sid = tvb_get_ntohs (tvb, 3);
+  } else {
+    mac_parm = tvb_get_guint8 (tvb, 1);
+    len_sid = tvb_get_ntohs (tvb, 2);
+  }
 
   /* set Header length based on presence of Extended header */
-  if (ehdron == 0x00)
-    hdrlen = 6;
-  else
+  if (ehdron == 0x00) {
+    if (fcparm == 0x04)
+      hdrlen = 7;
+    else
+      hdrlen = 6;
+  } else {
     hdrlen = 6 + mac_parm;
+  }
 
   /* Captured PDU Length is based on the length of the header */
   captured_length = tvb_captured_length_remaining (tvb, hdrlen);
 
   /* If this is a Request Frame, then pdulen is 0 and framelen is 6 */
-  if ((fctype == FCTYPE_MACSPC) && fcparm == 0x02)
+  if ((fctype == FCTYPE_MACSPC) && (fcparm == 0x02 || fcparm == 0x04))
     {
       pdulen = 0;
       framelen = 6;
@@ -414,6 +424,10 @@ dissect_docsis (tvbuff_t * tvb, packet_info * pinfo, proto_tree * tree)
         if (fcparm == 0x02)
           col_add_fstr (pinfo->cinfo, COL_INFO,
                         "Request Frame SID = %u Mini Slots = %u", len_sid,
+                        mac_parm);
+        else if (fcparm == 0x04)
+          col_add_fstr (pinfo->cinfo, COL_INFO,
+                        "Request Frame SID = %u Bytes Requested = %u", len_sid,
                         mac_parm);
         else if (fcparm == 0x03)
           col_set_str (pinfo->cinfo, COL_INFO, "Fragmented Frame");
@@ -474,6 +488,17 @@ dissect_docsis (tvbuff_t * tvb, packet_info * pinfo, proto_tree * tree)
                 proto_tree_add_uint (docsis_tree, hf_docsis_sid, tvb, 2, 2,
                                      len_sid);
                 proto_tree_add_item (docsis_tree, hf_docsis_hcs, tvb, 4, 2,
+                                     ENC_BIG_ENDIAN);
+                break;
+              }
+            /* Decode for a Queue-depth Based Request */
+            if (fcparm == 0x04)
+              {
+                proto_tree_add_uint (docsis_tree, hf_docsis_requested_size, tvb, 1,
+                                     2, mac_parm);
+                proto_tree_add_uint (docsis_tree, hf_docsis_sid, tvb, 3, 2,
+                                     len_sid);
+                proto_tree_add_item (docsis_tree, hf_docsis_hcs, tvb, 5, 2,
                                      ENC_BIG_ENDIAN);
                 break;
               }
@@ -560,7 +585,7 @@ dissect_docsis (tvbuff_t * tvb, packet_info * pinfo, proto_tree * tree)
               if (pdulen > 0)
                 {
                   mgt_tvb = tvb_new_subset (tvb, hdrlen, captured_length, pdulen);
-                  call_dissector (data_handle, mgt_tvb, pinfo, tree);
+                  call_data_dissector(mgt_tvb, pinfo, tree);
                 }
               if (concatlen > 0)
                 {
@@ -590,6 +615,7 @@ dissect_docsis (tvbuff_t * tvb, packet_info * pinfo, proto_tree * tree)
           }
         break;
     }
+    return tvb_captured_length(tvb);
 }
 
 
@@ -693,6 +719,11 @@ proto_register_docsis (void)
       FT_UINT8, BASE_DEC, NULL, 0x0,
       "Mini Slots Requested", HFILL}
     },
+    {&hf_docsis_requested_size,
+     {"Bytes Requested", "docsis.ehdr.reqsize",
+      FT_UINT16, BASE_DEC, NULL, 0x0,
+      NULL, HFILL}
+    },
     {&hf_docsis_key_seq,
      {"Key Sequence", "docsis.ehdr.keyseq",
       FT_UINT8, BASE_DEC, NULL, 0xF0,
@@ -786,16 +817,16 @@ proto_register_docsis (void)
     &ett_ehdr,
   };
 
-#if 0
-  docsis_dissector_table = register_dissector_table ("docsis",
-                                                     "DOCSIS Encapsulation Type",
-                                                     FT_UINT8, BASE_DEC);
-#endif
-
   proto_docsis = proto_register_protocol ("DOCSIS 1.1", "DOCSIS", "docsis");
 
   proto_register_field_array (proto_docsis, hf, array_length (hf));
   proto_register_subtree_array (ett, array_length (ett));
+
+#if 0
+  docsis_dissector_table = register_dissector_table ("docsis",
+                                                     "DOCSIS Encapsulation Type", proto_docsis,
+                                                     FT_UINT8, BASE_DEC, DISSECTOR_TABLE_NOT_ALLOW_DUPLICATE);
+#endif
 
   register_dissector ("docsis", dissect_docsis, proto_docsis);
 }
@@ -805,11 +836,10 @@ proto_reg_handoff_docsis (void)
 {
 
   docsis_handle = find_dissector ("docsis");
-  data_handle = find_dissector ("data");
   dissector_add_uint ("wtap_encap", WTAP_ENCAP_DOCSIS, docsis_handle);
 
   docsis_mgmt_handle = find_dissector ("docsis_mgmt");
-  eth_withoutfcs_handle = find_dissector ("eth_withoutfcs");
+  eth_withoutfcs_handle = find_dissector_add_dependency("eth_withoutfcs", proto_docsis);
 }
 
 /*

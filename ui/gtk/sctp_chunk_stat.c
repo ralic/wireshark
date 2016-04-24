@@ -111,8 +111,8 @@ static sctp_ep_t* alloc_sctp_ep(struct _sctp_info *si)
 	if (!(ep = (sctp_ep_t *)g_malloc(sizeof(sctp_ep_t))))
 		return NULL;
 
-	COPY_ADDRESS(&ep->src,&si->ip_src);
-	COPY_ADDRESS(&ep->dst,&si->ip_dst);
+	copy_address(&ep->src,&si->ip_src);
+	copy_address(&ep->dst,&si->ip_dst);
 	ep->sport = si->sport;
 	ep->dport = si->dport;
 	ep->next = NULL;
@@ -139,8 +139,8 @@ sctpstat_packet(void *phs, packet_info *pinfo _U_, epan_dissect_t *edt _U_, cons
 		te = hs->ep_list;
 	} else {
 		for(tmp=hs->ep_list ; tmp ; tmp=tmp->next) {
-			if((!CMP_ADDRESS(&tmp->src,&si->ip_src)) &&
-			   (!CMP_ADDRESS(&tmp->dst,&si->ip_dst)) &&
+			if((!cmp_address(&tmp->src,&si->ip_src)) &&
+			   (!cmp_address(&tmp->dst,&si->ip_dst)) &&
 			   (tmp->sport == si->sport) &&
 			   (tmp->dport == si->dport)) {
 				te = tmp;
@@ -207,11 +207,12 @@ sctpstat_draw(void *phs)
 		12, tmp->chunk_count[SCTP_ABORT_CHUNK_ID],
 		13, tmp->chunk_count[SCTP_ERROR_CHUNK_ID],
 		14, tmp->chunk_count[SCTP_NR_SACK_CHUNK_ID],
-		15, tmp->chunk_count[SCTP_ASCONF_ACK_CHUNK_ID],
-		16, tmp->chunk_count[SCTP_PKTDROP_CHUNK_ID],
-		17, tmp->chunk_count[SCTP_FORWARD_TSN_CHUNK_ID],
-		18, tmp->chunk_count[SCTP_ASCONF_CHUNK_ID],
-		19, tmp->chunk_count[OTHER_CHUNKS_INDEX],
+		15, tmp->chunk_count[SCTP_I_DATA_CHUNK_ID],
+		16, tmp->chunk_count[SCTP_ASCONF_ACK_CHUNK_ID],
+		17, tmp->chunk_count[SCTP_PKTDROP_CHUNK_ID],
+		18, tmp->chunk_count[SCTP_FORWARD_TSN_CHUNK_ID],
+		19, tmp->chunk_count[SCTP_ASCONF_CHUNK_ID],
+		20, tmp->chunk_count[OTHER_CHUNKS_INDEX],
 		-1
 		);
 		wmem_free(NULL, src_addr);
@@ -250,6 +251,7 @@ static const stat_column titles[]={
 	{G_TYPE_UINT, TAP_ALIGN_RIGHT,  "ABORT" },
 	{G_TYPE_UINT, TAP_ALIGN_RIGHT,  "ERROR" },
 	{G_TYPE_UINT, TAP_ALIGN_RIGHT,  "NR-SACK" },
+	{G_TYPE_UINT, TAP_ALIGN_RIGHT,  "I-DATA" },
 	{G_TYPE_UINT, TAP_ALIGN_RIGHT,  "ASCONF-ACK" },
 	{G_TYPE_UINT, TAP_ALIGN_RIGHT,  "PKTDROP" },
 	{G_TYPE_UINT, TAP_ALIGN_RIGHT,  "FORWARD-TSN" },

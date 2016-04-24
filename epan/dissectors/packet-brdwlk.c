@@ -25,6 +25,7 @@
 
 #include <epan/packet.h>
 #include <epan/etypes.h>
+#include <epan/proto_data.h>
 #include "packet-fc.h"
 
 #define BRDWLK_MAX_PACKET_CNT  0xFFFF
@@ -156,8 +157,8 @@ dissect_brdwlk_err(proto_tree *parent_tree, tvbuff_t *tvb, int offset)
 }
 
 /* Code to actually dissect the packets */
-static void
-dissect_brdwlk(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
+static int
+dissect_brdwlk(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data _U_)
 {
 
 /* Set up structures needed to add the protocol subtree and manage it */
@@ -313,6 +314,7 @@ dissect_brdwlk(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
     fc_data.ethertype = ETHERTYPE_BRDWALK;
     next_tvb = tvb_new_subset(tvb, 2, len, reported_len);
     call_dissector_with_data(fc_dissector_handle, next_tvb, pinfo, tree, &fc_data);
+    return tvb_captured_length(tvb);
 }
 
 static void
@@ -407,7 +409,7 @@ proto_reg_handoff_brdwlk(void)
     brdwlk_handle = create_dissector_handle(dissect_brdwlk, proto_brdwlk);
     dissector_add_uint("ethertype", ETHERTYPE_BRDWALK, brdwlk_handle);
     dissector_add_uint("ethertype", 0xABCD, brdwlk_handle);
-    fc_dissector_handle = find_dissector("fc");
+    fc_dissector_handle = find_dissector_add_dependency("fc", proto_brdwlk);
 }
 
 /*

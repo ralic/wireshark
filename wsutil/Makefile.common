@@ -26,14 +26,13 @@
 # into a list of object files by replacing ".c" with ".obj") or files
 # generated from YACC or Lex files (as Automake doesn't want them in
 # _SOURCES variables).
-LIBWSUTIL_SRC = 	\
+LIBWSUTIL_COMMON_SRC = \
 	adler32.c	\
 	aes.c		\
 	airpdcap_wep.c	\
 	base64.c	\
 	bitswap.c	\
 	buffer.c	\
-	cfutils.c	\
 	clopts_common.c	\
 	cmdarg_err.c	\
 	copyright_info.c \
@@ -51,6 +50,8 @@ LIBWSUTIL_SRC = 	\
 	filesystem.c	\
 	frequency-utils.c \
 	g711.c		\
+	inet_addr.c	\
+	interface.c	\
 	jsmn.c		\
 	md4.c		\
 	md5.c		\
@@ -59,19 +60,18 @@ LIBWSUTIL_SRC = 	\
 	os_version_info.c \
 	plugins.c	\
 	privileges.c	\
-	sha1.c		\
-	sober128.c	\
-	strnatcmp.c	\
-	str_util.c	\
 	rc4.c		\
 	report_err.c	\
+	sha1.c		\
+	sha2.c		\
+	sober128.c	\
+	str_util.c	\
+	strnatcmp.c	\
 	tempfile.c	\
 	time_util.c	\
 	type_util.c	\
-	ws_mempbrk.c	\
-	u3.c		\
 	unicode-utils.c	\
-	ws_version_info.c
+	ws_mempbrk.c
 
 # Header files that don't declare replacement functions for functions
 # present in the APIs/ABIs of some, but not all, targets.
@@ -79,11 +79,10 @@ libwsutil_nonrepl_INCLUDES = \
 	adler32.h	\
 	aes.h		\
 	base64.h	\
+	bits_count_ones.h \
 	bits_ctz.h	\
-	bits_count_ones.h	\
 	bitswap.h	\
 	buffer.h	\
-	cfutils.h	\
 	clopts_common.h	\
 	cmdarg_err.h	\
 	copyright_info.h \
@@ -101,36 +100,38 @@ libwsutil_nonrepl_INCLUDES = \
 	filesystem.h	\
 	frequency-utils.h \
 	g711.h		\
+	inet_addr.h	\
+	inet_ipv6.h	\
+	interface.h	\
 	jsmn.h		\
 	md4.h		\
 	md5.h		\
 	mpeg-audio.h	\
 	nstime.h	\
 	os_version_info.h \
+	pint.h		\
 	plugins.h	\
 	privileges.h	\
 	processes.h	\
-	sha1.h		\
-	sign_ext.h	\
-	sober128.h	\
-	strnatcmp.h	\
-	str_util.h	\
-	pint.h		\
 	rc4.h		\
 	report_err.h	\
+	sha1.h		\
+	sha2.h		\
+	sign_ext.h	\
+	sober128.h	\
+	str_util.h	\
+	strnatcmp.h	\
 	tempfile.h	\
 	time_util.h	\
 	type_util.h	\
-	u3.h		\
 	unicode-utils.h \
+	utf8_entities.h	\
 	ws_cpuid.h	\
-	ws_diag_control.h \
 	ws_mempbrk.h	\
-	ws_mempbrk_int.h	\
-	ws_version_info.h
+	ws_mempbrk_int.h
 
 # Header files that are not generated from other files
-LIBWSUTIL_INCLUDES = 	\
+LIBWSUTIL_COMMON_INCLUDES = \
 	$(libwsutil_nonrepl_INCLUDES)
 
 #

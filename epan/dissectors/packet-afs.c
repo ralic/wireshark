@@ -2160,7 +2160,7 @@ dissect_kauth_request(ptvcursor_t *cursor, struct rxinfo *rxinfo _U_, int opcode
  * CB Helpers
  */
 static void
-dissect_cb_reply(ptvcursor_t *cursor, struct rxinfo *rxinfo _U_, int opcode)
+dissect_cb_reply(ptvcursor_t *cursor, struct rxinfo *rxinfo, int opcode)
 {
 	if ( rxinfo->type == RX_PACKET_TYPE_DATA )
 	{
@@ -2784,15 +2784,15 @@ dissect_afs(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data)
 
 			request_val = wmem_new(wmem_file_scope(), struct afs_request_val);
 			request_val -> opcode = tvb_get_ntohl(tvb, offset);
-			request_val -> req_num = pinfo->fd->num;
+			request_val -> req_num = pinfo->num;
 			request_val -> rep_num = 0;
-			request_val -> req_time = pinfo->fd->abs_ts;
+			request_val -> req_time = pinfo->abs_ts;
 
 			g_hash_table_insert(afs_request_hash, new_request_key,
 				request_val);
 		}
 		if( request_val && reply ) {
-			request_val -> rep_num = pinfo->fd->num;
+			request_val -> rep_num = pinfo->num;
 		}
 	}
 
@@ -2953,7 +2953,7 @@ dissect_afs(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data)
 			    tvb, 0, 0, request_val->req_num,
 			    "This is a reply to a request in frame %u",
 			    request_val->req_num);
-			nstime_delta(&delta_ts, &pinfo->fd->abs_ts, &request_val->req_time);
+			nstime_delta(&delta_ts, &pinfo->abs_ts, &request_val->req_time);
 			proto_tree_add_time(afs_tree, hf_afs_time, tvb, offset, 0,
 				&delta_ts);
 		}
@@ -3444,7 +3444,7 @@ proto_register_afs(void)
 	{ &hf_afs_cm_ipaddr, { "IP Address", "afs.cm.ipaddr",
 		FT_IPv4, BASE_NONE, 0, 0, NULL, HFILL }},
 	{ &hf_afs_cm_netmask, { "Netmask", "afs.cm.netmask",
-		FT_IPv4, BASE_NONE, 0, 0, NULL, HFILL }},
+		FT_IPv4, BASE_NETMASK, 0, 0, NULL, HFILL }},
 	{ &hf_afs_cm_mtu, { "MTU", "afs.cm.mtu",
 		FT_UINT32, BASE_DEC, 0, 0, NULL, HFILL }},
 
@@ -3634,7 +3634,7 @@ proto_register_afs(void)
 	register_init_routine(&afs_init_protocol);
 	register_cleanup_routine(&afs_cleanup_protocol);
 
-	new_register_dissector("afs", dissect_afs, proto_afs);
+	register_dissector("afs", dissect_afs, proto_afs);
 }
 
 /*

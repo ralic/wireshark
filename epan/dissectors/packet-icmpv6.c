@@ -43,6 +43,8 @@
 #include <epan/expert.h>
 #include <epan/conversation.h>
 #include <epan/tap.h>
+#include <epan/capture_dissectors.h>
+#include <epan/proto_data.h>
 
 #include "packet-ber.h"
 #include "packet-dns.h"
@@ -560,7 +562,6 @@ static expert_field ei_icmpv6_rpl_p2p_dro_zero = EI_INIT;
 static dissector_handle_t icmpv6_handle;
 
 static dissector_handle_t ipv6_handle;
-static dissector_handle_t data_handle;
 
 #define ICMP6_DST_UNREACH                 1
 #define ICMP6_PACKET_TOO_BIG              2
@@ -1183,7 +1184,7 @@ dissect_contained_icmpv6(tvbuff_t *tvb, int offset, packet_info *pinfo, proto_tr
         /* The contained packet is an IPv6 datagram; dissect it. */
         offset += call_dissector(ipv6_handle, next_tvb, pinfo, tree);
     } else
-        offset += call_dissector(data_handle, next_tvb, pinfo, tree);
+        offset += call_data_dissector(next_tvb, pinfo, tree);
 
     /* Restore the "we're inside an error packet" flag. */
     pinfo->flags.in_error_pkt = save_in_error_pkt;
@@ -1198,11 +1199,11 @@ static conversation_t *_find_or_create_conversation(packet_info *pinfo)
     conversation_t *conv = NULL;
 
     /* Have we seen this conversation before? */
-    conv = find_conversation(pinfo->fd->num, &pinfo->src, &pinfo->dst,
+    conv = find_conversation(pinfo->num, &pinfo->src, &pinfo->dst,
         pinfo->ptype, 0, 0, 0);
     if (conv == NULL) {
         /* No, this is a new conversation. */
-        conv = conversation_new(pinfo->fd->num, &pinfo->src, &pinfo->dst,
+        conv = conversation_new(pinfo->num, &pinfo->src, &pinfo->dst,
             pinfo->ptype, 0, 0, 0);
     }
     return conv;
@@ -1238,14 +1239,14 @@ static icmp_transaction_t *transaction_start(packet_info *pinfo, proto_tree *tre
         icmpv6_key[1].key = NULL;
 
         icmpv6_trans = wmem_new(wmem_file_scope(), icmp_transaction_t);
-        icmpv6_trans->rqst_frame = PINFO_FD_NUM(pinfo);
+        icmpv6_trans->rqst_frame = pinfo->num;
         icmpv6_trans->resp_frame = 0;
-        icmpv6_trans->rqst_time = pinfo->fd->abs_ts;
+        icmpv6_trans->rqst_time = pinfo->abs_ts;
         nstime_set_zero(&icmpv6_trans->resp_time);
         wmem_tree_insert32_array(icmpv6_info->unmatched_pdus, icmpv6_key, (void *)icmpv6_trans);
     } else {
         /* Already visited this frame */
-        guint32 frame_num = pinfo->fd->num;
+        guint32 frame_num = pinfo->num;
 
         icmpv6_key[0].length = 2;
         icmpv6_key[0].key = key;
@@ -1270,7 +1271,7 @@ static icmp_transaction_t *transaction_start(packet_info *pinfo, proto_tree *tre
                    so can report here (and in taps) */
                 expert_add_info_format(pinfo, it, &ei_icmpv6_resp_not_found,
                                        "No response seen to ICMPv6 request in frame %u",
-                                       pinfo->fd->num);
+                                       pinfo->num);
         }
 
         return NULL;
@@ -1301,7 +1302,7 @@ static icmp_transaction_t *transaction_end(packet_info *pinfo, proto_tree *tree,
     nstime_t            ns;
     double resp_time;
 
-    conversation = find_conversation(pinfo->fd->num, &pinfo->src, &pinfo->dst,
+    conversation = find_conversation(pinfo->num, &pinfo->src, &pinfo->dst,
         pinfo->ptype, 0, 0, 0);
     if (conversation == NULL)
         return NULL;
@@ -1326,7 +1327,7 @@ static icmp_transaction_t *transaction_end(packet_info *pinfo, proto_tree *tree,
         if (icmpv6_trans->resp_frame != 0)
             return NULL;
 
-        icmpv6_trans->resp_frame = PINFO_FD_NUM(pinfo);
+        icmpv6_trans->resp_frame = pinfo->num;
 
         /*
          * we found a match.  Add entries to the matched table for both
@@ -1346,7 +1347,7 @@ static icmp_transaction_t *transaction_end(packet_info *pinfo, proto_tree *tree,
         wmem_tree_insert32_array(icmpv6_info->matched_pdus, icmpv6_key, (void *)icmpv6_trans);
     } else {
         /* Already visited this frame */
-        guint32 frame_num = pinfo->fd->num;
+        guint32 frame_num = pinfo->num;
 
         icmpv6_key[0].length = 2;
         icmpv6_key[0].key = key;
@@ -1367,7 +1368,7 @@ static icmp_transaction_t *transaction_end(packet_info *pinfo, proto_tree *tree,
         PROTO_ITEM_SET_GENERATED(it);
     }
 
-    nstime_delta(&ns, &pinfo->fd->abs_ts, &icmpv6_trans->rqst_time);
+    nstime_delta(&ns, &pinfo->abs_ts, &icmpv6_trans->rqst_time);
     icmpv6_trans->resp_time = ns;
     if (tree) {
         resp_time = nstime_to_msec(&ns);
@@ -1947,8 +1948,8 @@ dissect_icmpv6_nd_opt(tvbuff_t *tvb, int offset, packet_info *pinfo, proto_tree 
                     case 16:
                         memset(&prefix, 0, sizeof(prefix));
                         tvb_memcpy(tvb, (guint8 *)&prefix.bytes, opt_offset, 8);
-                        proto_tree_add_ipv6(icmp6opt_tree, hf_icmpv6_opt_prefix, tvb, opt_offset, 8, prefix.bytes);
-                        SET_ADDRESS(&prefix_addr, AT_IPv6, 16, prefix.bytes);
+                        proto_tree_add_ipv6(icmp6opt_tree, hf_icmpv6_opt_prefix, tvb, opt_offset, 8, &prefix);
+                        set_address(&prefix_addr, AT_IPv6, 16, prefix.bytes);
                         proto_item_append_text(ti, " %s/%d", address_to_str(wmem_packet_scope(), &prefix_addr), prefix_len);
                         opt_offset += 8;
                         break;
@@ -2246,8 +2247,8 @@ dissect_icmpv6_nd_opt(tvbuff_t *tvb, int offset, packet_info *pinfo, proto_tree 
                         break;
                     case 16:
                         tvb_memcpy(tvb, (guint8 *)&context_prefix.bytes, opt_offset, 8);
-                        proto_tree_add_ipv6(icmp6opt_tree, hf_icmpv6_opt_6co_context_prefix, tvb, opt_offset, 8, context_prefix.bytes);
-                        SET_ADDRESS(&context_prefix_addr, AT_IPv6, 16, context_prefix.bytes);
+                        proto_tree_add_ipv6(icmp6opt_tree, hf_icmpv6_opt_6co_context_prefix, tvb, opt_offset, 8, &context_prefix);
+                        set_address(&context_prefix_addr, AT_IPv6, 16, context_prefix.bytes);
                         proto_item_append_text(ti, " %s/%d", address_to_str(wmem_packet_scope(), &context_prefix_addr), context_len);
                         opt_offset += 8;
                         break;
@@ -2265,7 +2266,7 @@ dissect_icmpv6_nd_opt(tvbuff_t *tvb, int offset, packet_info *pinfo, proto_tree 
                 hints = (ieee802154_hints_t *)p_get_proto_data(wmem_file_scope(), pinfo,
                         proto_get_id_by_filter_name(IEEE802154_PROTOABBREV_WPAN), 0);
                 if ((opt_len <= 24) && hints) {
-                    lowpan_context_insert(context_id, hints->src_pan, context_len, &context_prefix, pinfo->fd->num);
+                    lowpan_context_insert(context_id, hints->src_pan, context_len, &context_prefix, pinfo->num);
                 }
             }
             break;
@@ -2422,8 +2423,8 @@ dissect_icmpv6_rpl_opt(tvbuff_t *tvb, int offset, packet_info *pinfo, proto_tree
                     case 14:
                         memset(&prefix, 0, sizeof(prefix));
                         tvb_memcpy(tvb, (guint8 *)&prefix.bytes, opt_offset, 8);
-                        proto_tree_add_ipv6(icmp6opt_tree, hf_icmpv6_rpl_opt_route_prefix, tvb, opt_offset, 8, prefix.bytes);
-                        SET_ADDRESS(&prefix_addr, AT_IPv6, 16, prefix.bytes);
+                        proto_tree_add_ipv6(icmp6opt_tree, hf_icmpv6_rpl_opt_route_prefix, tvb, opt_offset, 8, &prefix);
+                        set_address(&prefix_addr, AT_IPv6, 16, prefix.bytes);
                         proto_item_append_text(ti, " %s/%d", address_to_str(wmem_packet_scope(), &prefix_addr), prefix_len);
                         opt_offset += 8;
                         break;
@@ -2509,8 +2510,8 @@ dissect_icmpv6_rpl_opt(tvbuff_t *tvb, int offset, packet_info *pinfo, proto_tree
                     case 10:
                         memset(&target_prefix, 0, sizeof(target_prefix));
                         tvb_memcpy(tvb, (guint8 *)&target_prefix.bytes, opt_offset, 8);
-                        proto_tree_add_ipv6(icmp6opt_tree, hf_icmpv6_rpl_opt_target_prefix, tvb, opt_offset, 8, target_prefix.bytes);
-                        SET_ADDRESS(&target_prefix_addr, AT_IPv6, 16, target_prefix.bytes);
+                        proto_tree_add_ipv6(icmp6opt_tree, hf_icmpv6_rpl_opt_target_prefix, tvb, opt_offset, 8, &target_prefix);
+                        set_address(&target_prefix_addr, AT_IPv6, 16, target_prefix.bytes);
                         proto_item_append_text(ti, " %s/%d", address_to_str(wmem_packet_scope(), &target_prefix_addr), prefix_len);
                         opt_offset += 8;
                         break;
@@ -2735,7 +2736,7 @@ dissect_icmpv6_rpl_opt(tvbuff_t *tvb, int offset, packet_info *pinfo, proto_tree
                 while (num_of_addr--) {
                     memset(addr, 0, sizeof(addr));
                     memcpy(addr + compr, tvb_get_ptr(tvb, opt_offset, addr_len), addr_len);
-                    proto_tree_add_ipv6(flag_tree, hf_icmpv6_rpl_opt_route_discovery_addr_vec_addr, tvb, opt_offset, addr_len, addr);
+                    proto_tree_add_ipv6(flag_tree, hf_icmpv6_rpl_opt_route_discovery_addr_vec_addr, tvb, opt_offset, addr_len, (struct e_in6_addr *)addr);
                     opt_offset += addr_len;
                 }
 
@@ -3450,6 +3451,12 @@ dissect_mldrv2( tvbuff_t *tvb, guint32 offset, packet_info *pinfo _U_, proto_tre
     return mldr_offset;
 }
 
+static gboolean
+capture_icmpv6(const guchar *pd _U_, int offset _U_, int len _U_, capture_packet_info_t *cpinfo, const union wtap_pseudo_header *pseudo_header _U_)
+{
+    capture_dissector_increment_count(cpinfo, proto_icmpv6);
+    return TRUE;
+}
 
 static int
 dissect_icmpv6(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data)
@@ -3626,7 +3633,7 @@ dissect_icmpv6(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data)
                 }
             }
             next_tvb = tvb_new_subset_remaining(tvb, offset);
-            offset += call_dissector(data_handle, next_tvb, pinfo, icmp6_tree);
+            offset += call_data_dissector(next_tvb, pinfo, icmp6_tree);
         }
     }
 
@@ -5239,13 +5246,13 @@ proto_register_icmpv6(void)
           { "Num of Locs", "icmpv6.ilnp.nb_locs", FT_UINT8, BASE_DEC, NULL, 0x0,
             "The number of 64-bit Locator values that are advertised in this message", HFILL }},
         { &hf_icmpv6_ilnp_locator,
-          { "Locator", "icmpv6.ilnp.nb_locs", FT_UINT64, BASE_HEX, NULL, 0x0,
+          { "Locator", "icmpv6.ilnp.nb_locator", FT_UINT64, BASE_HEX, NULL, 0x0,
             "The 64-bit Locator values currently valid for the sending ILNPv6 node", HFILL }},
         { &hf_icmpv6_ilnp_preference,
-          { "Preference", "icmpv6.ilnp.nb_locs", FT_UINT32, BASE_DEC, NULL, 0x0,
+          { "Preference", "icmpv6.ilnp.nb_preference", FT_UINT32, BASE_DEC, NULL, 0x0,
             "The preferability of each Locator relative to other valid Locator values", HFILL }},
         { &hf_icmpv6_ilnp_lifetime,
-          { "Lifetime", "icmpv6.ilnp.nb_locs", FT_UINT32, BASE_DEC, NULL, 0x0,
+          { "Lifetime", "icmpv6.ilnp.nb_lifetime", FT_UINT32, BASE_DEC, NULL, 0x0,
             "The maximum number of seconds that this particular Locator may be considered valid", HFILL }},
 
         /* 6lowpan-nd: Neighbour Discovery for 6LoWPAN Networks */
@@ -5347,7 +5354,7 @@ proto_register_icmpv6(void)
     expert_icmpv6 = expert_register_protocol(proto_icmpv6);
     expert_register_field_array(expert_icmpv6, ei, array_length(ei));
 
-    icmpv6_handle = new_register_dissector("icmpv6", dissect_icmpv6, proto_icmpv6);
+    icmpv6_handle = register_dissector("icmpv6", dissect_icmpv6, proto_icmpv6);
 
     icmpv6_tap = register_tap("icmpv6");
 }
@@ -5356,12 +5363,13 @@ void
 proto_reg_handoff_icmpv6(void)
 {
     dissector_add_uint("ip.proto", IP_PROTO_ICMPV6, icmpv6_handle);
+    register_capture_dissector("ip.proto", IP_PROTO_ICMPV6, capture_icmpv6, proto_icmpv6);
+    register_capture_dissector("ipv6.nxt", IP_PROTO_ICMPV6, capture_icmpv6, proto_icmpv6);
 
     /*
      * Get a handle for the IPv6 dissector.
      */
-    ipv6_handle = find_dissector("ipv6");
-    data_handle = find_dissector("data");
+    ipv6_handle = find_dissector_add_dependency("ipv6", proto_icmpv6);
 }
 
 /*

@@ -29,13 +29,14 @@
 #include <stdlib.h>
 #include <math.h>
 
+#include <glib.h>
 
 #include "epan/packet_info.h"
 #include "epan/strutil.h"
 
-
 #include "ui/simple_dialog.h"
-#include "ui/utf8_entities.h"
+
+#include <wsutil/utf8_entities.h>
 
 #include "ui/gtk/expert_comp_table.h"
 #include "ui/gtk/filter_utils.h"

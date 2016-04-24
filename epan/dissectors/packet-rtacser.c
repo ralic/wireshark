@@ -84,8 +84,8 @@ static int hf_rtacser_footer                = -1;
 static gint ett_rtacser                   = -1;
 static gint ett_rtacser_cl                = -1;
 
+static dissector_handle_t rtacser_handle;
 static dissector_table_t  subdissector_table;
-static dissector_handle_t data_handle;
 
 #define RTACSER_HEADER_LEN    12
 
@@ -216,7 +216,7 @@ dissect_rtacser_data(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
         /* Functionality for choosing subdissector is controlled through Decode As as CAN doesn't
            have a unique identifier to determine subdissector */
         if (!dissector_try_uint(subdissector_table, 0, payload_tvb, pinfo, tree)){
-            call_dissector(data_handle, payload_tvb, pinfo, tree);
+            call_data_dissector(payload_tvb, pinfo, tree);
         }
     }
 }
@@ -291,9 +291,9 @@ proto_register_rtacser(void)
     proto_rtacser = proto_register_protocol("RTAC Serial", "RTAC Serial", "rtacser");
 
     /* Registering protocol to be called by another dissector */
-    new_register_dissector("rtacser", dissect_rtacser, proto_rtacser);
+    rtacser_handle = register_dissector("rtacser", dissect_rtacser, proto_rtacser);
 
-    subdissector_table = register_dissector_table("rtacser.data", "RTAC Serial Data Subdissector", FT_UINT32, BASE_HEX);
+    subdissector_table = register_dissector_table("rtacser.data", "RTAC Serial Data Subdissector", proto_rtacser, FT_UINT32, BASE_HEX, DISSECTOR_TABLE_NOT_ALLOW_DUPLICATE);
 
     /* Required function calls to register the header fields and subtrees used */
     proto_register_field_array(proto_rtacser, rtacser_hf, array_length(rtacser_hf));
@@ -317,18 +317,7 @@ proto_register_rtacser(void)
 void
 proto_reg_handoff_rtacser(void)
 {
-    static int rtacser_prefs_initialized = FALSE;
-    static dissector_handle_t rtacser_handle;
-
-    /* Make sure to use RTAC Serial Protocol Preferences field to determine payload protocol to use for decoding */
-    if (! rtacser_prefs_initialized) {
-        rtacser_handle = new_create_dissector_handle(dissect_rtacser, proto_rtacser);
-        rtacser_prefs_initialized = TRUE;
-    }
-
     dissector_add_uint("wtap_encap", WTAP_ENCAP_RTAC_SERIAL, rtacser_handle);
-
-    data_handle = find_dissector("data");
 }
 
 /*

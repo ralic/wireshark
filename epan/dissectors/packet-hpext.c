@@ -64,10 +64,8 @@ static header_field_info hfi_hpext_reserved HPEXT_HFI_INIT =
 
 static gint ett_hpext = -1;
 
-static dissector_handle_t data_handle;
-
-static void
-dissect_hpext(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
+static int
+dissect_hpext(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data _U_)
 {
 	proto_tree	*hpext_tree = NULL;
 	proto_item	*ti = NULL;
@@ -98,9 +96,10 @@ dissect_hpext(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
 		next_tvb = tvb_new_subset_remaining(tvb, 7);
 		if (!dissector_try_uint(subdissector_table,
 		    dxsap, next_tvb, pinfo, tree)) {
-			call_dissector(data_handle, next_tvb, pinfo, tree);
+			call_data_dissector(next_tvb, pinfo, tree);
 		}
 	}
+	return tvb_captured_length(tvb);
 }
 
 void
@@ -129,7 +128,7 @@ proto_register_hpext(void)
 
 /* subdissector code */
 	subdissector_table = register_dissector_table("hpext.dxsap",
-	  "HPEXT XSAP", FT_UINT16, BASE_HEX);
+	  "HPEXT XSAP", proto_hpext, FT_UINT16, BASE_HEX, DISSECTOR_TABLE_NOT_ALLOW_DUPLICATE);
 
 	hpext_handle = register_dissector("hpext", dissect_hpext, proto_hpext);
 }
@@ -137,8 +136,6 @@ proto_register_hpext(void)
 void
 proto_reg_handoff_hpext(void)
 {
-	data_handle = find_dissector("data");
-
 	dissector_add_uint("llc.dsap", SAP_HPEXT, hpext_handle);
 }
 

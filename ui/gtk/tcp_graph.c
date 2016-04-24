@@ -47,13 +47,17 @@
 
 #include <epan/stat_groups.h>
 #include "ui/tap-tcp-stream.h"
-#include "ui/utf8_entities.h"
+#include <wsutil/utf8_entities.h>
 
 #include "ui/gtk/gui_utils.h"
 #include "ui/gtk/dlg_utils.h"
 #include "ui/gtk/gui_stat_menu.h"
 
 #include "ui/gtk/old-gtk-compat.h"
+
+#ifndef HAVE_LRINT
+#define lrint   rint
+#endif
 
 #define TCP_SYN(flags)      ( flags & TH_SYN )
 #define TCP_ACK(flags)      ( flags & TH_ACK )
@@ -137,8 +141,7 @@ struct axis {
     GdkPixmap        *pixmap[2];
 #endif
     int               displayed;
-#define AXIS_ORIENTATION 1 << 0
-    int               flags;
+    gboolean is_horizontal_axis;
     /* dim and orig (relative to origin of window) of axis' pixmap */
     struct irect      p;
     /* dim and orig (relative to origin of axis' pixmap) of scale itself */
@@ -643,9 +646,9 @@ void tcp_graph_known_stream_launch(address *src_address, guint16 src_port,
     graph_initialize_values(g);
 
     /* Can set stream info for graph now */
-    COPY_ADDRESS(&g->tg.src_address, src_address);
+    copy_address(&g->tg.src_address, src_address);
     g->tg.src_port = src_port;
-    COPY_ADDRESS(&g->tg.dst_address, dst_address);
+    copy_address(&g->tg.dst_address, dst_address);
     g->tg.dst_port = dst_port;
     g->tg.stream = stream;
 
@@ -1641,15 +1644,13 @@ static struct gtk_graph *graph_new(void)
     g->x_axis = (struct axis * )g_malloc0(sizeof(struct axis));
     g->y_axis = (struct axis * )g_malloc0(sizeof(struct axis));
     g->x_axis->g         = g;
-    g->x_axis->flags     = 0;
-    g->x_axis->flags    |= AXIS_ORIENTATION;
+    g->x_axis->is_horizontal_axis = TRUE;
     g->x_axis->s.x       = g->x_axis->s.y = 0;
     g->x_axis->s.height  = HAXIS_INIT_HEIGHT;
     g->x_axis->p.x       = VAXIS_INIT_WIDTH;
     g->x_axis->p.height  = HAXIS_INIT_HEIGHT;
     g->y_axis->g         = g;
-    g->y_axis->flags     = 0;
-    g->y_axis->flags    &= ~AXIS_ORIENTATION;
+    g->y_axis->is_horizontal_axis = FALSE;
     g->y_axis->p.x       = g->y_axis->p.y = 0;
     g->y_axis->p.width   = VAXIS_INIT_WIDTH;
     g->y_axis->s.x       = 0;
@@ -2023,10 +2024,10 @@ static void draw_element_line(struct gtk_graph *g, struct element *e, cairo_t *c
         gdk_cairo_set_source_rgba(cr, new_color);
     }
 
-    xx1 = (int )rint(e->p.line.dim.x1 + g->geom.x - g->wp.x);
-    xx2 = (int )rint(e->p.line.dim.x2 + g->geom.x - g->wp.x);
-    yy1 = (int )rint((g->geom.height-1-e->p.line.dim.y1) + g->geom.y-g->wp.y);
-    yy2 = (int )rint((g->geom.height-1-e->p.line.dim.y2) + g->geom.y-g->wp.y);
+    xx1 = (int )lrint(e->p.line.dim.x1 + g->geom.x - g->wp.x);
+    xx2 = (int )lrint(e->p.line.dim.x2 + g->geom.x - g->wp.x);
+    yy1 = (int )lrint((g->geom.height-1-e->p.line.dim.y1) + g->geom.y-g->wp.y);
+    yy2 = (int )lrint((g->geom.height-1-e->p.line.dim.y2) + g->geom.y-g->wp.y);
 
     /* If line completely out of the area, we won't show it  */
     if (((xx1 < 0) && (xx2 < 0)) || ((xx1 >= g->wp.width)  && (xx2 >= g->wp.width)) ||
@@ -2123,7 +2124,7 @@ static void axis_destroy(struct axis *axis)
 
 static void axis_display(struct axis *axis)
 {
-    if (axis->flags & AXIS_ORIENTATION)
+    if (axis->is_horizontal_axis)
         h_axis_pixmap_draw(axis);
     else
         v_axis_pixmap_draw(axis);
@@ -2186,7 +2187,7 @@ static void v_axis_pixmap_draw(struct axis *axis)
     for (i=imin; i <= imax; i++) {
         gint w, h;
         char desc[32];
-        int y = (int) (g->geom.height - 1 - (int )rint(i * major_tick) -
+        int y = (int) (g->geom.height - 1 - (int )lrint(i * major_tick) -
                        offset + corr + axis->s.y);
 
         debug(DBS_AXES_DRAWING) printf("%f @ %d\n",
@@ -2210,7 +2211,7 @@ static void v_axis_pixmap_draw(struct axis *axis)
         imin = (int) ((g->geom.height - offset + corr - g->wp.height)/minor_tick + 1);
         imax = (int) ((g->geom.height - offset + corr) / minor_tick);
         for (i=imin; i <= imax; i++) {
-            int y = (int) (g->geom.height-1 - (int )rint (i*minor_tick) -
+            int y = (int) (g->geom.height-1 - (int )lrint(i*minor_tick) -
                            offset + corr + axis->s.y);
 
             debug(DBS_AXES_DRAWING) printf("%f @ %d\n", i*axis->minor+fl, y);
@@ -2552,18 +2553,18 @@ static int line_detect_collision(struct element *e, int x, int y)
     int xx1, yy1, xx2, yy2;
 
     if (e->p.line.dim.x1 < e->p.line.dim.x2) {
-        xx1 = (int )rint(e->p.line.dim.x1);
-        xx2 = (int )rint(e->p.line.dim.x2);
+        xx1 = (int )lrint(e->p.line.dim.x1);
+        xx2 = (int )lrint(e->p.line.dim.x2);
     } else {
-        xx1 = (int )rint(e->p.line.dim.x2);
-        xx2 = (int )rint(e->p.line.dim.x1);
+        xx1 = (int )lrint(e->p.line.dim.x2);
+        xx2 = (int )lrint(e->p.line.dim.x1);
     }
     if (e->p.line.dim.y1 < e->p.line.dim.y2) {
-        yy1 = (int )rint(e->p.line.dim.y1);
-        yy2 = (int )rint(e->p.line.dim.y2);
+        yy1 = (int )lrint(e->p.line.dim.y1);
+        yy2 = (int )lrint(e->p.line.dim.y2);
     } else {
-        yy1 = (int )rint(e->p.line.dim.y2);
-        yy2 = (int )rint(e->p.line.dim.y1);
+        yy1 = (int )lrint(e->p.line.dim.y2);
+        yy2 = (int )lrint(e->p.line.dim.y1);
     }
     /*
     printf("line: (%d,%d)->(%d,%d), clicked: (%d,%d)\n", xx1, yy1, xx2, yy2, x, y);
@@ -2579,10 +2580,10 @@ static int ellipse_detect_collision(struct element *e, int x, int y)
 {
     int xx1, yy1, xx2, yy2;
 
-    xx1 = (int )rint(e->p.ellipse.dim.x);
-    xx2 = (int )rint(e->p.ellipse.dim.x + e->p.ellipse.dim.width);
-    yy1 = (int )rint(e->p.ellipse.dim.y - e->p.ellipse.dim.height);
-    yy2 = (int )rint(e->p.ellipse.dim.y);
+    xx1 = (int )lrint(e->p.ellipse.dim.x);
+    xx2 = (int )lrint(e->p.ellipse.dim.x + e->p.ellipse.dim.width);
+    yy1 = (int )lrint(e->p.ellipse.dim.y - e->p.ellipse.dim.height);
+    yy2 = (int )lrint(e->p.ellipse.dim.y);
     /*
     printf("ellipse: (%d,%d)->(%d,%d), clicked: (%d,%d)\n", xx1, yy1, xx2, yy2, x, y);
      */
@@ -2701,8 +2702,8 @@ static void magnify_create(struct gtk_graph *g, int x, int y)
     mg->wp.y = 0;
     mg->wp.width  = g->magnify.width;
     mg->wp.height = g->magnify.height;
-    mg->geom.width  = (int )rint(g->geom.width * g->magnify.zoom.x);
-    mg->geom.height = (int )rint(g->geom.height * g->magnify.zoom.y);
+    mg->geom.width  = (int )lrint(g->geom.width * g->magnify.zoom.x);
+    mg->geom.height = (int )lrint(g->geom.height * g->magnify.zoom.y);
     mg->zoom.x = (mg->geom.width - 1) / g->bounds.width;
     mg->zoom.y = (mg->geom.height- 1) / g->bounds.height;
 
@@ -2794,9 +2795,9 @@ static void magnify_get_geom(struct gtk_graph *g, int x, int y)
     g->magnify.g->geom.x  = g->geom.x;
     g->magnify.g->geom.y  = g->geom.y;
 
-    g->magnify.g->geom.x -= (int )rint((g->magnify.g->geom.width - g->geom.width) *
+    g->magnify.g->geom.x -= (int )lrint((g->magnify.g->geom.width - g->geom.width) *
                                        ((x-g->geom.x)/(double )g->geom.width));
-    g->magnify.g->geom.y -= (int )rint((g->magnify.g->geom.height - g->geom.height) *
+    g->magnify.g->geom.y -= (int )lrint((g->magnify.g->geom.height - g->geom.height) *
                                        ((y-g->geom.y)/(double )g->geom.height));
 
     /* we have coords of origin of graph relative to origin of g->toplevel.
@@ -2864,8 +2865,8 @@ static gboolean configure_event(GtkWidget *widget _U_, GdkEventConfigure *event,
     zoom.y              = (double )g->wp.height / cur_wp_height;
     cur_g_width         = g->geom.width;
     cur_g_height        = g->geom.height;
-    g->geom.width       = (int )rint(g->geom.width * zoom.x);
-    g->geom.height      = (int )rint(g->geom.height * zoom.y);
+    g->geom.width       = (int )lrint(g->geom.width * zoom.x);
+    g->geom.height      = (int )lrint(g->geom.height * zoom.y);
     g->zoom.x           = (double )(g->geom.width - 1) / g->bounds.width;
     g->zoom.y           = (double )(g->geom.height -1) / g->bounds.height;
     /* g->zoom.initial.x = g->zoom.x; */
@@ -2968,8 +2969,8 @@ perform_zoom(struct gtk_graph *g, struct zoomfactor *zf,
     int cur_width = g->geom.width, cur_height = g->geom.height;
 
     /* Multiply by x and y factors */
-    g->geom.width  = (int )rint(g->geom.width  * zf->x);
-    g->geom.height = (int )rint(g->geom.height * zf->y);
+    g->geom.width  = (int )lrint(g->geom.width  * zf->x);
+    g->geom.height = (int )lrint(g->geom.height * zf->y);
 
     /* If already fully-zoomed out, don't waste time re-drawing */
     if ((g->geom.width <= g->wp.width) &&
@@ -2989,9 +2990,9 @@ perform_zoom(struct gtk_graph *g, struct zoomfactor *zf,
     g->zoom.y = (g->geom.height- 1) / g->bounds.height;
 
     /* Move origin to keep mouse position at centre of view */
-    g->geom.x -= (int)rint((g->geom.width - cur_width) *
+    g->geom.x -= (int)lrint((g->geom.width - cur_width) *
                            ((origin_x - g->geom.x)/(double )cur_width));
-    g->geom.y -= (int)rint((g->geom.height - cur_height) *
+    g->geom.y -= (int)lrint((g->geom.height - cur_height) *
                            ((origin_y - g->geom.y)/(double )cur_height));
 
     if (g->geom.x > g->wp.x)
@@ -3216,7 +3217,7 @@ static void do_magnify_create(struct gtk_graph *g)
     int pointer_x, pointer_y;
 
     get_mouse_position(g->drawing_area, &pointer_x, &pointer_y, NULL);
-    magnify_create(g, (int )rint(pointer_x), (int )rint(pointer_y));
+    magnify_create(g, (int )lrint(pointer_x), (int )lrint(pointer_y));
 }
 
 static void do_key_motion(struct gtk_graph *g)
@@ -3274,10 +3275,10 @@ static gboolean button_press_event(GtkWidget *widget _U_, GdkEventButton *event,
 
     if (event->button == MOUSE_BUTTON_RIGHT) {
         if (event->state & GDK_CONTROL_MASK) {
-            magnify_create(g, (int )rint(event->x), (int )rint(event->y));
+            magnify_create(g, (int )lrint(event->x), (int )lrint(event->y));
         } else {
-            g->grab.x = (int )rint(event->x) - g->geom.x;
-            g->grab.y = (int )rint(event->y) - g->geom.y;
+            g->grab.x = (int )lrint(event->x) - g->geom.x;
+            g->grab.y = (int )lrint(event->y) - g->geom.y;
             g->grab.grabbed = TRUE;
         }
 #ifdef ORIGINAL_WIN32_BUTTONS

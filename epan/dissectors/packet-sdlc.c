@@ -51,7 +51,6 @@ static gint ett_sdlc = -1;
 static gint ett_sdlc_control = -1;
 
 static dissector_handle_t sna_handle;
-static dissector_handle_t data_handle;
 
 static const xdlc_cf_items sdlc_cf_items = {
 	&hf_sdlc_n_r,
@@ -65,8 +64,8 @@ static const xdlc_cf_items sdlc_cf_items = {
 	&hf_sdlc_ftype_s_u
 };
 
-static void
-dissect_sdlc(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
+static int
+dissect_sdlc(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data _U_)
 {
 	proto_tree	*sdlc_tree;
 	proto_item	*sdlc_ti;
@@ -99,17 +98,12 @@ dissect_sdlc(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
 		col_set_str(pinfo->cinfo, COL_RES_DL_SRC, "DCE");
 	}
 
-	if (tree) {
-		sdlc_ti = proto_tree_add_item(tree, proto_sdlc, tvb, 0, -1,
-		    ENC_NA);
-		sdlc_tree = proto_item_add_subtree(sdlc_ti, ett_sdlc);
+	sdlc_ti = proto_tree_add_item(tree, proto_sdlc, tvb, 0, -1,
+		ENC_NA);
+	sdlc_tree = proto_item_add_subtree(sdlc_ti, ett_sdlc);
 
-		proto_tree_add_uint(sdlc_tree, hf_sdlc_address, tvb, 0, 1,
-		    addr);
-	} else {
-		sdlc_ti = NULL;
-		sdlc_tree = NULL;
-	}
+	proto_tree_add_uint(sdlc_tree, hf_sdlc_address, tvb, 0, 1,
+		addr);
 
 	/*
 	 * XXX - SDLC has a mod-128 mode as well as a mod-7 mode.
@@ -122,8 +116,7 @@ dissect_sdlc(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
 	    is_response, FALSE, FALSE);
 	sdlc_header_len += XDLC_CONTROL_LEN(control, FALSE);
 
-	if (tree)
-		proto_item_set_len(sdlc_ti, sdlc_header_len);
+	proto_item_set_len(sdlc_ti, sdlc_header_len);
 
 	/*
 	 * XXX - is there an FCS at the end, at least in Sniffer
@@ -134,7 +127,9 @@ dissect_sdlc(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
 		/* call the SNA dissector */
 		call_dissector(sna_handle, next_tvb, pinfo, tree);
 	} else
-		call_dissector(data_handle, next_tvb, pinfo, tree);
+		call_data_dissector(next_tvb, pinfo, tree);
+
+	return tvb_captured_length(tvb);
 }
 
 void
@@ -204,8 +199,7 @@ proto_reg_handoff_sdlc(void)
 	/*
 	 * Get handle for the SNA dissector.
 	 */
-	sna_handle = find_dissector("sna");
-	data_handle = find_dissector("data");
+	sna_handle = find_dissector_add_dependency("sna", proto_sdlc);
 
 	sdlc_handle = create_dissector_handle(dissect_sdlc, proto_sdlc);
 	dissector_add_uint("wtap_encap", WTAP_ENCAP_SDLC, sdlc_handle);

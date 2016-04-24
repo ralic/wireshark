@@ -26,10 +26,6 @@
 #include <string.h>
 #include <errno.h>
 
-#ifdef HAVE_UNISTD_H
-#include <unistd.h>
-#endif
-
 #include <glib.h>
 
 #include <wsutil/filesystem.h>
@@ -707,8 +703,8 @@ read_disabled_heur_dissector_list(char **gpath_return, int *gopen_errno_return,
 static gint
 heur_compare(gconstpointer a, gconstpointer b)
 {
-  return strcmp(((heur_dtbl_entry_t*)a)->short_name,
-        ((heur_dtbl_entry_t*)b)->short_name);
+  return strcmp(((const heur_dtbl_entry_t *)a)->short_name,
+                ((const heur_dtbl_entry_t *)b)->short_name);
 }
 
 static void
@@ -730,7 +726,7 @@ sort_dissector_table_entries(const char *table_name _U_,
 }
 
 static void
-sort_heur_dissector_tables(const char *table_name, heur_dissector_list_t *list, gpointer w)
+sort_heur_dissector_tables(const char *table_name, struct heur_dissector_list *list, gpointer w)
 {
   if (list) {
     heur_dissector_table_foreach(table_name, sort_dissector_table_entries, w);

@@ -34,6 +34,7 @@
 
 #include <epan/packet.h>
 #include <epan/sctpppids.h>
+#include <wsutil/str_util.h>
 
 void proto_register_dua(void);
 void proto_reg_handoff_dua(void);
@@ -75,7 +76,6 @@ static int hf_message_length        = -1;
 static gint ett_dua                 = -1;
 static gint ett_dua_parameter       = -1;
 
-static dissector_handle_t data_handle;
 static dissector_handle_t dpnss_handle;
 
 #define ADD_PADDING(x) ((((x) + 3) >> 2) << 2)
@@ -333,7 +333,7 @@ dissect_protocol_data_parameter(tvbuff_t *parameter_tvb, proto_item *parameter_i
     return;
   }
 
-  call_dissector(data_handle, protocol_data_tvb, pinfo, tree);
+  call_data_dissector(protocol_data_tvb, pinfo, tree);
 
   proto_item_append_text(parameter_item, " (%u byte%s)", protocol_data_length, plurality(protocol_data_length, "", "s"));
 }
@@ -713,8 +713,8 @@ dissect_dua_message(tvbuff_t *message_tvb, packet_info *pinfo, proto_tree *tree,
   dissect_parameters(parameters_tvb, pinfo, tree, dua_tree);
 }
 
-static void
-dissect_dua(tvbuff_t *message_tvb, packet_info *pinfo, proto_tree *tree)
+static int
+dissect_dua(tvbuff_t *message_tvb, packet_info *pinfo, proto_tree *tree, void* data _U_)
 {
   proto_item *dua_item;
   proto_tree *dua_tree;
@@ -722,17 +722,13 @@ dissect_dua(tvbuff_t *message_tvb, packet_info *pinfo, proto_tree *tree)
   /* make entry in the Protocol column on summary display */
   col_set_str(pinfo->cinfo, COL_PROTOCOL, "DUA");
 
-  /* In the interest of speed, if "tree" is NULL, don't do any work not
-     necessary to generate protocol tree items. */
-  if (tree) {
-    /* create the m3ua protocol tree */
-    dua_item = proto_tree_add_item(tree, proto_dua, message_tvb, 0, -1, ENC_NA);
-    dua_tree = proto_item_add_subtree(dua_item, ett_dua);
-  } else {
-    dua_tree = NULL;
-  };
+  /* create the m3ua protocol tree */
+  dua_item = proto_tree_add_item(tree, proto_dua, message_tvb, 0, -1, ENC_NA);
+  dua_tree = proto_item_add_subtree(dua_item, ett_dua);
+
   /* dissect the message */
   dissect_dua_message(message_tvb, pinfo, tree, dua_tree);
+  return tvb_captured_length(message_tvb);
 }
 
 /* Register the protocol with Wireshark */
@@ -916,8 +912,7 @@ proto_reg_handoff_dua(void)
   dissector_handle_t dua_handle;
 
   dua_handle   = find_dissector("dua");
-  data_handle  = find_dissector("data");
-  dpnss_handle = find_dissector("dpnss");
+  dpnss_handle = find_dissector_add_dependency("dpnss", proto_dua);
   dissector_add_uint("sctp.ppi", DUA_PAYLOAD_PROTOCOL_ID, dua_handle);
 }
 

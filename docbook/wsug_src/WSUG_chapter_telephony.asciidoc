@@ -38,6 +38,13 @@ The RTP Stream Analysis window further provides the option to save the RTP
 payload (as raw data or, if in a PCM encoding, in an Audio file). Other options
 a to export and plot various statistics on the RTP streams.
 
+[[ChTelIAX2Analysis]]
+
+=== IAX2 Analysis
+
+The ``IAX2 Analysis'' dialog shows statistics for the forward and reverse
+streams of a selected IAX2 call along with a graph.
+
 [[ChTelVoipCalls]]
 
 === VoIP Calls
@@ -45,7 +52,16 @@ a to export and plot various statistics on the RTP streams.
 The VoIP Calls window shows a list of all detected VoIP calls in the captured
 traffic. It finds calls by their signaling.
 
-More details are described at the
+More details can be found on the
+link:wireshark-wiki-site:[]VoIP_calls[wireshark-wiki-site:[]VoIP_calls] page.
+
+[[ChTelRtpPlayer]]
+
+The RTP Player window lets you play back RTP audio data. In order to use
+this feature your version of Wireshark must support audio and the codecs
+used by each RTP stream.
+
+More details can be found on the
 link:wireshark-wiki-site:[]VoIP_calls[wireshark-wiki-site:[]VoIP_calls] page.
 
 [[ChTelLTEMACTraffic]]

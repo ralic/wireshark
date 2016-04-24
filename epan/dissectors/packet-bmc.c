@@ -99,12 +99,11 @@ dissect_bmc(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data _U_)
 
     /* Needs bit-reversing. Create a new buffer, copy the message to it and bit-reverse */
     len = tvb_reported_length(tvb);
-    reversing_buffer = (guint8 *)tvb_memdup(NULL, tvb, offset, len);
+    reversing_buffer = (guint8 *)tvb_memdup(pinfo->pool, tvb, offset, len);
     bitswap_buf_inplace(reversing_buffer, len);
 
     /* Make this new buffer part of the display and provide a way to dispose of it */
     bit_reversed_tvb = tvb_new_child_real_data(tvb, reversing_buffer, len, len);
-    tvb_set_free_cb(bit_reversed_tvb, g_free);
     add_new_data_source(pinfo, bit_reversed_tvb, "Bit-reversed Data");
 
     message_type = tvb_get_guint8(bit_reversed_tvb, offset);
@@ -133,7 +132,7 @@ dissect_bmc(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data _U_)
 }
 
 static int
-dissect_bmc_cbs_message(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree)
+dissect_bmc_cbs_message(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
 {
     tvbuff_t *cell_broadcast_tvb;
     gint      offset = 1;
@@ -148,7 +147,7 @@ dissect_bmc_cbs_message(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree)
     offset += 1;
 
     cell_broadcast_tvb = tvb_new_subset_remaining(tvb, offset);
-    dissect_umts_cell_broadcast_message(cell_broadcast_tvb, pinfo, tree);
+    dissect_umts_cell_broadcast_message(cell_broadcast_tvb, pinfo, tree, NULL);
     offset = tvb_reported_length(cell_broadcast_tvb);
 
     return offset;
@@ -336,7 +335,7 @@ proto_register_bmc(void)
     };
 
     proto_bmc = proto_register_protocol("Broadcast/Multicast Control", "BMC", "bmc");
-    new_register_dissector("bmc", dissect_bmc, proto_bmc);
+    register_dissector("bmc", dissect_bmc, proto_bmc);
 
     proto_register_field_array(proto_bmc, hf, array_length(hf));
     proto_register_subtree_array(ett, array_length(ett));

@@ -28,7 +28,7 @@
 #include <epan/proto.h>
 
 #include <ui/preference_utils.h>
-#include <ui/utf8_entities.h>
+#include <wsutil/utf8_entities.h>
 
 #include "protocol_preferences_menu.h"
 
@@ -278,10 +278,6 @@ void ProtocolPreferencesMenu::addMenuItem(preference *pref)
         QAction *mpa = addAction(title);
         connect(mpa, SIGNAL(triggered(bool)), this, SLOT(modulePreferencesTriggered()));
         break;
-    }
-
-    if (pref->type != PREF_ENUM) {
-    } else {
     }
 }
 

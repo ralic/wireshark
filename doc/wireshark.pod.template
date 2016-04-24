@@ -347,6 +347,10 @@ the interface specified by the last B<-i> option occurring before
 this option.  If the capture filter expression is not set specifically,
 the default capture filter expression is used if provided.
 
+Pre-defined capture filter names, as shown in the GUI menu item Capture->Capture Filters,
+can be used by prefixing the argument with "predef:".
+Example: B<-f "predef:MyPredefinedHostOnlyFilter">
+
 =item -g  E<lt>packet numberE<gt>
 
 After reading in a capture file using the B<-r> flag, go to the given I<packet number>.
@@ -470,8 +474,6 @@ B<N> to enable using external resolvers (e.g., DNS) for network address
 resolution
 
 B<t> to enable transport-layer port number resolution
-
-B<C> to enable concurrent (asynchronous) DNS lookups
 
 B<d> to enable resolution from captured DNS packets
 
@@ -1912,7 +1914,7 @@ I<View:Main Toolbar>.
 A display filter can be entered into the filter toolbar.
 A filter for HTTP, HTTPS, and DNS traffic might look like this:
 
-  tcp.port == 80 || tcp.port == 443 || tcp.port == 53
+  tcp.port in {80 443 53}
 
 Selecting the I<Filter:> button lets you choose from a list of named
 filters that you can optionally save.  Pressing the Return or Enter

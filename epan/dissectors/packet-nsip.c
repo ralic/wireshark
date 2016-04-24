@@ -502,7 +502,7 @@ decode_iei_num_ip6_endpoints(nsip_ie_t *ie, build_info_t *bi, int ie_start_offse
 }
 
 static void
-decode_iei_reset_flag(nsip_ie_t *ie _U_, build_info_t *bi, int ie_start_offset) {
+decode_iei_reset_flag(nsip_ie_t *ie _U_, build_info_t *bi, int ie_start_offset _U_) {
   guint8 flag;
   static const int * reset_flags[] = {
     &hf_nsip_reset_flag_bit,
@@ -511,7 +511,7 @@ decode_iei_reset_flag(nsip_ie_t *ie _U_, build_info_t *bi, int ie_start_offset) 
   };
 
   flag = tvb_get_guint8(bi->tvb, bi->offset);
-  proto_tree_add_bitmask(bi->nsip_tree,  bi->tvb, ie_start_offset, hf_nsip_reset_flag,
+  proto_tree_add_bitmask(bi->nsip_tree,  bi->tvb, bi->offset, hf_nsip_reset_flag,
                            ett_nsip_reset_flag, reset_flags, ENC_NA);
 
   if (flag & NSIP_MASK_RESET_FLAG) {
@@ -542,7 +542,7 @@ decode_iei_ip_address(nsip_ie_t *ie, build_info_t *bi, int ie_start_offset) {
     tvb_get_ipv6(bi->tvb, bi->offset+1, &ip6_addr);
     proto_tree_add_ipv6(bi->nsip_tree, hf_nsip_ip_address_ipv4,
         bi->tvb, ie_start_offset, ie->total_length,
-        (guint8 *)&ip6_addr);
+        &ip6_addr);
     break;
   default:
     return; /* error */
@@ -919,8 +919,8 @@ decode_pdu(guint8 pdu_type, build_info_t *bi) {
   }
 }
 
-static void
-dissect_nsip(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree) {
+static int
+dissect_nsip(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data _U_) {
   guint8 pdu_type;
   build_info_t bi = { NULL, 0, NULL, NULL, NULL, NULL };
   proto_tree *nsip_tree;
@@ -928,8 +928,6 @@ dissect_nsip(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree) {
   bi.tvb = tvb;
   bi.pinfo = pinfo;
   bi.parent_tree = tree;
-
-  pinfo->current_proto = "GPRS-NS";
 
   if (!nsip_is_recursive) {
     col_set_str(pinfo->cinfo, COL_PROTOCOL, "GPRS-NS");
@@ -957,6 +955,7 @@ dissect_nsip(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree) {
                 val_to_str_const(pdu_type, tab_nsip_pdu_types, "Unknown PDU type"));
   }
   decode_pdu(pdu_type, &bi);
+  return tvb_captured_length(tvb);
 }
 
 void
@@ -1170,8 +1169,8 @@ proto_reg_handoff_nsip(void) {
   static range_t *nsip_udp_port_range;
 
   if (!nsip_prefs_initialized) {
-    nsip_handle = find_dissector("gprs_ns");
-    bssgp_handle = find_dissector("bssgp");
+    nsip_handle = find_dissector_add_dependency("gprs_ns", proto_nsip);
+    bssgp_handle = find_dissector_add_dependency("bssgp", proto_nsip);
     nsip_prefs_initialized = TRUE;
   } else {
     dissector_delete_uint_range("udp.port", nsip_udp_port_range, nsip_handle);

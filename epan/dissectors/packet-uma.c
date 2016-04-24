@@ -74,7 +74,6 @@ static gboolean uma_desegment = TRUE;
 
 static dissector_handle_t uma_tcp_handle;
 static dissector_handle_t uma_udp_handle;
-static dissector_handle_t data_handle;
 static dissector_table_t  bssap_pdu_type_table;
 static dissector_handle_t rtcp_handle;
 static dissector_handle_t llc_handle;
@@ -1078,8 +1077,8 @@ dissect_uma_IE(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, int offset)
 		proto_tree_add_item(urr_ie_tree, hf_uma_urr_L3_protocol_discriminator, tvb, ie_offset, 1, ENC_BIG_ENDIAN);
 		proto_tree_add_item(urr_ie_tree, hf_uma_urr_L3_Message, tvb, ie_offset, ie_len, ENC_NA);
 		l3_tvb = tvb_new_subset_length(tvb, ie_offset, ie_len );
-		if  (!dissector_try_uint(bssap_pdu_type_table,BSSAP_PDU_TYPE_DTAP, l3_tvb, pinfo, urr_ie_tree))
-		   		call_dissector(data_handle, l3_tvb, pinfo, urr_ie_tree);
+		if (!dissector_try_uint(bssap_pdu_type_table,BSSAP_PDU_TYPE_DTAP, l3_tvb, pinfo, urr_ie_tree))
+			call_data_dissector(l3_tvb, pinfo, urr_ie_tree);
 		break;
 	case 27:
 		/* 11.2.27 Channel Mode
@@ -1122,8 +1121,8 @@ dissect_uma_IE(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, int offset)
 		proto_tree_add_item(urr_ie_tree, hf_uma_urr_L3_Message, tvb, ie_offset, ie_len, ENC_NA);
 		/* XXX the dissector to call should depend on the RAT type ??? */
 		l3_tvb = tvb_new_subset_length(tvb, ie_offset, ie_len );
-		if  (!dissector_try_uint(bssap_pdu_type_table,BSSAP_PDU_TYPE_DTAP, l3_tvb, pinfo, urr_ie_tree))
-		   		call_dissector(data_handle, l3_tvb, pinfo, urr_ie_tree);
+		if (!dissector_try_uint(bssap_pdu_type_table,BSSAP_PDU_TYPE_DTAP, l3_tvb, pinfo, urr_ie_tree))
+			call_data_dissector(l3_tvb, pinfo, urr_ie_tree);
 		break;
 	case 33:
 		/* 11.2.33 UL Quality Indication */
@@ -1250,14 +1249,13 @@ dissect_uma_IE(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, int offset)
 		 */
 		proto_tree_add_item(urr_ie_tree, hf_uma_urr_LLC_PDU, tvb, ie_offset, ie_len, ENC_NA);
 		llc_tvb = tvb_new_subset_length(tvb, ie_offset, ie_len );
-		  if (llc_handle) {
+		if (llc_handle) {
 			col_append_str(pinfo->cinfo, COL_PROTOCOL, "/");
 			col_set_fence(pinfo->cinfo, COL_PROTOCOL);
 			call_dissector(llc_handle, llc_tvb, pinfo, urr_ie_tree);
-		  }else{
-			  if (data_handle)
-				  call_dissector(data_handle, llc_tvb, pinfo, urr_ie_tree);
-		  }
+		}else{
+			call_data_dissector(llc_tvb, pinfo, urr_ie_tree);
+		}
 		break;
 	case 58:		/* 11.2.58 Location Black List indicator */
 		proto_tree_add_item(urr_ie_tree, hf_uma_urr_LBLI, tvb, ie_offset, 1, ENC_BIG_ENDIAN);
@@ -1479,17 +1477,17 @@ dissect_uma_IE(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, int offset)
 		{
 			break;
 		}
-		SET_ADDRESS(&null_addr, AT_NONE, 0, NULL);
+		clear_address(&null_addr);
 
-		SET_ADDRESS(&dst_addr, AT_IPv4, 4, &GPRS_user_data_ipv4_address);
+		set_address(&dst_addr, AT_IPv4, 4, &GPRS_user_data_ipv4_address);
 
-		conversation = find_conversation(pinfo->fd->num,&dst_addr,
+		conversation = find_conversation(pinfo->num,&dst_addr,
 			&null_addr, PT_UDP, GPRS_user_data_transport_UDP_port,
 			0, NO_ADDR_B|NO_PORT_B);
 
 		if (conversation == NULL) {
 			/* It's not part of any conversation - create a new one. */
-			conversation = conversation_new(pinfo->fd->num, &dst_addr,
+			conversation = conversation_new(pinfo->num, &dst_addr,
 			    &null_addr, PT_UDP,GPRS_user_data_transport_UDP_port ,
 			    0, NO_ADDR2|NO_PORT2);
 
@@ -1511,17 +1509,17 @@ dissect_uma_IE(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, int offset)
 		{
 			break;
 		}
-		SET_ADDRESS(&null_addr, AT_NONE, 0, NULL);
+		clear_address(&null_addr);
 
-		SET_ADDRESS(&dst_addr, AT_IPv4, 4, &unc_ipv4_address);
+		set_address(&dst_addr, AT_IPv4, 4, &unc_ipv4_address);
 
-		conversation = find_conversation(pinfo->fd->num,&dst_addr,
+		conversation = find_conversation(pinfo->num,&dst_addr,
 			&null_addr, PT_TCP, UNC_tcp_port,
 			0, NO_ADDR_B|NO_PORT_B);
 
 		if (conversation == NULL) {
 			/* It's not part of any conversation - create a new one. */
-			conversation = conversation_new(pinfo->fd->num, &dst_addr,
+			conversation = conversation_new(pinfo->num, &dst_addr,
 			    &null_addr, PT_TCP,UNC_tcp_port ,
 			    0, NO_ADDR2|NO_PORT2);
 			/* Set dissector */
@@ -1538,17 +1536,17 @@ dissect_uma_IE(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, int offset)
 			rtp_ipv4_address,RTP_UDP_port);
 			*/
 		if(unc_ipv4_address!=0){
-			SET_ADDRESS(&src_addr, AT_IPv4, 4, &unc_ipv4_address);
+			set_address(&src_addr, AT_IPv4, 4, &unc_ipv4_address);
 		}else{
 			/* Set Source IP = own IP */
-			src_addr = pinfo->src;
+			copy_address_shallow(&src_addr, &pinfo->src);
 		}
 		if((!pinfo->fd->flags.visited) && RTP_UDP_port!=0){
 
-			rtp_add_address(pinfo, &src_addr, RTP_UDP_port, 0, "UMA", pinfo->fd->num, FALSE, 0);
+			rtp_add_address(pinfo, &src_addr, RTP_UDP_port, 0, "UMA", pinfo->num, FALSE, 0);
 			if ((RTP_UDP_port & 0x1) == 0){ /* Even number RTP port RTCP should follow on odd number */
 				RTCP_UDP_port = RTP_UDP_port + 1;
-				rtcp_add_address(pinfo, &src_addr, RTCP_UDP_port, 0, "UMA", pinfo->fd->num);
+				rtcp_add_address(pinfo, &src_addr, RTCP_UDP_port, 0, "UMA", pinfo->num);
 			}
 		}
 		break;
@@ -1557,9 +1555,9 @@ dissect_uma_IE(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, int offset)
 		proto_tree_add_item(urr_ie_tree, hf_uma_urr_RTCP_port, tvb, ie_offset, 2, ENC_BIG_ENDIAN);
 		/* TODO find out exactly which element contains IP addr */
 		if((!pinfo->fd->flags.visited) && rtcp_ipv4_address!=0 && RTCP_UDP_port!=0 && rtcp_handle){
-			SET_ADDRESS(&src_addr, AT_IPv4, 4, &rtcp_ipv4_address);
+			set_address(&src_addr, AT_IPv4, 4, &rtcp_ipv4_address);
 
-			rtcp_add_address(pinfo, &src_addr, RTCP_UDP_port, 0, "UMA", pinfo->fd->num);
+			rtcp_add_address(pinfo, &src_addr, RTCP_UDP_port, 0, "UMA", pinfo->num);
 		}
 		break;
 	case 106:
@@ -1765,9 +1763,8 @@ proto_reg_handoff_uma(void)
 		uma_tcp_handle = find_dissector("umatcp");
 		uma_udp_handle = find_dissector("umaudp");
 		dissector_add_for_decode_as("udp.port", uma_udp_handle);
-		data_handle = find_dissector("data");
-		rtcp_handle = find_dissector("rtcp");
-		llc_handle = find_dissector("llcgprs");
+		rtcp_handle = find_dissector_add_dependency("rtcp", proto_uma);
+		llc_handle = find_dissector_add_dependency("llcgprs", proto_uma);
 		bssap_pdu_type_table = find_dissector_table("bssap.pdu_type");
 		Initialized=TRUE;
 	} else {
@@ -2305,8 +2302,8 @@ proto_register_uma(void)
 /* Register the protocol name and description */
 	proto_uma = proto_register_protocol("Unlicensed Mobile Access","UMA", "uma");
 	/* subdissector code */
-	new_register_dissector("umatcp", dissect_uma_tcp, proto_uma);
-	new_register_dissector("umaudp", dissect_uma_urlc_udp, proto_uma);
+	register_dissector("umatcp", dissect_uma_tcp, proto_uma);
+	register_dissector("umaudp", dissect_uma_urlc_udp, proto_uma);
 
 /* Required function calls to register the header fields and subtrees used */
 	proto_register_field_array(proto_uma, hf, array_length(hf));

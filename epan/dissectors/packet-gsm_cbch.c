@@ -98,7 +98,6 @@ static expert_field ei_gsm_cbch_seq_num_null = EI_INIT;
 static expert_field ei_gsm_cbch_seq_num_reserved = EI_INIT;
 static expert_field ei_gsm_cbch_lpd = EI_INIT;
 
-static dissector_handle_t data_handle;
 static dissector_handle_t cbs_handle;
 
 /* reassembly of CHCH blocks */
@@ -254,22 +253,22 @@ dissect_schedule_message(tvbuff_t *tvb, packet_info *pinfo, proto_tree *top_tree
                 else if (octet1 == 0x40)
                 {
                     /* MDT 010000000 */
-                    proto_tree_add_uint_format_value(sched_subtree, hf_gsm_cbch_slot, tvb, offset++, 1, new_slots[k],
-                                    "%d Free Message Slot, optional reading", new_slots[k]);
+                    proto_tree_add_uint_format_value(sched_subtree, hf_gsm_cbch_slot, tvb, offset++, 1, new_slots[i],
+                                    "%d Free Message Slot, optional reading", new_slots[i]);
                     other_slots[new_slots[i] - 1] = 0xFFFE;
                 }
                 else if (octet1 == 0x41)
                 {
                     /* MDT 010000001 */
-                    proto_tree_add_uint_format_value(sched_subtree, hf_gsm_cbch_slot, tvb, offset++, 1, new_slots[k],
-                                     "%d Free Message Slot, reading advised", new_slots[k]);
+                    proto_tree_add_uint_format_value(sched_subtree, hf_gsm_cbch_slot, tvb, offset++, 1, new_slots[i],
+                                     "%d Free Message Slot, reading advised", new_slots[i]);
                     other_slots[new_slots[i] - 1] = 0xFFFE;
                 }
                 else
                 {
                     /* reserved MDT */
-                    proto_tree_add_uint_format_value(sched_subtree, hf_gsm_cbch_slot, tvb, offset, 1, new_slots[k],
-                                     "%d reserved MDT: %x", new_slots[k], octet1);
+                    proto_tree_add_uint_format_value(sched_subtree, hf_gsm_cbch_slot, tvb, offset, 1, new_slots[i],
+                                     "%d reserved MDT: %x", new_slots[i], octet1);
                     other_slots[new_slots[i] - 1] = 0xFFFE;
                 }
             }
@@ -369,8 +368,8 @@ dissect_schedule_message(tvbuff_t *tvb, packet_info *pinfo, proto_tree *top_tree
     }
 }
 
-static void
-dissect_cbch(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
+static int
+dissect_cbch(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data  _U_)
 {
     fragment_head *frag_data = NULL;
     guint8         octet, lb, lpd, seq_num;
@@ -439,12 +438,12 @@ dissect_cbch(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
 
         case 0x0F:
             expert_add_info(pinfo, seq_item, &ei_gsm_cbch_seq_num_null);
-            call_dissector(data_handle, tvb, pinfo, cbch_tree);
+            call_data_dissector(tvb, pinfo, cbch_tree);
             break;
 
         default:
             expert_add_info(pinfo, seq_item, &ei_gsm_cbch_seq_num_reserved);
-            call_dissector(data_handle, tvb, pinfo, cbch_tree);
+            call_data_dissector(tvb, pinfo, cbch_tree);
             break;
         }
         if (reass_tvb)
@@ -471,8 +470,9 @@ dissect_cbch(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
     else
     {
         expert_add_info(pinfo, lpd_item, &ei_gsm_cbch_lpd);
-        call_dissector(data_handle, tvb, pinfo, cbch_tree);
+        call_data_dissector(tvb, pinfo, cbch_tree);
     }
+    return tvb_captured_length(tvb);
 }
 
 /* Register the protocol with Wireshark */
@@ -655,8 +655,7 @@ proto_register_gsm_cbch(void)
 void
 proto_reg_handoff_gsm_cbch(void)
 {
-    data_handle = find_dissector("data");
-    cbs_handle  = find_dissector("gsm_cbs");
+    cbs_handle  = find_dissector_add_dependency("gsm_cbs", proto_cbch);
 }
 
 /*

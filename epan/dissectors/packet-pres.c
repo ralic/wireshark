@@ -1,11 +1,11 @@
 /* Do not modify this file. Changes will be overwritten.                      */
 /* Generated automatically by the ASN.1 to Wireshark dissector compiler       */
 /* packet-pres.c                                                              */
-/* ../../tools/asn2wrs.py -b -p pres -c ./pres.cnf -s ./packet-pres-template -D . -O ../../epan/dissectors ISO8823-PRESENTATION.asn ISO9576-PRESENTATION.asn */
+/* asn2wrs.py -b -p pres -c ./pres.cnf -s ./packet-pres-template -D . -O ../.. ISO8823-PRESENTATION.asn ISO9576-PRESENTATION.asn */
 
 /* Input file: packet-pres-template.c */
 
-#line 1 "../../asn1/pres/packet-pres-template.c"
+#line 1 "./asn1/pres/packet-pres-template.c"
 /* packet-pres.c
  * Routine to dissect ISO 8823 OSI Presentation Protocol packets
  * Based on the dissector by
@@ -95,7 +95,7 @@ static int hf_pres_Typed_data_type = -1;
 
 
 /*--- Included file: packet-pres-hf.c ---*/
-#line 1 "../../asn1/pres/packet-pres-hf.c"
+#line 1 "./asn1/pres/packet-pres-hf.c"
 static int hf_pres_UD_type_PDU = -1;              /* UD_type */
 static int hf_pres_mode_selector = -1;            /* Mode_selector */
 static int hf_pres_x410_mode_parameters = -1;     /* RTORQapdu */
@@ -176,14 +176,14 @@ static int hf_pres_User_session_requirements_symmetric_synchronize = -1;
 static int hf_pres_User_session_requirements_data_separation = -1;
 
 /*--- End of included file: packet-pres-hf.c ---*/
-#line 89 "../../asn1/pres/packet-pres-template.c"
+#line 89 "./asn1/pres/packet-pres-template.c"
 
 /* Initialize the subtree pointers */
 static gint ett_pres           = -1;
 
 
 /*--- Included file: packet-pres-ett.c ---*/
-#line 1 "../../asn1/pres/packet-pres-ett.c"
+#line 1 "./asn1/pres/packet-pres-ett.c"
 static gint ett_pres_CP_type = -1;
 static gint ett_pres_T_normal_mode_parameters = -1;
 static gint ett_pres_T_extensions = -1;
@@ -222,7 +222,7 @@ static gint ett_pres_User_session_requirements = -1;
 static gint ett_pres_UD_type = -1;
 
 /*--- End of included file: packet-pres-ett.c ---*/
-#line 94 "../../asn1/pres/packet-pres-template.c"
+#line 94 "./asn1/pres/packet-pres-template.c"
 
 static expert_field ei_pres_dissector_not_available = EI_INIT;
 static expert_field ei_pres_wrong_spdu_type = EI_INIT;
@@ -266,7 +266,7 @@ register_ctx_id_and_oid(packet_info *pinfo _U_, guint32 idx, const char *oid)
 	pres_ctx_oid_t *pco, *tmppco;
 	conversation_t *conversation;
 
-	if(!oid){
+	if (!oid) {
 		/* we did not get any oid name, malformed packet? */
 		return;
 	}
@@ -274,7 +274,7 @@ register_ctx_id_and_oid(packet_info *pinfo _U_, guint32 idx, const char *oid)
 	pco=wmem_new(wmem_file_scope(), pres_ctx_oid_t);
 	pco->ctx_id=idx;
 	pco->oid=wmem_strdup(wmem_file_scope(), oid);
-	conversation=find_conversation (pinfo->fd->num, &pinfo->src, &pinfo->dst,
+	conversation=find_conversation (pinfo->num, &pinfo->src, &pinfo->dst,
 			pinfo->ptype, pinfo->srcport, pinfo->destport, 0);
 	if (conversation) {
 		pco->idx = conversation->index;
@@ -284,9 +284,8 @@ register_ctx_id_and_oid(packet_info *pinfo _U_, guint32 idx, const char *oid)
 
 	/* if this ctx already exists, remove the old one first */
 	tmppco=(pres_ctx_oid_t *)g_hash_table_lookup(pres_ctx_oid_table, pco);
-	if(tmppco){
+	if (tmppco) {
 		g_hash_table_remove(pres_ctx_oid_table, tmppco);
-
 	}
 	g_hash_table_insert(pres_ctx_oid_table, pco, pco);
 }
@@ -316,7 +315,7 @@ find_oid_by_pres_ctx_id(packet_info *pinfo, guint32 idx)
 	conversation_t *conversation;
 
 	pco.ctx_id=idx;
-	conversation=find_conversation (pinfo->fd->num, &pinfo->src, &pinfo->dst,
+	conversation=find_conversation (pinfo->num, &pinfo->src, &pinfo->dst,
 			pinfo->ptype, pinfo->srcport, pinfo->destport, 0);
 	if (conversation) {
 		pco.idx = conversation->index;
@@ -325,7 +324,7 @@ find_oid_by_pres_ctx_id(packet_info *pinfo, guint32 idx)
 	}
 
 	tmppco=(pres_ctx_oid_t *)g_hash_table_lookup(pres_ctx_oid_table, &pco);
-	if(tmppco){
+	if (tmppco) {
 		return tmppco->oid;
 	}
 
@@ -355,7 +354,7 @@ pres_free_cb(void *r)
 
 
 /*--- Included file: packet-pres-fn.c ---*/
-#line 1 "../../asn1/pres/packet-pres-fn.c"
+#line 1 "./asn1/pres/packet-pres-fn.c"
 
 static const value_string pres_T_mode_value_vals[] = {
   {   0, "x410-1984-mode" },
@@ -433,7 +432,7 @@ dissect_pres_Called_presentation_selector(gboolean implicit_tag _U_, tvbuff_t *t
 
 static int
 dissect_pres_Presentation_context_identifier(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 71 "../../asn1/pres/pres.cnf"
+#line 71 "./asn1/pres/pres.cnf"
   const char *name;
   char *oid;
   struct SESSION_DATA_STRUCTURE* session = (struct SESSION_DATA_STRUCTURE*)actx->private_data;
@@ -497,13 +496,13 @@ static const ber_sequence_t Context_list_item_sequence[] = {
 
 static int
 dissect_pres_Context_list_item(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 97 "../../asn1/pres/pres.cnf"
+#line 97 "./asn1/pres/pres.cnf"
 	abstract_syntax_name_oid=NULL;
 
   offset = dissect_ber_sequence(implicit_tag, actx, tree, tvb, offset,
                                    Context_list_item_sequence, hf_index, ett_pres_Context_list_item);
 
-#line 100 "../../asn1/pres/pres.cnf"
+#line 100 "./asn1/pres/pres.cnf"
 	register_ctx_id_and_oid(actx->pinfo, presentation_context_identifier, abstract_syntax_name_oid);
 
   return offset;
@@ -633,7 +632,7 @@ dissect_pres_Simply_encoded_data(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, i
 
 static int
 dissect_pres_T_single_ASN1_type(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 35 "../../asn1/pres/pres.cnf"
+#line 35 "./asn1/pres/pres.cnf"
 
  tvbuff_t	*next_tvb;
  char *oid;
@@ -656,7 +655,7 @@ dissect_pres_T_single_ASN1_type(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, in
 
 static int
 dissect_pres_T_octet_aligned(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 49 "../../asn1/pres/pres.cnf"
+#line 49 "./asn1/pres/pres.cnf"
 
  tvbuff_t	*next_tvb;
  char *oid;
@@ -1085,7 +1084,7 @@ static const value_string pres_Abort_reason_vals[] = {
 
 static int
 dissect_pres_Abort_reason(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 90 "../../asn1/pres/pres.cnf"
+#line 90 "./asn1/pres/pres.cnf"
   guint32 reason;
 
     offset = dissect_ber_integer(implicit_tag, actx, tree, tvb, offset, hf_index,
@@ -1360,7 +1359,7 @@ static int dissect_UD_type_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_
 
 
 /*--- End of included file: packet-pres-fn.c ---*/
-#line 225 "../../asn1/pres/packet-pres-template.c"
+#line 224 "./asn1/pres/packet-pres-template.c"
 
 
 /*
@@ -1376,13 +1375,13 @@ dissect_ppdu(tvbuff_t *tvb, int offset, packet_info *pinfo, proto_tree *tree, st
 	asn1_ctx_init(&asn1_ctx, ASN1_ENC_BER, TRUE, pinfo);
 
 	/* do we have spdu type from the session dissector?  */
-	if( local_session == NULL ){
+	if (local_session == NULL) {
 		proto_tree_add_expert(tree, pinfo, &ei_pres_wrong_spdu_type, tvb, offset, -1);
 		return 0;
 	}
 
 	session = local_session;
-	if(session->spdu_type == 0 ){
+	if (session->spdu_type == 0) {
 		proto_tree_add_expert_format(tree, pinfo, &ei_pres_wrong_spdu_type, tvb, offset, -1,
 			"Internal error:wrong spdu type %x from session dissector.",session->spdu_type);
 		return 0;
@@ -1397,7 +1396,7 @@ dissect_ppdu(tvbuff_t *tvb, int offset, packet_info *pinfo, proto_tree *tree, st
 	ti = proto_tree_add_item(tree, proto_pres, tvb, offset, -1, ENC_NA);
 	pres_tree = proto_item_add_subtree(ti, ett_pres);
 
-	switch(session->spdu_type){
+	switch (session->spdu_type) {
 		case SES_CONNECTION_REQUEST:
 			offset = dissect_pres_CP_type(FALSE, tvb, offset, &asn1_ctx, pres_tree, hf_pres_CP_type);
 			break;
@@ -1441,7 +1440,7 @@ dissect_pres(tvbuff_t *tvb, packet_info *pinfo, proto_tree *parent_tree, void* d
 
 	/* first, try to check length   */
 	/* do we have at least 4 bytes  */
-	if (!tvb_bytes_exist(tvb, 0, 4)){
+	if (!tvb_bytes_exist(tvb, 0, 4)) {
 		if (session && session->spdu_type != SES_MAJOR_SYNC_POINT) {
 			proto_tree_add_item(parent_tree, hf_pres_user_data, tvb, offset,
 					    tvb_reported_length_remaining(tvb,offset), ENC_NA);
@@ -1455,16 +1454,14 @@ dissect_pres(tvbuff_t *tvb, packet_info *pinfo, proto_tree *parent_tree, void* d
 
 	/* if the session unit-data packet then we process it */
 	/* as a connectionless presentation protocol unit data */
-	if(session && session->spdu_type == CLSES_UNIT_DATA)
-	{
+	if (session && session->spdu_type == CLSES_UNIT_DATA) {
 		proto_tree * clpres_tree = NULL;
 		proto_item *ti;
 
 		col_set_str(pinfo->cinfo, COL_PROTOCOL, "CL-PRES");
   		col_clear(pinfo->cinfo, COL_INFO);
 
-		if (parent_tree)
-		{
+		if (parent_tree) {
 			ti = proto_tree_add_item(parent_tree, proto_clpres, tvb, offset, -1, ENC_NA);
 			clpres_tree = proto_item_add_subtree(ti, ett_pres);
 		}
@@ -1492,12 +1489,12 @@ dissect_pres(tvbuff_t *tvb, packet_info *pinfo, proto_tree *parent_tree, void* d
 		return tvb_captured_length(tvb);
 	}
 
-	while (tvb_reported_length_remaining(tvb, offset) > 0){
+	while (tvb_reported_length_remaining(tvb, offset) > 0) {
 		old_offset = offset;
 		offset = dissect_ppdu(tvb, offset, pinfo, parent_tree, session);
-		if(offset <= old_offset){
-            proto_tree_add_expert(parent_tree, pinfo, &ei_pres_invalid_offset, tvb, offset, -1);
-            break;
+		if (offset <= old_offset) {
+			proto_tree_add_expert(parent_tree, pinfo, &ei_pres_invalid_offset, tvb, offset, -1);
+			break;
 		}
 	}
 
@@ -1533,7 +1530,7 @@ void proto_register_pres(void) {
 
 
 /*--- Included file: packet-pres-hfarr.c ---*/
-#line 1 "../../asn1/pres/packet-pres-hfarr.c"
+#line 1 "./asn1/pres/packet-pres-hfarr.c"
     { &hf_pres_UD_type_PDU,
       { "UD-type", "pres.UD_type_element",
         FT_NONE, BASE_NONE, NULL, 0,
@@ -1844,7 +1841,7 @@ void proto_register_pres(void) {
         NULL, HFILL }},
 
 /*--- End of included file: packet-pres-hfarr.c ---*/
-#line 396 "../../asn1/pres/packet-pres-template.c"
+#line 393 "./asn1/pres/packet-pres-template.c"
   };
 
   /* List of subtrees */
@@ -1852,7 +1849,7 @@ void proto_register_pres(void) {
 		&ett_pres,
 
 /*--- Included file: packet-pres-ettarr.c ---*/
-#line 1 "../../asn1/pres/packet-pres-ettarr.c"
+#line 1 "./asn1/pres/packet-pres-ettarr.c"
     &ett_pres_CP_type,
     &ett_pres_T_normal_mode_parameters,
     &ett_pres_T_extensions,
@@ -1891,7 +1888,7 @@ void proto_register_pres(void) {
     &ett_pres_UD_type,
 
 /*--- End of included file: packet-pres-ettarr.c ---*/
-#line 402 "../../asn1/pres/packet-pres-template.c"
+#line 399 "./asn1/pres/packet-pres-template.c"
   };
 
   static ei_register_info ei[] = {
@@ -1925,7 +1922,7 @@ void proto_register_pres(void) {
 
   /* Register protocol */
   proto_pres = proto_register_protocol(PNAME, PSNAME, PFNAME);
-  new_register_dissector("pres", dissect_pres, proto_pres);
+  register_dissector("pres", dissect_pres, proto_pres);
 
   /* Register connectionless protocol (just for the description) */
   proto_clpres = proto_register_protocol(CLPNAME, CLPSNAME, CLPFNAME);

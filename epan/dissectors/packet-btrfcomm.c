@@ -36,6 +36,7 @@
 #include <epan/expert.h>
 #include <epan/uat.h>
 #include <epan/decode_as.h>
+#include <epan/proto_data.h>
 
 #include "packet-bluetooth.h"
 #include "packet-btsdp.h"
@@ -97,7 +98,7 @@ static int hf_address = -1;
 static int hf_control = -1;
 
 /* Initialize the protocol and registered fields */
-static int proto_btrfcomm = -1;
+int proto_btrfcomm = -1;
 static int proto_btdun = -1;
 static int proto_btspp = -1;
 static int proto_btgnss = -1;
@@ -155,7 +156,6 @@ static uat_field_t uat_rfcomm_channels_fields[] = {
     UAT_END_FIELDS
 };
 
-static dissector_handle_t data_handle;
 static dissector_handle_t ppp_handle;
 
 static const value_string vs_ctl_pn_i[] = {
@@ -648,7 +648,7 @@ dissect_btrfcomm(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data
         k_chandle         = l2cap_data->chandle;
         k_psm             = l2cap_data->psm;
         k_channel         = dlci >> 1;
-        k_frame_number    = pinfo->fd->num;
+        k_frame_number    = pinfo->num;
         k_dlci            = dlci;
 
         key[0].length = 1;
@@ -863,14 +863,15 @@ dissect_btrfcomm(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data
 
         if (!dissector_try_uint_new(rfcomm_dlci_dissector_table, (guint32) dlci,
                 next_tvb, pinfo, tree, TRUE, rfcomm_data)) {
-            if (!dissector_try_string(bluetooth_uuid_table, print_numeric_uuid(&service_info->uuid),
+            if (service_info->uuid.size == 0 ||
+                !dissector_try_string(bluetooth_uuid_table, print_numeric_uuid(&service_info->uuid),
                     next_tvb, pinfo, tree, rfcomm_data)) {
                 decode_by_dissector = find_proto_by_channel(dlci >> 1);
                 if (rfcomm_channels_enabled && decode_by_dissector) {
                     call_dissector_with_data(decode_by_dissector, next_tvb, pinfo, tree, rfcomm_data);
                 } else {
                     /* unknown service, let the data dissector handle it */
-                    call_dissector(data_handle, next_tvb, pinfo, tree);
+                    call_data_dissector(next_tvb, pinfo, tree);
                 }
             }
         }
@@ -1128,7 +1129,7 @@ proto_register_btrfcomm(void)
 
     /* Register the protocol name and description */
     proto_btrfcomm = proto_register_protocol("Bluetooth RFCOMM Protocol", "BT RFCOMM", "btrfcomm");
-    btrfcomm_handle = new_register_dissector("btrfcomm", dissect_btrfcomm, proto_btrfcomm);
+    btrfcomm_handle = register_dissector("btrfcomm", dissect_btrfcomm, proto_btrfcomm);
 
     /* Required function calls to register the header fields and subtrees used */
     proto_register_field_array(proto_btrfcomm, hf, array_length(hf));
@@ -1138,7 +1139,7 @@ proto_register_btrfcomm(void)
 
     service_directions = wmem_tree_new_autoreset(wmem_epan_scope(), wmem_file_scope());
 
-    rfcomm_dlci_dissector_table = register_dissector_table("btrfcomm.dlci", "BT RFCOMM Directed Channel", FT_UINT16, BASE_DEC);
+    rfcomm_dlci_dissector_table = register_dissector_table("btrfcomm.dlci", "BT RFCOMM Directed Channel", proto_btrfcomm, FT_UINT16, BASE_DEC, DISSECTOR_TABLE_NOT_ALLOW_DUPLICATE);
 
     module = prefs_register_protocol(proto_btrfcomm, NULL);
     prefs_register_static_text_preference(module, "rfcomm.version",
@@ -1176,8 +1177,6 @@ proto_reg_handoff_btrfcomm(void)
 {
     dissector_add_uint("btl2cap.psm", BTL2CAP_PSM_RFCOMM, btrfcomm_handle);
     dissector_add_for_decode_as("btl2cap.cid", btrfcomm_handle);
-
-    data_handle = find_dissector("data");
 }
 
 /* Bluetooth Dial-Up Networking (DUN) profile dissection */
@@ -1219,7 +1218,7 @@ dissect_btdun(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data _U
             col_set_str(pinfo->cinfo, COL_PROTOCOL, "PPP");
             col_add_fstr(pinfo->cinfo, COL_INFO, "%s <PPP frame>", (pinfo->p2p_dir == P2P_DIR_SENT) ? "Sent" : "Rcvd");
 
-            call_dissector(data_handle, tvb, pinfo, tree);
+            call_data_dissector(tvb, pinfo, tree);
         }
     }
 
@@ -1243,7 +1242,7 @@ proto_register_btdun(void)
     };
 
     proto_btdun = proto_register_protocol("Bluetooth DUN Packet", "BT DUN", "btdun");
-    btdun_handle = new_register_dissector("btdun", dissect_btdun, proto_btdun);
+    btdun_handle = register_dissector("btdun", dissect_btdun, proto_btdun);
 
     /* Required function calls to register the header fields and subtrees used */
     proto_register_field_array(proto_btdun, hf, array_length(hf));
@@ -1257,7 +1256,7 @@ proto_reg_handoff_btdun(void)
 
     dissector_add_for_decode_as("btrfcomm.dlci", btdun_handle);
 
-    ppp_handle = find_dissector("ppp_raw_hdlc");
+    ppp_handle = find_dissector_add_dependency("ppp_raw_hdlc", proto_btdun);
 }
 
 /* Bluetooth Serial Port profile (SPP) dissection */
@@ -1310,7 +1309,7 @@ proto_register_btspp(void)
     };
 
     proto_btspp = proto_register_protocol("Bluetooth SPP Packet", "BT SPP", "btspp");
-    btspp_handle = new_register_dissector("btspp", dissect_btspp, proto_btspp);
+    btspp_handle = register_dissector("btspp", dissect_btspp, proto_btspp);
 
     /* Required function calls to register the header fields and subtrees used */
     proto_register_field_array(proto_btspp, hf, array_length(hf));
@@ -1364,7 +1363,7 @@ proto_register_btgnss(void)
     };
 
     proto_btgnss = proto_register_protocol("Bluetooth GNSS Profile", "BT GNSS", "btgnss");
-    btgnss_handle = new_register_dissector("btgnss", dissect_btgnss, proto_btgnss);
+    btgnss_handle = register_dissector("btgnss", dissect_btgnss, proto_btgnss);
 
     proto_register_field_array(proto_btgnss, hf, array_length(hf));
     proto_register_subtree_array(ett, array_length(ett));

@@ -210,7 +210,7 @@ wtap_open_return_val snoop_open(wtap *wth, int *err, gchar **err_info)
 		WTAP_ENCAP_UNKNOWN,	/* 100VG-AnyLAN Token Ring */
 		WTAP_ENCAP_UNKNOWN,	/* "ISO 8802/3 and Ethernet" */
 		WTAP_ENCAP_UNKNOWN,	/* 100BaseT (but that's just Ethernet) */
-		WTAP_ENCAP_IP_OVER_IB,	/* Infiniband */
+		WTAP_ENCAP_IP_OVER_IB_SNOOP,	/* Infiniband */
 	};
 	#define NUM_SNOOP_ENCAPS (sizeof snoop_encap / sizeof snoop_encap[0])
 	#define SNOOP_PRIVATE_BIT 0x80000000
@@ -738,16 +738,16 @@ snoop_read_shomiti_wireless_pseudoheader(FILE_T fh,
 	if (file_seek(fh, rsize, SEEK_CUR, err) == -1)
 		return FALSE;
 
+	memset(&pseudo_header->ieee_802_11, 0, sizeof(pseudo_header->ieee_802_11));
 	pseudo_header->ieee_802_11.fcs_len = 4;
 	pseudo_header->ieee_802_11.decrypted = FALSE;
 	pseudo_header->ieee_802_11.datapad = FALSE;
 	pseudo_header->ieee_802_11.phy = PHDR_802_11_PHY_UNKNOWN;
-	pseudo_header->ieee_802_11.presence_flags =
-	    PHDR_802_11_HAS_CHANNEL |
-	    PHDR_802_11_HAS_DATA_RATE |
-	    PHDR_802_11_HAS_SIGNAL_PERCENT;
+	pseudo_header->ieee_802_11.has_channel = TRUE;
 	pseudo_header->ieee_802_11.channel = whdr.channel;
+	pseudo_header->ieee_802_11.has_data_rate = TRUE;
 	pseudo_header->ieee_802_11.data_rate = whdr.rate;
+	pseudo_header->ieee_802_11.has_signal_percent = TRUE;
 	pseudo_header->ieee_802_11.signal_percent = whdr.signal;
 
 	/* add back the header and don't forget the pad as well */
@@ -796,7 +796,6 @@ gboolean snoop_dump_open(wtap_dumper *wdh, int *err)
 
 	/* This is a snoop file */
 	wdh->subtype_write = snoop_dump;
-	wdh->subtype_close = NULL;
 
 	/* Write the file header. */
 	if (!wtap_dump_file_write(wdh, &snoop_magic, sizeof snoop_magic, err))

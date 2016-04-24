@@ -61,8 +61,8 @@ static const xdlc_cf_items lapb_cf_items = {
     &hf_lapb_ftype_s_u
 };
 
-static void
-dissect_lapb(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
+static int
+dissect_lapb(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data _U_)
 {
     proto_tree          *lapb_tree, *ti;
     guint16             control;
@@ -99,7 +99,7 @@ dissect_lapb(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
         if (tree)
             proto_tree_add_protocol_format(tree, proto_lapb, tvb, 0, -1,
                             "Invalid LAPB frame");
-        return;
+        return 1;
     }
 
     switch (pinfo->p2p_dir) {
@@ -153,6 +153,7 @@ dissect_lapb(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
             break;
         }
     }
+    return tvb_captured_length(tvb);
 }
 
 void
@@ -226,8 +227,8 @@ proto_reg_handoff_lapb(void)
      * pseudo-header for LAPB-over-Ethernet, but we do get it
      * for raw LAPB.
      */
-    x25_dir_handle = find_dissector("x.25_dir");
-    x25_handle = find_dissector("x.25");
+    x25_dir_handle = find_dissector_add_dependency("x.25_dir", proto_lapb);
+    x25_handle = find_dissector_add_dependency("x.25", proto_lapb);
 
     lapb_handle = find_dissector("lapb");
     dissector_add_uint("wtap_encap", WTAP_ENCAP_LAPB, lapb_handle);

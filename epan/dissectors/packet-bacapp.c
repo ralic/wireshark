@@ -71,8 +71,6 @@ static int bacapp_tap = -1;
  * @param pinfo the packet info of the current data
  * @param tree the tree to append this item to
  **/
-static void
-dissect_bacapp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree);
 
 /**
  * ConfirmedRequest-PDU ::= SEQUENCE {
@@ -5296,12 +5294,12 @@ fSigned64(tvbuff_t *tvb, guint offset, guint32 lvt, gint64 *val)
         valid = TRUE;
         data = tvb_get_guint8(tvb, offset);
         if ((data & 0x80) != 0)
-            value = (-1 << 8) | data;
+            value = (~G_GUINT64_CONSTANT(0) << 8) | data;
         else
             value = data;
         for (i = 1; i < lvt; i++) {
             data = tvb_get_guint8(tvb, offset+i);
-            value = (value << 8) + data;
+            value = ((guint64)value << 8) | data;
         }
         *val = value;
     }
@@ -5808,7 +5806,7 @@ fCalendarEntry(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, guint offset
 }
 
 static guint
-fEventTimeStamps( tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree, guint offset)
+fEventTimeStamps( tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, guint offset)
 {
     guint32     lvt     = 0;
     proto_tree* subtree = tree;
@@ -6578,7 +6576,7 @@ moduloDivide    [1] Unsigned
 }
 */
 static guint
-fPrescale(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree, guint offset)
+fPrescale(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, guint offset)
 {
     guint8  tag_no, tag_info;
     guint32 lvt;
@@ -6612,7 +6610,7 @@ integerScale    [1] INTEGER
 }
 */
 static guint
-fScale(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree, guint offset)
+fScale(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, guint offset)
 {
     guint8  tag_no, tag_info;
     guint32 lvt;
@@ -6653,7 +6651,7 @@ BACnetAccumulatorRecord ::= SEQUENCE {
 }
 */
 static guint
-fLoggingRecord(tvbuff_t *tvb, packet_info *pinfo  _U_, proto_tree *tree, guint offset)
+fLoggingRecord(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, guint offset)
 {
     guint8  tag_no, tag_info;
     guint32 lvt;
@@ -7534,7 +7532,7 @@ BACnetPropertyStatesEnums[] = {
 #define BACnetPropertyStatesEnums_Size 36
 
 static guint
-fBACnetPropertyStates(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree, guint offset)
+fBACnetPropertyStates(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, guint offset)
 {
     guint8       tag_no, tag_info;
     guint32      lvt;
@@ -10796,8 +10794,8 @@ do_the_dissection(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
     return offset;
 }
 
-static void
-dissect_bacapp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
+static int
+dissect_bacapp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data _U_)
 {
     guint8      flag, bacapp_type;
     guint       save_fragmented  = FALSE, data_offset = 0, /*bacapp_apdu_size,*/ fragment = FALSE;
@@ -11060,6 +11058,7 @@ dissect_bacapp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
 
     /* tapping */
     tap_queue_packet(bacapp_tap, pinfo, &bacinfo);
+    return tvb_captured_length(tvb);
 }
 
 static void
@@ -11317,8 +11316,8 @@ proto_register_bacapp(void)
     register_cleanup_routine(&bacapp_cleanup_routine);
 
     bacapp_dissector_table = register_dissector_table("bacapp.vendor_identifier",
-                                                      "BACapp Vendor Identifier",
-                                                      FT_UINT8, BASE_HEX);
+                                                      "BACapp Vendor Identifier", proto_bacapp,
+                                                      FT_UINT8, BASE_HEX, DISSECTOR_TABLE_NOT_ALLOW_DUPLICATE);
 
     /* Register BACnet Statistic trees */
     register_bacapp_stat_trees();

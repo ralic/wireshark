@@ -22,7 +22,7 @@ ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
 OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 */
 
-#include "config.h"
+#include <config.h>
 
 #include <stdio.h>
 
@@ -30,7 +30,6 @@ OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 #include <glib/gstdio.h>
 
 #include "ws80211_utils.h"
-#include "wsutil/ws_diag_control.h"
 
 #if defined(HAVE_LIBNL) && defined(HAVE_NL80211)
 #include <string.h>
@@ -266,6 +265,25 @@ static void parse_band_ht_capa(struct ws80211_interface *iface,
 }
 #endif /* NL80211_BAND_ATTR_HT_CAPA */
 
+#ifdef HAVE_NL80211_VHT_CAPABILITY
+static void parse_band_vht_capa(struct ws80211_interface *iface,
+				struct nlattr *tb)
+{
+	guint32 chan_capa;
+	if (!tb) return;
+
+	chan_capa = (nla_get_u32(tb) >> 2) & 3;
+	if (chan_capa == 1) {
+		iface->channel_types |= 1 << WS80211_CHAN_VHT160;
+	}
+	if (chan_capa == 2) {
+		iface->channel_types |= 1 << WS80211_CHAN_VHT160;
+		iface->channel_types |= 1 << WS80211_CHAN_VHT80P80;
+	}
+	iface->channel_types |= 1 << WS80211_CHAN_VHT80;
+}
+#endif /* HAVE_NL80211_VHT_CAPABILITY */
+
 static void parse_supported_iftypes(struct ws80211_interface *iface,
 				    struct nlattr *tb)
 {
@@ -333,6 +351,9 @@ static void parse_wiphy_bands(struct ws80211_interface *iface,
 #ifdef NL80211_BAND_ATTR_HT_CAPA
 		parse_band_ht_capa(iface, tb_band[NL80211_BAND_ATTR_HT_CAPA]);
 #endif /* NL80211_BAND_ATTR_HT_CAPA */
+#ifdef HAVE_NL80211_VHT_CAPABILITY
+		parse_band_vht_capa(iface, tb_band[NL80211_BAND_ATTR_VHT_CAPA]);
+#endif /* HAVE_NL80211_VHT_CAPABILITY */
 		parse_band_freqs(iface, tb_band[NL80211_BAND_ATTR_FREQS]);
 	}
 }
@@ -489,10 +510,36 @@ static int get_iface_info_handler(struct nl_msg *msg, void *arg)
 	}
 
 	if (tb_msg[NL80211_ATTR_WIPHY_FREQ]) {
+		gboolean found_ch_width = FALSE;
 		iface_info->pub->current_freq = nla_get_u32(tb_msg[NL80211_ATTR_WIPHY_FREQ]);
 		iface_info->pub->current_chan_type = WS80211_CHAN_NO_HT;
-
-		if (tb_msg[NL80211_ATTR_WIPHY_CHANNEL_TYPE]) {
+#ifdef HAVE_NL80211_VHT_CAPABILITY
+		if (tb_msg[NL80211_ATTR_CHANNEL_WIDTH]) {
+			switch (nla_get_u32(tb_msg[NL80211_ATTR_CHANNEL_WIDTH])) {
+			case NL80211_CHAN_WIDTH_80:
+				iface_info->pub->current_chan_type = WS80211_CHAN_VHT80;
+				found_ch_width = TRUE;
+				break;
+			case NL80211_CHAN_WIDTH_80P80:
+				iface_info->pub->current_chan_type = WS80211_CHAN_VHT80P80;
+				found_ch_width = TRUE;
+				break;
+			case NL80211_CHAN_WIDTH_160:
+				iface_info->pub->current_chan_type = WS80211_CHAN_VHT160;
+				found_ch_width = TRUE;
+				break;
+			}
+		}
+		if (tb_msg[NL80211_ATTR_CENTER_FREQ1]) {
+			iface_info->pub->current_center_freq1 =
+				nla_get_u32(tb_msg[NL80211_ATTR_CENTER_FREQ1]);
+		}
+		if (tb_msg[NL80211_ATTR_CENTER_FREQ2]) {
+			iface_info->pub->current_center_freq2 =
+				nla_get_u32(tb_msg[NL80211_ATTR_CENTER_FREQ2]);
+		}
+#endif
+		if (!found_ch_width && tb_msg[NL80211_ATTR_WIPHY_CHANNEL_TYPE]) {
 			switch (nla_get_u32(tb_msg[NL80211_ATTR_WIPHY_CHANNEL_TYPE])) {
 
 			case NL80211_CHAN_NO_HT:
@@ -598,7 +645,7 @@ static int ws80211_populate_devices(GArray *interfaces)
 	int i;
 	unsigned int j;
 
-	struct ws80211_iface_info pub = {-1, WS80211_CHAN_NO_HT, WS80211_FCS_ALL};
+	struct ws80211_iface_info pub = {-1, WS80211_CHAN_NO_HT, -1, -1, WS80211_FCS_ALL};
 	struct __iface_info iface_info;
 	struct ws80211_interface *iface;
 
@@ -680,6 +727,8 @@ out_err:
 	return -1;
 }
 
+/* Needed for NLA_PUT_STRING, which passes strlen as an int */
+DIAG_OFF(shorten-64-to-32)
 static int ws80211_create_on_demand_interface(const char *name)
 {
 	int devidx, phyidx, err;
@@ -708,16 +757,19 @@ static int ws80211_create_on_demand_interface(const char *name)
 	NLA_PUT_U32(msg, NL80211_ATTR_IFTYPE, NL80211_IFTYPE_MONITOR);
 
 	err = nl80211_do_cmd(msg, cb);
+	nlmsg_free(msg);
 	if (err)
 		return err;
 	return ws80211_iface_up(name);
 
 nla_put_failure:
+	nlmsg_free(msg);
 	fprintf(stderr, "building message failed\n");
 	return 2;
 }
+DIAG_ON(shorten-64-to-32)
 
-int ws80211_set_freq(const char *name, int freq, int chan_type)
+int ws80211_set_freq(const char *name, int freq, int chan_type, int _U_ center_freq, int _U_ center_freq2)
 {
 	int devidx, err;
 	struct nl_msg *msg;
@@ -767,14 +819,32 @@ int ws80211_set_freq(const char *name, int freq, int chan_type)
 		NLA_PUT_U32(msg, NL80211_ATTR_WIPHY_CHANNEL_TYPE, NL80211_CHAN_HT40PLUS);
 		break;
 #endif
+#ifdef HAVE_NL80211_VHT_CAPABILITY
+	case WS80211_CHAN_VHT80:
+		NLA_PUT_U32(msg, NL80211_ATTR_CHANNEL_WIDTH, NL80211_CHAN_WIDTH_80);
+		NLA_PUT_U32(msg, NL80211_ATTR_CENTER_FREQ1, center_freq);
+		break;
 
+	case WS80211_CHAN_VHT80P80:
+		NLA_PUT_U32(msg, NL80211_ATTR_CHANNEL_WIDTH, NL80211_CHAN_WIDTH_80P80);
+		NLA_PUT_U32(msg, NL80211_ATTR_CENTER_FREQ1, center_freq);
+		NLA_PUT_U32(msg, NL80211_ATTR_CENTER_FREQ2, center_freq2);
+		break;
+
+	case WS80211_CHAN_VHT160:
+		NLA_PUT_U32(msg, NL80211_ATTR_CHANNEL_WIDTH, NL80211_CHAN_WIDTH_160);
+		NLA_PUT_U32(msg, NL80211_ATTR_CENTER_FREQ1, center_freq);
+		break;
+#endif
 	default:
 		break;
 	}
 	err = nl80211_do_cmd(msg, cb);
+	nlmsg_free(msg);
 	return err;
 
 nla_put_failure:
+	nlmsg_free(msg);
 	fprintf(stderr, "building message failed\n");
 	return 2;
 
@@ -813,6 +883,13 @@ ws80211_str_to_chan_type(const gchar *s)
 		ret = WS80211_CHAN_HT40MINUS;
 	if (!strcmp(s, CHAN_HT40PLUS))
 		ret = WS80211_CHAN_HT40PLUS;
+	if (!strcmp(s, CHAN_VHT80))
+		ret = WS80211_CHAN_VHT80;
+	if (!strcmp(s, CHAN_VHT80P80))
+		ret = WS80211_CHAN_VHT80P80;
+	if (!strcmp(s, CHAN_VHT160))
+		ret = WS80211_CHAN_VHT160;
+
 	return ret;
 }
 
@@ -828,6 +905,12 @@ const gchar
 		return CHAN_HT40MINUS;
 	case WS80211_CHAN_HT40PLUS:
 		return CHAN_HT40PLUS;
+	case WS80211_CHAN_VHT80:
+		return CHAN_VHT80;
+	case WS80211_CHAN_VHT80P80:
+		return CHAN_VHT80P80;
+	case WS80211_CHAN_VHT160:
+		return CHAN_VHT160;
 	}
 	return NULL;
 }
@@ -980,7 +1063,7 @@ int ws80211_get_iface_info(const char *name, struct ws80211_iface_info *iface_in
 	return 0;
 }
 
-int ws80211_set_freq(const char *name, int freq, int chan_type)
+int ws80211_set_freq(const char *name, int freq, int chan_type, int _U_ center_freq, int _U_ center_freq2)
 {
 	GList *airpcap_if_list;
 	int err;
@@ -1138,7 +1221,7 @@ int ws80211_get_iface_info(const char *name _U_, struct ws80211_iface_info *ifac
 	return -1;
 }
 
-int ws80211_set_freq(const char *name _U_, int freq _U_, int _U_ chan_type)
+int ws80211_set_freq(const char *name _U_, int freq _U_, int _U_ chan_type, int _U_ center_freq, int _U_ center_freq2)
 {
 	return -1;
 }
@@ -1186,22 +1269,6 @@ void ws80211_free_interfaces(GArray *interfaces)
 		g_free(iface);
 	}
 	g_array_free(interfaces, TRUE);
-}
-
-int ws80211_frequency_to_channel(int freq)
-{
-	if (freq == 2484)
-		return 14;
-
-	if (freq < 2484)
-		return (freq - 2407) / 5;
-
-	/* 4.9 GHz. https://en.wikipedia.org/wiki/List_of_WLAN_channels, fetched
-	 * 2015-06-15 */
-	if (freq < 5000)
-		return freq / 5 - 800;
-
-	return freq / 5 - 1000;
 }
 
 /*

@@ -21,7 +21,6 @@
 
 find_package( LYNX )
 find_package( XSLTPROC )
-find_package( XMLLINT )
 if(ENABLE_CHM_GUIDES)
 	find_package( HTMLHelp )
 endif()
@@ -77,6 +76,15 @@ set(WSUG_FILES
 )
 
 set(WSUG_GRAPHICS
+	wsug_graphics/related-ack.png
+	wsug_graphics/related-current.png
+	wsug_graphics/related-dup-ack.png
+	wsug_graphics/related-first.png
+	wsug_graphics/related-last.png
+	wsug_graphics/related-other.png
+	wsug_graphics/related-request.png
+	wsug_graphics/related-response.png
+	wsug_graphics/related-segment.png
 	wsug_graphics/ws-analyze-menu.png
 	wsug_graphics/ws-bytes-pane-tabs.png
 	wsug_graphics/ws-bytes-pane.png
@@ -232,12 +240,16 @@ set(WSUG_SOURCE
 	${WSUG_GRAPHICS}
 )
 
-add_custom_command(
-	OUTPUT ws.css
-	COMMAND ${CMAKE_COMMAND} -E copy_if_different
-		${CMAKE_CURRENT_SOURCE_DIR}/ws.css
-		${CMAKE_CURRENT_BINARY_DIR}/ws.css
-)
+if(NOT CMAKE_SOURCE_DIR STREQUAL CMAKE_BINARY_DIR)
+	add_custom_command(
+		OUTPUT ws.css
+		COMMAND ${CMAKE_COMMAND} -E copy_if_different
+			${CMAKE_CURRENT_SOURCE_DIR}/ws.css
+			${CMAKE_CURRENT_BINARY_DIR}/ws.css
+		DEPENDS
+			${CMAKE_CURRENT_SOURCE_DIR}/ws.css
+	)
+endif()
 
 set( WSUG_BUILT_DEPS ws.css )
 
@@ -299,11 +311,11 @@ if(ENABLE_HTML_GUIDES OR ENABLE_PDF_GUIDES OR ENABLE_CHM_GUIDES)
 	set( ASCIIDOC_CONF_FILES asciidoc.conf asciidoctor-asciidoc.conf )
 
 	ASCIIDOC2DOCBOOK(user-guide.asciidoc ASCIIDOC_CONF_FILES WSUG_SOURCE WSUG_BUILT_DEPS)
-	add_custom_target(user_guide_docbook DEPENDS user-guide.xml)
+	add_custom_target(user_guide_docbook DEPENDS generate_user-guide.xml)
 	set_target_properties(user_guide_docbook PROPERTIES FOLDER "Docbook")
 
 	ASCIIDOC2DOCBOOK(developer-guide.asciidoc ASCIIDOC_WSLUARM_CONF_FILES WSDG_SOURCE WSDG_BUILT_DEPS)
-	add_custom_target(developer_guide_docbook DEPENDS developer-guide.xml)
+	add_custom_target(developer_guide_docbook DEPENDS generate_developer-guide.xml)
 	set_target_properties(developer_guide_docbook PROPERTIES FOLDER "Docbook")
 
 	# Top-level guide targets.
@@ -320,12 +332,6 @@ endif()
 
 # User's Guide chain.
 if(ENABLE_HTML_GUIDES)
-	# a2x always generates valid XML, *right*?
-	#VALIDATE_XML(
-	#	wsug.validated
-	#	user-guide.xml
-	#)
-
 	XML2HTML(
 		user_guide
 		wsug
@@ -402,12 +408,6 @@ endif()
 
 # Developer's Guide chain.
 if(ENABLE_HTML_GUIDES)
-	# a2x always generates valid XML, *right*?
-	#VALIDATE_XML(
-	#	wsdg.validated
-	#	developer-guide.xml
-	#)
-
 	XML2HTML(
 		developer_guide
 		wsdg
@@ -496,7 +496,7 @@ add_custom_target(
 		${CMAKE_CURRENT_BINARY_DIR}/release-notes.txt
 		${CMAKE_SOURCE_DIR}/NEWS
 	DEPENDS
-                ${CMAKE_CURRENT_BINARY_DIR}/release-notes.txt
+		${CMAKE_CURRENT_BINARY_DIR}/release-notes.txt
 )
 set_target_properties(news PROPERTIES FOLDER "Docbook")
 

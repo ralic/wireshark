@@ -33,6 +33,9 @@
 #include <epan/conversation.h>
 #include <epan/prefs.h>
 #include <epan/reassemble.h>
+#include <epan/proto_data.h>
+
+#include <wsutil/str_util.h>
 #include "packet-ssl.h"
 #include "packet-ssl-utils.h"
 
@@ -69,7 +72,6 @@ static gint ett_pop_data_fragment = -1;
 static gint ett_pop_data_fragments = -1;
 
 static dissector_handle_t pop_handle;
-static dissector_handle_t data_handle;
 static dissector_handle_t imf_handle;
 static dissector_handle_t ssl_handle;
 
@@ -120,8 +122,8 @@ struct pop_data_val {
 
 static gboolean response_is_continuation(const guchar *data);
 
-static void
-dissect_pop(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
+static int
+dissect_pop(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data _U_)
 {
   struct pop_proto_data  *frame_data_p;
   gboolean               is_request;
@@ -241,10 +243,10 @@ dissect_pop(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
       /*
        * Put the whole packet into the tree as data.
        */
-      call_dissector(data_handle,tvb, pinfo, pop_tree);
+      call_data_dissector(tvb, pinfo, pop_tree);
 
     }
-    return;
+    return tvb_captured_length(tvb);
   }
 
   /*
@@ -348,6 +350,7 @@ dissect_pop(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
       offset = next_offset;
     }
   }
+  return tvb_captured_length(tvb);
 }
 
 static gboolean response_is_continuation(const guchar *data)
@@ -467,14 +470,13 @@ proto_reg_handoff_pop(void)
 {
   pop_handle = find_dissector("pop");
   dissector_add_uint("tcp.port", TCP_PORT_POP, pop_handle);
-  ssl_dissector_add(TCP_PORT_SSL_POP, "pop", TRUE);
-  data_handle = find_dissector("data");
+  ssl_dissector_add(TCP_PORT_SSL_POP, pop_handle);
 
   /* find the IMF dissector */
-  imf_handle = find_dissector("imf");
+  imf_handle = find_dissector_add_dependency("imf", proto_pop);
 
   /* find the SSL dissector */
-  ssl_handle = find_dissector("ssl");
+  ssl_handle = find_dissector_add_dependency("ssl", proto_pop);
 }
 
 /*

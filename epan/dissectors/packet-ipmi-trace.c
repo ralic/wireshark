@@ -92,7 +92,6 @@ void proto_reg_handoff_ipmi_trace(void);
 
 static int proto_ipmi_trace = -1;
 
-static dissector_handle_t data_dissector_handle;
 static dissector_table_t proto_dissector_table;
 
 static gint ett_ipmi_trace = -1;
@@ -275,16 +274,16 @@ dissect_ipmb_state_notify(tvbuff_t * tvb, proto_tree * tree)
 			bits_chn_state_info, ENC_LITTLE_ENDIAN);
 }
 
-static void
-dissect_ipmi_trace(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
+static int
+dissect_ipmi_trace(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data _U_)
 {
 	guint block_type, chn_num, data_type, tmp;
 	tvbuff_t * next_tvb;
 
 	if (tvb_captured_length(tvb) < 11) {
 		/* TODO: add expert info */
-		call_dissector(data_dissector_handle, tvb, pinfo, tree);
-		return;
+		call_data_dissector(tvb, pinfo, tree);
+		return tvb_captured_length(tvb);
 	}
 
 	/* get first byte */
@@ -412,15 +411,15 @@ dissect_ipmi_trace(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
 
 		if (!dissector_try_uint_new(proto_dissector_table,
 				data_type, next_tvb, pinfo, tree, TRUE, &arg)) {
-			call_dissector(data_dissector_handle, next_tvb,
-					pinfo, tree);
+			call_data_dissector(next_tvb, pinfo, tree);
 		}
 	} else if (block_type == HPM2_CHN_STATE_NOTIFY
 			&& data_type == IPMI_PROTO_IPMB_1_0) {
 		dissect_ipmb_state_notify(next_tvb, tree);
 	} else {
-		call_dissector(data_dissector_handle, next_tvb, pinfo, tree);
+		call_data_dissector(next_tvb, pinfo, tree);
 	}
+	return tvb_captured_length(tvb);
 }
 
 void
@@ -440,7 +439,7 @@ proto_register_ipmi_trace(void)
 
 	/* register dissector table for IPMI messaging protocols */
 	proto_dissector_table = register_dissector_table("ipmi.protocol",
-			"IPMI Channel Protocol Type", FT_UINT8, BASE_HEX);
+			"IPMI Channel Protocol Type", proto_ipmi_trace, FT_UINT8, BASE_HEX, DISSECTOR_TABLE_NOT_ALLOW_DUPLICATE);
 }
 
 void
@@ -450,8 +449,6 @@ proto_reg_handoff_ipmi_trace(void)
 
 	ipmi_trace_handle = create_dissector_handle(dissect_ipmi_trace,
 			proto_ipmi_trace);
-
-	data_dissector_handle = find_dissector("data");
 
 	dissector_add_uint("wtap_encap", WTAP_ENCAP_IPMI_TRACE, ipmi_trace_handle);
 

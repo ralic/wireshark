@@ -26,7 +26,7 @@
 #include <QPainter>
 
 #include "ui/util.h"
-#include "ui/utf8_entities.h"
+#include <wsutil/utf8_entities.h>
 #include "tango_colors.h"
 
 #ifdef HAVE_LUA
@@ -39,7 +39,7 @@
 /*
  * Update frequency for the splash screen, given in milliseconds.
  */
-int info_update_freq_ = 100;
+static int info_update_freq_ = 100;
 
 void splash_update(register_action_e action, const char *message, void *) {
     emit wsApp->registerUpdate(action, message);
@@ -60,9 +60,15 @@ SplashOverlay::SplashOverlay(QWidget *parent) :
       register_add += wslua_count_plugins();   /* get count of lua plugins */
 #endif
     so_ui_->progressBar->setMaximum((int)register_count() + register_add);
-    time_.start();
+    elapsed_timer_.start();
 
-    setPalette(Qt::transparent);
+    QColor bg = QColor(tango_aluminium_6);
+    bg.setAlphaF(0.4);
+    QPalette pal;
+    pal.setColor(QPalette::Background, bg);
+    setPalette(pal);
+    setAutoFillBackground(true);
+
     setStyleSheet(QString(
                       "QLabel {"
                       "  color: white;"
@@ -119,7 +125,7 @@ void SplashOverlay::splashUpdate(register_action_e action, const char *message)
 #endif
 
     register_cur_++;
-    if (last_action_ == action && time_.elapsed() < info_update_freq_ && register_cur_ != so_ui_->progressBar->maximum()) {
+    if (last_action_ == action && elapsed_timer_.elapsed() < info_update_freq_ && register_cur_ != so_ui_->progressBar->maximum()) {
       /* Only update every splash_register_freq milliseconds */
       return;
     }
@@ -172,18 +178,8 @@ void SplashOverlay::splashUpdate(register_action_e action, const char *message)
 
     so_ui_->progressBar->setValue(register_cur_);
 
-    wsApp->processEvents();
-    time_.restart();
-}
-
-void SplashOverlay::paintEvent(QPaintEvent *)
-{
-    QPainter painter(this);
-
-    painter.setRenderHint(QPainter::Antialiasing);
-    painter.setBrush(QColor(tango_aluminium_6));
-    painter.setOpacity(0.4);
-    painter.drawRect(rect());
+    wsApp->processEvents(QEventLoop::ExcludeUserInputEvents | QEventLoop::ExcludeSocketNotifiers, 1);
+    elapsed_timer_.restart();
 }
 
 /*

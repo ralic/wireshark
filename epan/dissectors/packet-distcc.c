@@ -47,8 +47,6 @@ static gint ett_distcc = -1;
 
 static expert_field ei_distcc_short_pdu = EI_INIT;
 
-static dissector_handle_t data_handle;
-
 
 static gboolean distcc_desegment = TRUE;
 
@@ -70,7 +68,7 @@ extern void proto_reg_handoff_distcc(void);
 
 #define DESEGMENT_TCP(x) \
     if(distcc_desegment && pinfo->can_desegment){\
-        /* only attempt reassembly if whe have the full segment */\
+        /* only attempt reassembly if we have the full segment */\
         if(tvb_captured_length_remaining(tvb, offset)==tvb_reported_length_remaining(tvb, offset)){\
             if(parameter>tvb_captured_length_remaining(tvb, offset)){\
                 proto_tree_add_expert_format(tree, pinfo, &ei_distcc_short_pdu, tvb, offset-12, -1, "[Short " x " PDU]");\
@@ -116,7 +114,7 @@ dissect_distcc_stat(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, int off
 }
 
 static int
-dissect_distcc_argc(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree, int offset, guint32 parameter)
+dissect_distcc_argc(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, int offset, guint32 parameter)
 {
     proto_tree_add_uint(tree, hf_distcc_argc, tvb, offset-12, 12, parameter);
 
@@ -126,7 +124,7 @@ dissect_distcc_argc(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree, int
 }
 
 static int
-dissect_distcc_argv(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree, int offset, gint parameter)
+dissect_distcc_argv(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, int offset, gint parameter)
 {
     char argv[256];
     int argv_len;
@@ -153,7 +151,7 @@ dissect_distcc_argv(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree, int
 }
 
 static int
-dissect_distcc_serr(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree, int offset, gint parameter)
+dissect_distcc_serr(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, int offset, gint parameter)
 {
     char argv[256];
     int argv_len;
@@ -182,7 +180,7 @@ dissect_distcc_serr(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree, int
 }
 
 static int
-dissect_distcc_sout(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree, int offset, gint parameter)
+dissect_distcc_sout(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, int offset, gint parameter)
 {
     char argv[256];
     int argv_len;
@@ -253,8 +251,8 @@ dissect_distcc_doto(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, int off
 
 
 /* Packet dissection routine called by tcp (& udp) when port 3632 detected */
-static void
-dissect_distcc(tvbuff_t *tvb, packet_info *pinfo, proto_tree *parent_tree)
+static int
+dissect_distcc(tvbuff_t *tvb, packet_info *pinfo, proto_tree *parent_tree, void* data _U_)
 {
     int offset=0;
     proto_tree *tree=NULL;
@@ -281,7 +279,7 @@ dissect_distcc(tvbuff_t *tvb, packet_info *pinfo, proto_tree *parent_tree)
 
         /* scan the parameter */
         if (sscanf(buf + 4, "%08x", &parameter) != 1)
-            return;
+            return offset;
 
         if(!strncmp(buf, "DIST", 4)){
             offset=dissect_distcc_dist(tvb, pinfo, tree, offset, parameter);
@@ -302,12 +300,12 @@ dissect_distcc(tvbuff_t *tvb, packet_info *pinfo, proto_tree *parent_tree)
         } else if(!strncmp(buf, "DOTO", 4)){
             offset=dissect_distcc_doto(tvb, pinfo, tree, offset, parameter);
         } else {
-            call_dissector(data_handle, tvb, pinfo, tree);
-            return;
+            call_data_dissector(tvb, pinfo, tree);
+            return tvb_captured_length(tvb);
         }
     }
 
-
+    return tvb_captured_length(tvb);
 }
 
 /* Register protocol with Wireshark. */
@@ -396,7 +394,6 @@ proto_reg_handoff_distcc(void)
          */
         distcc_handle = create_dissector_handle(dissect_distcc,
             proto_distcc);
-        data_handle = find_dissector("data");
         registered_dissector = TRUE;
     } else {
         /*
